@@ -1,0 +1,3 @@
+if [ "$CONFIG_EXPERIMENTAL" = "y" -a "$CONFIG_FILTER" = "y" ]; then
+    source net/ring/Config.in
+fi

@@ -1,0 +1,72 @@
+1.   Building PF_RING
+---------------------
+
+First of all you need to patch your kernel. If you already have a patch file use that, otherwise you can build one yourself on the fly as follows:
+
+1. cd ring (i.e. you need to do 'cd ..' from this directory)
+
+2. (optional) Edit mkpatch.sh in order to change some options
+
+3. ./mkpatch
+   After running this tool you will finally have a patch file for your target kernel.
+
+4. (optional but very recommended) patch your kernel using the RTIRQ patch available here
+   http://home.t-online.de/home/Bernhard_Kuhn/rtirq/
+
+5. patch your kernel as follows:
+   cd <spool dir>
+   tar xvfz linux-2.X.Y.tar.gz
+   zcat linux-2.X.Y.patch.gz | patch -p0
+
+6. Configure your kernel (2.4 and 2.6 are slightly different)
+   - Enable RTIRQ (if you use it)
+   - Enable 'Code maturity level options' 
+             -> ' Prompt for development and/or incomplete code/drivers'
+   - Enable 'Networking options'
+	     -> 'Socket Filtering'
+	     -> 'PF_RING'
+   - Change any other option you like.
+
+   NOTE: if you have a network card (e.g. Intel 1000) that supports NAPI, make
+   sure you enable it as this will result in great performance.
+
+7. You're now ready to build your kernel. Build it as usual, install it and reboot your box.
+   
+8. Now build libpcap-ring and you networking applications against libpcap-ring. Note that it is a common mistake to run applications dynamically linked with libcap-ring with the old legacy libpcap.
+
+2.   Using PF_RING
+-------------------
+
+2.1  Installing the Ring Module
+-------------------------------
+
+Depending on your kernel module you need to use a different module name.
+
+2.4.x 	insmod ring.o <options>
+2.6.x	insmod ring.ko <options>
+
+
+For both kernels, the options are the same. Namely:
+
+Option		    Default Value
+---------------------------------
+bucket_len		 128
+num_slots		4096
+sample_rate		   1
+transparent_mode	   0 (test only)
+
+where:
+- bucket_len: it specifies the maximum packet length captured by PF_RING. This is equivalent to snaplen of libpcap.
+- num_slots: number of ring slots. The bigger the better is the performance the more memory you use.
+- sample_rate: sampling rate for *all* the ring sockets. 1 means no sampling
+- transparent_mode: by default a packet that is handled by at least a ring is not forwarded to the upper Linux layers. This will result in faster capture speeds but will prevent legacy applications (not recompiled with the new libpcap-ring) from operating. If you set it to 1 it reverts the ring to the old behaviour (i.e. packets are forwarded to upper layers) but this will decrease the benefits of the ring as it will result in worse results.
+
+For instance:
+insmod ring.o bucket_len=256
+
+NOTE: unless you know what you're doing, please *do not* specify any option.
+
+
+---------------------------------------
+(C) 2003-04 - Luca Deri <deri@ntop.org>
+

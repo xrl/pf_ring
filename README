@@ -1,0 +1,12 @@
+
+This directory contains:
+
+kernel/				Kernel related patches
+userland/			User space code
+userland/libpcap-0.8.1-ring/	Libpcap enhanced with PF_RING support
+userland/pcount/		P(acket)count application (use it for your tests)
+
+
+------------
+Luca Deri, Rocco Carbone
+April 2004
