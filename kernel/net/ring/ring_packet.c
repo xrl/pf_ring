@@ -3,12 +3,12 @@
  * (C) 2004 - Luca Deri <deri@ntop.org>
  *
  * This code includes patches courtesy of
- * Jeff Randall <jrandall@nexvu.com>
- *
+ * - Jeff Randall <jrandall@nexvu.com>
+ * - Helmut Manck <helmut.manck@secunet.com>
  *
  */
 
-/* FIX: creare una entry dentro il proc filesystem */
+/* FIX: add an entry inside the /proc filesystem */
 
 #include <linux/version.h>
 #include <linux/config.h>
@@ -200,14 +200,14 @@ static inline void ring_insert(struct sock *sk) {
   printk("RING: ring_insert()\n");
 #endif
 
-  write_lock(&ring_mgmt_lock);
+  write_lock_irq(&ring_mgmt_lock);
   next = kmalloc(sizeof(struct ring_element), GFP_ATOMIC);
   if(next != NULL) {
     next->sk = sk;
     list_add(&next->list, &ring_table);
   }
 
-  write_unlock(&ring_mgmt_lock);
+  write_unlock_irq(&ring_mgmt_lock);
 }
 
 /* ********************************** */
@@ -225,6 +225,8 @@ static inline void ring_remove(struct sock *sk) {
   struct list_head *ptr;
   struct ring_element *entry;
 
+  write_lock_irq(&ring_mgmt_lock);
+
   for(ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
     entry = list_entry(ptr, struct ring_element, list);
 
@@ -234,6 +236,8 @@ static inline void ring_remove(struct sock *sk) {
       break;
     }
   }
+
+  write_unlock_irq(&ring_mgmt_lock);  
 }
 
 /* ********************************** */
@@ -751,8 +755,6 @@ static int ring_release(struct socket *sock)
   printk("RING: called ring_release\n");
 #endif
 
-  write_lock_bh(&ring_mgmt_lock);
-
 #if defined(RING_DEBUG)
   printk("RING: ring_release entered\n");
 #endif
@@ -784,8 +786,6 @@ static int ring_release(struct socket *sock)
 #if defined(RING_DEBUG)
   printk("RING: ring_release leaving\n");
 #endif
-
-  write_unlock_bh(&ring_mgmt_lock);
 
   return 0;
 }
