@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <sched.h>
 
+#define ALARM_SLEEP       1
 #define DEFAULT_SNAPLEN 128
 pcap_t  *pd;
 int verbose = 0;
@@ -60,32 +61,59 @@ long delta_time (struct timeval * now,
 
 /* ******************************** */
 
-void sigproc(int sig) {
+void print_stats() {
   struct pcap_stat pcapStat;
   struct timeval endTime;
   float deltaSec;
-  static int called = 0;
-
-  if(called) return; else called = 1;
+  static u_int64_t lastPkts = 0;
+  u_int64_t diff;
+  static struct timeval lastTime;
 
   gettimeofday(&endTime, NULL);
-
   deltaSec = (double)delta_time(&endTime, &startTime)/1000000;
 
   if(pcap_stats(pd, &pcapStat) >= 0)
     fprintf(stderr, "=========================\n"
-	"Packet statistics\n%u pkts rcvd/%u pkts dropped\n"
+	"Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
         "Total Pkts=%d/Dropped=%.1f %%\n",
 	 pcapStat.ps_recv, pcapStat.ps_drop, pcapStat.ps_recv-pcapStat.ps_drop,
 	 pcapStat.ps_recv == 0 ? 0 : (double)(pcapStat.ps_drop*100)/(double)pcapStat.ps_recv);
-  fprintf(stderr, "=========================\n");
   fprintf(stderr, "%llu pkts [%.1f pkt/sec] - %llu bytes [%.2f Mbit/sec]\n",
 	  numPkts, (double)numPkts/deltaSec,
 	  numBytes, (double)8*numBytes/(double)(deltaSec*1000000));
-  fprintf(stderr, "=========================\n");
 
+  deltaSec = (double)delta_time(&endTime, &lastTime)/1000000;
+  diff = pcapStat.ps_recv-lastPkts;
+  fprintf(stderr, "=========================\n"
+	  "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
+	  diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
+  lastPkts = pcapStat.ps_recv;
+  
+  lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
+
+
+  fprintf(stderr, "=========================\n");
+}
+
+/* ******************************** */
+
+void sigproc(int sig) {
+  static int called = 0;
+
+  if(called) return; else called = 1;
+
+  print_stats();
   pcap_close(pd);
   exit(0);
+}
+
+/* ******************************** */
+
+void my_sigalarm(int sig) {
+  print_stats();
+  printf("\n");
+  alarm(ALARM_SLEEP);
+  signal(SIGALRM, my_sigalarm);
 }
 
 /* ****************************************************** */
@@ -253,11 +281,12 @@ int32_t gmt2local(time_t t) {
 
 void printHelp(void) {
 
-  printf("pcount\n(C) 2003-04 Deri Luca\n");
-  printf("-h             [Print help]\n");
-  printf("-i <device>    [Device name]\n");
-  printf("-f <filter>    [pcap filter]\n");
-  printf("-v             [Verbose]\n");
+  printf("pcount\n(C) 2003-05 Deri Luca <deri@ntop.org>\n");
+  printf("-h              [Print help]\n");
+  printf("-i <device>     [Device name]\n");
+  printf("-f <filter>     [pcap filter]\n");
+  printf("-c <cluster id> [cluster id]\n");
+  printf("-v              [Verbose]\n");
 }
 
 /* *************************************** */
@@ -266,9 +295,12 @@ int main(int argc, char* argv[]) {
   char *device = NULL, c, *bpfFilter = NULL;
   char errbuf[PCAP_ERRBUF_SIZE];
   int i, promisc;
-  struct sched_param schedparam;
   struct bpf_program fcode;
-  
+  u_int clusterId = 0;
+
+#if 0  
+  struct sched_param schedparam;
+
   schedparam.sched_priority = 99;
   if(sched_setscheduler(0, SCHED_FIFO, &schedparam) == -1) {
     printf("error while setting the scheduler, errno=%i\n",errno);
@@ -277,13 +309,40 @@ int main(int argc, char* argv[]) {
 
   mlockall(MCL_CURRENT|MCL_FUTURE);
 
+#define TEST_PROCESSOR_AFFINITY
+#ifdef TEST_PROCESSOR_AFFINITY
+  {
+   unsigned long new_mask = 1;
+   unsigned int len = sizeof(new_mask);
+   unsigned long cur_mask;
+   pid_t p = 0; /* current process */
+   int ret;
+   
+   ret = sched_getaffinity(p, len, NULL);
+   printf(" sched_getaffinity = %d, len = %u\n", ret, len);
+   
+   ret = sched_getaffinity(p, len, &cur_mask);
+   printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
+   
+   ret = sched_setaffinity(p, len, &new_mask);
+   printf(" sched_setaffinity = %d, new_mask = %08lx\n", ret, new_mask);
+   
+   ret = sched_getaffinity(p, len, &cur_mask);
+   printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
+ }
+#endif
+#endif
+
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:v")) != -1) {
+  while((c = getopt(argc,argv,"hi:c:vf:")) != -1) {
     switch(c) {
     case 'h':
       printHelp();
       return(0);
+      break;
+    case 'c':
+      clusterId = atoi(optarg);
       break;
     case 'i':
       device = strdup(optarg);
@@ -307,9 +366,16 @@ int main(int argc, char* argv[]) {
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
-  if((pd = pcap_open_live(device, DEFAULT_SNAPLEN, promisc, 500, errbuf)) == NULL) {
+  if((pd = pcap_open_live(device, DEFAULT_SNAPLEN, 
+			  promisc, 500, errbuf)) == NULL) {
     printf("pcap_open_live: %s\n", errbuf);
     return(-1);
+  }
+
+  if(clusterId > 0) {
+    int rc = pcap_set_cluster(pd, clusterId);
+    
+    printf("pcap_set_cluster returned %d\n", rc);
   }
 
   if(bpfFilter != NULL) {
@@ -323,6 +389,10 @@ int main(int argc, char* argv[]) {
   }
   
   signal(SIGINT, sigproc);
+  /*
+    signal(SIGALRM, my_sigalarm);
+    alarm(ALARM_SLEEP);
+  */
 
   pcap_loop(pd, -1, dummyProcesssPacket, NULL);
   pcap_close(pd);
