@@ -29,8 +29,12 @@ void set_buffer_ring_handler(handle_ring_buffer the_handler) {
   buffer_ring_handler = the_handler;
 }
 
-void do_buffer_ring_handler(struct net_device *dev, char *data, int len) {
-  if(buffer_ring_handler) buffer_ring_handler(dev, data, len);
+int do_buffer_ring_handler(struct net_device *dev, char *data, int len) {
+  if(buffer_ring_handler) {
+    buffer_ring_handler(dev, data, len);
+    return(1);
+  } else 
+    return(0);
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
