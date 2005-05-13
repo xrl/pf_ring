@@ -36,6 +36,17 @@
 
 /* #define RING_DEBUG */
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
+static inline int remap_page_range(struct vm_area_struct *vma,
+				   unsigned long uvaddr,
+				   unsigned long paddr,
+				   unsigned long size,
+				   pgprot_t prot) {
+  return(remap_pfn_range(vma, uvaddr, paddr >> PAGE_SHIFT,
+			 size, prot));
+}
+#endif
+
 /* ************************************************* */
 
 #define CLUSTER_LEN       8
