@@ -1,10 +1,11 @@
 /*
  *
- * (C) 2004 - Luca Deri <deri@ntop.org>
+ * (C) 2004-05 - Luca Deri <deri@ntop.org>
  *
  * This code includes patches courtesy of
  * - Jeff Randall <jrandall@nexvu.com>
  * - Helmut Manck <helmut.manck@secunet.com>
+ * - Brad Doctor <bdoctor@ps-ax.com>
  *
  */
 
@@ -956,13 +957,24 @@ static int ring_bind(struct socket *sock,
 /* ************************************* */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
+
 volatile void* virt_to_kseg(volatile void* address) {
   pte_t *pte;
+  pmd_t *pmd;
 
-  pte = pte_offset_map(pmd_offset(pgd_offset_k((unsigned long) address),
-				  (unsigned long) address),
-		       (unsigned long) address);
+  /* 
+     High-memory support courtesy of 
+     Brad Doctor <bdoctor@ps-ax.com>
+  */
+#ifdef CONFIG_X86_PAE
+  pte = pte_offset_map(pmd,(unsigned long)address);
   return((volatile void*)pte_page(*pte));
+#else
+  pte = pmd_offset_map(pud_offset(pgd_offset_k((unsigned long) address),
+ 				  (unsigned long) address),
+ 		       (unsigned long) address);
+  return((volatile void*)pte_page(*pte));
+#endif
 }
 
 #else /* 2.4 */
