@@ -212,14 +212,17 @@ static inline void ring_insert(struct sock *sk) {
   printk("RING: ring_insert()\n");
 #endif
 
-  write_lock_irq(&ring_mgmt_lock);
   next = kmalloc(sizeof(struct ring_element), GFP_ATOMIC);
   if(next != NULL) {
     next->sk = sk;
+    write_lock_irq(&ring_mgmt_lock);
     list_add(&next->list, &ring_table);
+    write_unlock_irq(&ring_mgmt_lock);
+  } else {
+	if (net_ratelimit())
+		printk("RING: could not kmalloc slot!!\m");
   }
 
-  write_unlock_irq(&ring_mgmt_lock);
 }
 
 /* ********************************** */
@@ -237,19 +240,19 @@ static inline void ring_remove(struct sock *sk) {
   struct list_head *ptr;
   struct ring_element *entry;
 
-  write_lock_irq(&ring_mgmt_lock);
 
   for(ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
     entry = list_entry(ptr, struct ring_element, list);
 
     if(entry->sk == sk) {
+      write_lock_irq(&ring_mgmt_lock);
       list_del(ptr);
       kfree(ptr);
+      write_unlock_irq(&ring_mgmt_lock);  
       break;
     }
   }
 
-  write_unlock_irq(&ring_mgmt_lock);  
 }
 
 /* ********************************** */
@@ -260,16 +263,21 @@ static u_int32_t num_queued_pkts(struct ring_opt *pfr) {
       tot_read = pfr->slots_info->tot_read, tot_pkts;
 
     if(tot_insert >= tot_read)
-      tot_pkts = tot_insert-tot_read;
+	return(tot_insert-tot_read);
+#if defined(RING_DEBUG)
+	tot_pkts = tot_insert-tot_read;
+#endif
     else
-      tot_pkts = ((u_int32_t)-1)+tot_insert-tot_read;
+	return(((u_int32_t)-1)+tot_insert-tot_read);
+#if defined(RING_DEBUG)
+	tot_pkts = ((u_int32_t)-1)+tot_insert-tot_read;
+#endif
 
 #if defined(RING_DEBUG)
     printk("-> num_queued_pkts=%d [tot_insert=%d][tot_read=%d]\n",
 	   tot_pkts, tot_insert, tot_read);
 #endif
 
-    return(tot_pkts);
   } else
     return(0);
 }
@@ -322,8 +330,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
     displ = 0;
 
   write_lock(&pfr->ring_index_lock);
-
   pfr->slots_info->tot_pkts++;
+  write_unlock(&pfr->ring_index_lock);
 
   /* BPF Filtering (from af_packet.c) */
   if(pfr->bpfFilter != NULL) {
@@ -331,13 +339,14 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     len = skb->len-skb->data_len;
 
+    write_lock(&pfr->ring_index_lock);
     skb->data -= displ;
     res = sk_run_filter(skb, pfr->bpfFilter->insns, pfr->bpfFilter->len);
     skb->data += displ;
+    write_unlock(&pfr->ring_index_lock);
 
     if(res == 0) {
       /* Filter failed */
-      write_unlock(&pfr->ring_index_lock);
 
 #if defined(RING_DEBUG)
       printk("add_skb_to_ring(skb): Filter failed [len=%d][tot=%llu]"
@@ -354,9 +363,12 @@ static void add_skb_to_ring(struct sk_buff *skb,
   /* ************************** */
 
   if(pfr->sample_rate > 1) {
-    if(pfr->pktToSample == 0)
+    if(pfr->pktToSample == 0) {
+      write_lock(&pfr->ring_index_lock);
       pfr->pktToSample = pfr->sample_rate;
-    else {
+      write_unlock(&pfr->ring_index_lock);
+    } else {
+      write_lock(&pfr->ring_index_lock);
       pfr->pktToSample--;
       write_unlock(&pfr->ring_index_lock);
 
@@ -386,18 +398,21 @@ static void add_skb_to_ring(struct sk_buff *skb,
     if (pfr->reflector_dev->xmit_lock_owner != cpu) {
       spin_lock_bh(&pfr->reflector_dev->xmit_lock);
       pfr->reflector_dev->xmit_lock_owner = cpu;
+      spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
 
       if (pfr->reflector_dev->hard_start_xmit(skb,
 					      pfr->reflector_dev) == 0) {
+        spin_lock_bh(&pfr->reflector_dev->xmit_lock);
 	pfr->reflector_dev->xmit_lock_owner = -1;
+	skb->data += displ;
 	spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
 #if defined(RING_DEBUG)
 	printk("++ hard_start_xmit succeeded\n");
 #endif
-	skb->data += displ;
 	return; /* OK */
       }
 
+      spin_lock_bh(&pfr->reflector_dev->xmit_lock);
       pfr->reflector_dev->xmit_lock_owner = -1;
       spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
     }
@@ -430,12 +445,15 @@ static void add_skb_to_ring(struct sk_buff *skb,
     /* Update Index */
     idx++;
 
-    if(idx == pfr->slots_info->tot_slots)
+    if(idx == pfr->slots_info->tot_slots) {
+      write_lock(&pfr->ring_index_lock);
       pfr->slots_info->insert_idx = 0;
-    else
+      write_unlock(&pfr->ring_index_lock);
+    } else {
+      write_lock(&pfr->ring_index_lock);
       pfr->slots_info->insert_idx = idx;
-
-    write_unlock(&pfr->ring_index_lock);
+      write_unlock(&pfr->ring_index_lock);
+    }
 
     bucketSpace = pfr->slots_info->slot_len
 #ifdef RING_MAGIC
@@ -481,9 +499,12 @@ static void add_skb_to_ring(struct sk_buff *skb,
     }
 #endif
 
+    write_lock(&pfr->ring_index_lock);
     pfr->slots_info->tot_insert++;
     theSlot->slot_state = 1;
+    write_unlock(&pfr->ring_index_lock);
   } else {
+    write_lock(&pfr->ring_index_lock);
     pfr->slots_info->tot_lost++;
     write_unlock(&pfr->ring_index_lock);
 
@@ -575,8 +596,6 @@ static int skb_ring_handler(struct sk_buff *skb,
   }
 #endif
 
-  read_lock(&ring_mgmt_lock);
-
 #ifdef PROFILING
   rdt1 = _rdtsc();
 #endif
@@ -587,15 +606,20 @@ static int skb_ring_handler(struct sk_buff *skb,
     struct ring_element *entry;
 
     entry = list_entry(ptr, struct ring_element, list);
-    skElement = entry->sk;
 
+    read_lock(&ring_mgmt_lock);
+    skElement = entry->sk;
     pfr = ring_sk(skElement);
+    read_unlock(&ring_mgmt_lock);
+
     if((pfr != NULL)
        && (pfr->cluster_id == 0 /* No cluster */)
        && (pfr->ring_slots != NULL)
        && (pfr->ring_netdev == skb->dev)) {
       /* We've found the ring where the packet can be stored */
+      read_lock(&ring_mgmt_lock);
       add_skb_to_ring(skb, pfr, recv_packet, real_skb);
+      read_unlock(&ring_mgmt_lock);
 
       rc = 1; /* Ring found: we've done our job */
     }
@@ -610,7 +634,9 @@ static int skb_ring_handler(struct sk_buff *skb,
     if(cluster_ptr->num_cluster_elements > 0) {
       u_int skb_hash = hash_skb(cluster_ptr, skb, recv_packet);
 
+      read_lock(&ring_mgmt_lock);
       skElement = cluster_ptr->sk[skb_hash];
+      read_unlock(&ring_mgmt_lock);
 
       if(skElement != NULL) {
 	pfr = ring_sk(skElement);
@@ -619,7 +645,9 @@ static int skb_ring_handler(struct sk_buff *skb,
 	   && (pfr->ring_slots != NULL)
 	   && (pfr->ring_netdev == skb->dev)) {
 	  /* We've found the ring where the packet can be stored */
+          read_lock(&ring_mgmt_lock);
 	  add_skb_to_ring(skb, pfr, recv_packet, real_skb);
+          read_unlock(&ring_mgmt_lock);
 
 	  rc = 1; /* Ring found: we've done our job */
 	}
@@ -632,8 +660,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 #ifdef PROFILING
   rdt1 = _rdtsc()-rdt1;
 #endif
-
-  read_unlock(&ring_mgmt_lock);
 
 #ifdef PROFILING
   rdt2 = _rdtsc();
@@ -971,8 +997,8 @@ volatile void* virt_to_kseg(volatile void* address) {
   return((volatile void*)pte_page(*pte));
 #else
   pte = pmd_offset_map(pud_offset(pgd_offset_k((unsigned long) address),
- 				  (unsigned long) address),
- 		       (unsigned long) address);
+				  (unsigned long) address),
+		       (unsigned long) address);
   return((volatile void*)pte_page(*pte));
 #endif
 }
