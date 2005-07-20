@@ -117,6 +117,11 @@ static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
 
 /* Forward */
 static struct proto_ops ring_ops;
+
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+static struct proto ring_proto;
+#endif
+
 static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
 			    u_char real_skb);
 static int buffer_ring_handler(struct net_device *dev, char *data, int len);
@@ -220,7 +225,7 @@ static inline void ring_insert(struct sock *sk) {
     write_unlock_irq(&ring_mgmt_lock);
   } else {
 	if (net_ratelimit())
-		printk("RING: could not kmalloc slot!!\m");
+		printk("RING: could not kmalloc slot!!\n");
   }
 
 }
@@ -258,20 +263,27 @@ static inline void ring_remove(struct sock *sk) {
 /* ********************************** */
 
 static u_int32_t num_queued_pkts(struct ring_opt *pfr) {
-  if(pfr->ring_slots != NULL) {
-    u_int32_t tot_insert = pfr->slots_info->insert_idx,
-      tot_read = pfr->slots_info->tot_read, tot_pkts;
 
-    if(tot_insert >= tot_read)
-	return(tot_insert-tot_read);
+  if(pfr->ring_slots != NULL) {
+
+    u_int32_t tot_insert = pfr->slots_info->insert_idx,
+#if defined(RING_DEBUG)
+    tot_read = pfr->slots_info->tot_read, tot_pkts;
+#else
+    tot_read = pfr->slots_info->tot_read;
+#endif
+
+    if(tot_insert >= tot_read) {
 #if defined(RING_DEBUG)
 	tot_pkts = tot_insert-tot_read;
 #endif
-    else
-	return(((u_int32_t)-1)+tot_insert-tot_read);
+	return(tot_insert-tot_read);
+    } else {
 #if defined(RING_DEBUG)
 	tot_pkts = ((u_int32_t)-1)+tot_insert-tot_read;
 #endif
+	return(((u_int32_t)-1)+tot_insert-tot_read);
+    }
 
 #if defined(RING_DEBUG)
     printk("-> num_queued_pkts=%d [tot_insert=%d][tot_read=%d]\n",
@@ -732,18 +744,30 @@ static int ring_create(struct socket *sock, int protocol) {
 #endif
 
   err = -ENOMEM;
-  sk = sk_alloc(PF_RING, GFP_KERNEL, 1
+
+// BD: -- broke this out to keep it more simple and clear as to what the 
+// options are.
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
-		, NULL
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,11))
+  sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
 #endif
-		);
+#endif
+
+// BD: API changed in 2.6.12, ref:
+// http://svn.clkao.org/svnweb/linux/revision/?rev=28201
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+  sk = sk_alloc(PF_RING, GFP_ATOMIC, &ring_proto, 1);
+#endif
+
   if (sk == NULL)
     goto out;
 
   sock->ops = &ring_ops;
   sock_init_data(sock, sk);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,11))
   sk_set_owner(sk, THIS_MODULE);
+#endif
 #endif
 
   err = -ENOMEM;
@@ -1513,6 +1537,16 @@ static struct net_proto_family ring_family_ops = {
   .owner	=	THIS_MODULE,
 #endif
 };
+
+// BD: API changed in 2.6.12, ref:
+// http://svn.clkao.org/svnweb/linux/revision/?rev=28201
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+static struct proto ring_proto = {
+  .name		=	"PF_RING",
+  .owner	=	THIS_MODULE,
+  .obj_size	=	sizeof(struct sock),
+};
+#endif
 
 /* ************************************ */
 
