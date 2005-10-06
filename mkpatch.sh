@@ -23,8 +23,8 @@ PREFIX=linux
 #PREFIX=kernel-source
 # kernel identifiers.
 VERSION=2
-PATCHLEVEL=4
-SUBLEVEL=29
+PATCHLEVEL=6
+SUBLEVEL=13.2
 KERNEL_VERSION=$VERSION.$PATCHLEVEL.$SUBLEVEL
 EXTRAVERSION=-1-686-smp-$PATCH
 
@@ -409,7 +409,8 @@ if [ -f $MYKERNEL/net/Kconfig ]; then
 
   if ! grep -q "net/ring/Kconfig" $MYKERNEL/net/Kconfig; then
     # Insert a new configuration directive.
-    line=`grep -n "config NET_KEY" $MYKERNEL/net/Kconfig | tail -1 | cut -d":" -f 1`
+#    line=`grep -n "config NET_KEY" $MYKERNEL/net/Kconfig | tail -1 | cut -d":" -f 1`
+    line=`grep -n "config INET" $MYKERNEL/net/Kconfig | tail -1 | cut -d":" -f 1`
     line=`expr $line - 1`
 
     mv $MYKERNEL/net/Kconfig $MYKERNEL/net/Kconfig.tmp
