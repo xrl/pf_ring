@@ -155,17 +155,20 @@ MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
 
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
-#define ring_sk(__sk) ((struct ring_opt *)(__sk)->sk_protinfo)
+#define ring_sk_datatype(__sk) ((struct ring_opt *)__sk)
+#define ring_sk(__sk) ((__sk)->sk_protinfo)
 #else
+#define ring_sk_datatype(a) (a)
 #define ring_sk(__sk) ((__sk)->protinfo.pf_ring)
 #endif
+
 #define _rdtsc() ({ uint64_t x; asm volatile("rdtsc" : "=A" (x)); x; })
 
 /*
   int dev_queue_xmit(struct sk_buff *skb)
   skb->dev;
   struct net_device *dev_get_by_name(const char *name)
- */
+*/
 
 /* ********************************** */
 
@@ -224,10 +227,9 @@ static inline void ring_insert(struct sock *sk) {
     list_add(&next->list, &ring_table);
     write_unlock_irq(&ring_mgmt_lock);
   } else {
-	if (net_ratelimit())
-		printk("RING: could not kmalloc slot!!\n");
+    if (net_ratelimit())
+      printk("RING: could not kmalloc slot!!\n");
   }
-
 }
 
 /* ********************************** */
@@ -253,7 +255,7 @@ static inline void ring_remove(struct sock *sk) {
       write_lock_irq(&ring_mgmt_lock);
       list_del(ptr);
       kfree(ptr);
-      write_unlock_irq(&ring_mgmt_lock);  
+      write_unlock_irq(&ring_mgmt_lock);
       break;
     }
   }
@@ -268,21 +270,21 @@ static u_int32_t num_queued_pkts(struct ring_opt *pfr) {
 
     u_int32_t tot_insert = pfr->slots_info->insert_idx,
 #if defined(RING_DEBUG)
-    tot_read = pfr->slots_info->tot_read, tot_pkts;
+      tot_read = pfr->slots_info->tot_read, tot_pkts;
 #else
     tot_read = pfr->slots_info->tot_read;
 #endif
 
     if(tot_insert >= tot_read) {
 #if defined(RING_DEBUG)
-	tot_pkts = tot_insert-tot_read;
+      tot_pkts = tot_insert-tot_read;
 #endif
-	return(tot_insert-tot_read);
+      return(tot_insert-tot_read);
     } else {
 #if defined(RING_DEBUG)
-	tot_pkts = ((u_int32_t)-1)+tot_insert-tot_read;
+      tot_pkts = ((u_int32_t)-1)+tot_insert-tot_read;
 #endif
-	return(((u_int32_t)-1)+tot_insert-tot_read);
+      return(((u_int32_t)-1)+tot_insert-tot_read);
     }
 
 #if defined(RING_DEBUG)
@@ -433,17 +435,17 @@ static void add_skb_to_ring(struct sk_buff *skb,
     printk("++ hard_start_xmit failed\n");
 #endif
     skb->data += displ;
-   return; /* -ENETDOWN */
+    return; /* -ENETDOWN */
   }
 
   /* ************************************* */
 
 #if defined(RING_DEBUG)
- printk("add_skb_to_ring(skb) [len=%d][tot=%llu][insertIdx=%d]"
-	"[pkt_type=%d][cloned=%d]\n",
-	(int)skb->len, pfr->slots_info->tot_pkts,
-	pfr->slots_info->insert_idx,
-	skb->pkt_type, skb->cloned);
+  printk("add_skb_to_ring(skb) [len=%d][tot=%llu][insertIdx=%d]"
+	 "[pkt_type=%d][cloned=%d]\n",
+	 (int)skb->len, pfr->slots_info->tot_pkts,
+	 pfr->slots_info->insert_idx,
+	 skb->pkt_type, skb->cloned);
 #endif
 
   idx = pfr->slots_info->insert_idx;
@@ -703,7 +705,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 struct sk_buff skb;
 
 static int buffer_ring_handler(struct net_device *dev,
-				 char *data, int len) {
+			       char *data, int len) {
 
 #if defined(RING_DEBUG)
   printk("buffer_ring_handler: [dev=%s][len=%d]\n",
@@ -711,7 +713,7 @@ static int buffer_ring_handler(struct net_device *dev,
 #endif
 
   skb.dev = dev, skb.len = len, skb.data = data,
-  skb.data_len = len, skb.stamp.tv_sec = 0; /* Calculate the time */
+    skb.data_len = len, skb.stamp.tv_sec = 0; /* Calculate the time */
 
   skb_ring_handler(&skb, 1, 0 /* fake skb */);
 
@@ -745,16 +747,16 @@ static int ring_create(struct socket *sock, int protocol) {
 
   err = -ENOMEM;
 
-// BD: -- broke this out to keep it more simple and clear as to what the 
-// options are.
+  // BD: -- broke this out to keep it more simple and clear as to what the
+  // options are.
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,11))
   sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
 #endif
 #endif
 
-// BD: API changed in 2.6.12, ref:
-// http://svn.clkao.org/svnweb/linux/revision/?rev=28201
+  // BD: API changed in 2.6.12, ref:
+  // http://svn.clkao.org/svnweb/linux/revision/?rev=28201
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
   sk = sk_alloc(PF_RING, GFP_ATOMIC, &ring_proto, 1);
 #endif
@@ -771,8 +773,9 @@ static int ring_create(struct socket *sock, int protocol) {
 #endif
 
   err = -ENOMEM;
-  pfr = ring_sk(sk) = kmalloc(sizeof(*pfr), GFP_KERNEL);
-  if (!pfr) {
+  ring_sk(sk) = ring_sk_datatype(kmalloc(sizeof(*pfr), GFP_KERNEL));
+
+  if (!(pfr = ring_sk(sk))) {
     sk_free(sk);
     goto out;
   }
@@ -791,11 +794,11 @@ static int ring_create(struct socket *sock, int protocol) {
 
   ring_insert(sk);
 
- #if defined(RING_DEBUG)
+#if defined(RING_DEBUG)
   printk("RING: ring_create() - created\n");
 #endif
 
- return(0);
+  return(0);
  out:
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0))
   MOD_DEC_USE_COUNT;
@@ -888,8 +891,8 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   ********************************************** */
 
   the_slot_len = sizeof(u_char)    /* flowSlot.slot_state */
-                 + sizeof(u_short) /* flowSlot.slot_len   */
-                 + bucket_len      /* flowSlot.bucket     */;
+    + sizeof(u_short) /* flowSlot.slot_len   */
+    + bucket_len      /* flowSlot.bucket     */;
 
   tot_mem = sizeof(FlowSlotInfo) + num_slots*the_slot_len;
 
@@ -1010,21 +1013,23 @@ static int ring_bind(struct socket *sock,
 
 volatile void* virt_to_kseg(volatile void* address) {
   pte_t *pte;
-  pmd_t *pmd;
+  pud_t *pud;
+  unsigned long addr = (unsigned long)address;
+		       
+  pud = pud_offset(pgd_offset_k((unsigned long) address),
+		   (unsigned long) address);
 
-  /* 
-     High-memory support courtesy of 
+  /*
+     High-memory support courtesy of
      Brad Doctor <bdoctor@ps-ax.com>
   */
-#ifdef CONFIG_X86_PAE
-  pte = pte_offset_map(pmd,(unsigned long)address);
-  return((volatile void*)pte_page(*pte));
+#if defined(CONFIG_X86_PAE) && (!defined(CONFIG_NOHIGHMEM))
+  pte = pte_offset_map(pmd_offset(pud, addr), addr);
 #else
-  pte = pmd_offset_map(pud_offset(pgd_offset_k((unsigned long) address),
-				  (unsigned long) address),
-		       (unsigned long) address);
-  return((volatile void*)pte_page(*pte));
+  pte = pmd_offset_map(pud, addr);
 #endif
+
+  return((volatile void*)pte_page(*pte));
 }
 
 #else /* 2.4 */
@@ -1150,8 +1155,8 @@ static int ring_mmap(struct file *file,
 static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 			struct msghdr *msg, size_t len, int flags)
 #else
-static int ring_recvmsg(struct socket *sock, struct msghdr *msg, int len,
-			int flags, struct scm_cookie *scm)
+  static int ring_recvmsg(struct socket *sock, struct msghdr *msg, int len,
+			  int flags, struct scm_cookie *scm)
 #endif
 {
   FlowSlot* slot;
@@ -1222,7 +1227,7 @@ int add_to_cluster_list(struct ring_cluster *el,
   if(el->num_cluster_elements == CLUSTER_LEN)
     return(-1); /* Cluster full */
 
-  ring_sk(sock)->cluster_id = el->cluster_id;
+  ring_sk_datatype(ring_sk(sock))->cluster_id = el->cluster_id;
   el->sk[el->num_cluster_elements] = sock;
   el->num_cluster_elements++;
   return(0);
@@ -1599,9 +1604,9 @@ static int __init ring_init(void)
     printk("PF_RING: bucket length    %d bytes\n", bucket_len);
     printk("PF_RING: ring slots       %d\n", num_slots);
     printk("PF_RING: sample rate      %d [1=no sampling]\n", sample_rate);
-    printk("PF_RING: capture TX       %s\n", 
+    printk("PF_RING: capture TX       %s\n",
 	   enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    printk("PF_RING: transparent mode %s\n", 
+    printk("PF_RING: transparent mode %s\n",
 	   transparent_mode ? "Yes" : "No");
 
     printk("PF_RING initialized correctly.\n");
