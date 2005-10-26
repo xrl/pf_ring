@@ -5,11 +5,14 @@
  * This code includes patches courtesy of
  * - Jeff Randall <jrandall@nexvu.com>
  * - Helmut Manck <helmut.manck@secunet.com>
- * - Brad Doctor <bdoctor@ps-ax.com>
+ * - Brad Doctor <brad@stillsecure.com>
  *
  */
 
-/* FIX: add an entry inside the /proc filesystem */
+/* 
+   TO DO:
+   add an entry inside the /proc filesystem 
+*/
 
 #include <linux/version.h>
 #include <linux/config.h>
@@ -133,7 +136,7 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 
 /* Defaults */
 static u_int bucket_len = 128, num_slots = 4096, sample_rate = 1,
-  transparent_mode = 0, enable_tx_capture = 0;
+  transparent_mode = 1, enable_tx_capture = 0;
 
 MODULE_PARM(bucket_len, "i");
 MODULE_PARM_DESC(bucket_len, "Number of ring buckets");
@@ -480,9 +483,17 @@ static void add_skb_to_ring(struct sk_buff *skb,
     bucket = &theSlot->bucket;
     hdr = (struct pcap_pkthdr*)bucket;
 
+    /* BD - API changed for time keeping */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14))
     if(skb->stamp.tv_sec == 0) do_gettimeofday(&skb->stamp);
 
     hdr->ts.tv_sec = skb->stamp.tv_sec, hdr->ts.tv_usec = skb->stamp.tv_usec;
+#else
+    if(skb->tstamp.off_sec == 0) __net_timestamp(skb);
+
+    hdr->ts.tv_sec = skb->tstamp.off_sec, hdr->ts.tv_usec = skb->tstamp.off_usec;
+#endif
+
     hdr->caplen    = skb->len+displ;
 
     if(hdr->caplen > bucketSpace)
@@ -712,8 +723,14 @@ static int buffer_ring_handler(struct net_device *dev,
 	 dev->name == NULL ? "<NULL>" : dev->name, len);
 #endif
 
+  /* BD - API changed for time keeping */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14))
   skb.dev = dev, skb.len = len, skb.data = data,
     skb.data_len = len, skb.stamp.tv_sec = 0; /* Calculate the time */
+#else
+  skb.dev = dev, skb.len = len, skb.data = data,
+    skb.data_len = len, skb.tstamp.off_sec = 0; /* Calculate the time */
+#endif
 
   skb_ring_handler(&skb, 1, 0 /* fake skb */);
 
@@ -1020,8 +1037,8 @@ volatile void* virt_to_kseg(volatile void* address) {
 		   (unsigned long) address);
 
   /*
-     High-memory support courtesy of
-     Brad Doctor <bdoctor@ps-ax.com>
+    High-memory support courtesy of
+    Brad Doctor <bdoctor@ps-ax.com>
   */
 #if defined(CONFIG_X86_PAE) && (!defined(CONFIG_NOHIGHMEM))
   pte = pte_offset_map(pmd_offset(pud, addr), addr);
