@@ -929,15 +929,11 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
       break;
 
   if(pfr->order == 0) {
-#if defined(RING_DEBUG)
-    printk("ERROR: not enough memory\n");
-#endif
+    printk("RING: ERROR not enough memory for ring\n");
     return(-1);
   } else {
-#if defined(RING_DEBUG)
     printk("RING: succesfully allocated %lu KB [tot_mem=%d][order=%ld]\n",
 	   PAGE_SIZE >> (10 - pfr->order), tot_mem, pfr->order);
-#endif
   }
 
   tot_mem = PAGE_SIZE << pfr->order;
@@ -957,11 +953,9 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->slots_info->tot_mem     = tot_mem;
   pfr->slots_info->sample_rate = sample_rate;
 
-#if defined(RING_DEBUG)
   printk("RING: allocated %d slots [slot_len=%d][tot_mem=%u]\n",
 	 pfr->slots_info->tot_slots, pfr->slots_info->slot_len,
 	 pfr->slots_info->tot_mem);
-#endif
 
 #ifdef RING_MAGIC
   {
