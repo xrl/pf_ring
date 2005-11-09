@@ -769,13 +769,14 @@ static int ring_create(struct socket *sock, int protocol) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,11))
   sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
-#endif
-#endif
-
+#else
   // BD: API changed in 2.6.12, ref:
   // http://svn.clkao.org/svnweb/linux/revision/?rev=28201
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
   sk = sk_alloc(PF_RING, GFP_ATOMIC, &ring_proto, 1);
+#endif
+#else
+  /* Kernel 2.4 */
+  sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
 #endif
 
   if (sk == NULL)
@@ -1593,7 +1594,7 @@ static void __exit ring_exit(void)
 
 static int __init ring_init(void)
 {
-  printk("Welcome to PF_RING %s\n(C) 2004 L.Deri <deri@ntop.org>\n",
+  printk("Welcome to PF_RING %s\n(C) 2004-05 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION);
 
   INIT_LIST_HEAD(&ring_table);
