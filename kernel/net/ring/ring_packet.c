@@ -2,10 +2,11 @@
  *
  * (C) 2004-05 - Luca Deri <deri@ntop.org>
  *
- * This code includes patches courtesy of
+ * This code includes contributions courtesy of
  * - Jeff Randall <jrandall@nexvu.com>
  * - Helmut Manck <helmut.manck@secunet.com>
  * - Brad Doctor <brad@stillsecure.com>
+ * - Amit D. Chaudhary <amit_ml@rajgad.com>
  *
  */
 
@@ -456,7 +457,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
   if((theSlot != NULL) && (theSlot->slot_state == 0)) {
     struct pcap_pkthdr *hdr;
-    unsigned int bucketSpace;
     char *bucket;
 
     /* Update Index */
@@ -471,14 +471,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
       pfr->slots_info->insert_idx = idx;
       write_unlock(&pfr->ring_index_lock);
     }
-
-    bucketSpace = pfr->slots_info->slot_len
-#ifdef RING_MAGIC
-      - sizeof(u_char)
-#endif
-      - sizeof(u_char)  /* flowSlot.slot_state */
-      - sizeof(struct pcap_pkthdr)
-      - 1 /* 10 */ /* safe boundary */;
 
     bucket = &theSlot->bucket;
     hdr = (struct pcap_pkthdr*)bucket;
@@ -496,8 +488,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     hdr->caplen    = skb->len+displ;
 
-    if(hdr->caplen > bucketSpace)
-      hdr->caplen = bucketSpace;
+    if(hdr->caplen > pfr->slots_info->data_len)
+      hdr->caplen = pfr->slots_info->data_len;
 
     hdr->len = skb->len+displ;
     memcpy(&bucket[sizeof(struct pcap_pkthdr)],
@@ -509,11 +501,11 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
       if(pfr->slots_info->tot_lost
 	 && (lastLoss != pfr->slots_info->tot_lost)) {
-	printk("add_skb_to_ring(%d): [bucketSpace=%d]"
+	printk("add_skb_to_ring(%d): [data_len=%d]"
 	       "[hdr.caplen=%d][skb->len=%d]"
 	       "[pcap_pkthdr=%d][removeIdx=%d]"
 	       "[loss=%lu][page=%u][slot=%u]\n",
-	       idx-1, bucketSpace, hdr->caplen, skb->len,
+	       idx-1, pfr->slots_info->data_len, hdr->caplen, skb->len,
 	       sizeof(struct pcap_pkthdr),
 	       pfr->slots_info->remove_idx,
 	       (long unsigned int)pfr->slots_info->tot_lost,
@@ -909,8 +901,11 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   ********************************************** */
 
   the_slot_len = sizeof(u_char)    /* flowSlot.slot_state */
-    + sizeof(u_short) /* flowSlot.slot_len   */
-    + bucket_len      /* flowSlot.bucket     */;
+#ifdef RING_MAGIC
+    + sizeof(u_char)
+#endif
+    + sizeof(struct pcap_pkthdr)
+    + bucket_len      /* flowSlot.bucket */;
 
   tot_mem = sizeof(FlowSlotInfo) + num_slots*the_slot_len;
 
@@ -950,6 +945,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 
   pfr->slots_info->version     = RING_FLOWSLOT_VERSION;
   pfr->slots_info->slot_len    = the_slot_len;
+  pfr->slots_info->data_len    = bucket_len;
   pfr->slots_info->tot_slots   = (tot_mem-sizeof(FlowSlotInfo))/the_slot_len;
   pfr->slots_info->tot_mem     = tot_mem;
   pfr->slots_info->sample_rate = sample_rate;
@@ -1018,69 +1014,6 @@ static int ring_bind(struct socket *sock,
   } else
     return(packet_ring_bind(sk, dev));
 }
-
-/* ************************************* */
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
-
-volatile void* virt_to_kseg(volatile void* address) {
-  pte_t *pte;
-  pud_t *pud;
-  unsigned long addr = (unsigned long)address;
-		       
-  pud = pud_offset(pgd_offset_k((unsigned long) address),
-		   (unsigned long) address);
-
-  /*
-    High-memory support courtesy of
-    Brad Doctor <bdoctor@ps-ax.com>
-  */
-#if defined(CONFIG_X86_PAE) && (!defined(CONFIG_NOHIGHMEM))
-  pte = pte_offset_map(pmd_offset(pud, addr), addr);
-#else
-  pte = pmd_offset_map(pud, addr);
-#endif
-
-  return((volatile void*)pte_page(*pte));
-}
-
-#else /* 2.4 */
-
-/* http://www.scs.ch/~frey/linux/memorymap.html */
-volatile void *virt_to_kseg(volatile void *address)
-{
-  pgd_t *pgd; pmd_t *pmd; pte_t *ptep, pte;
-  unsigned long va, ret = 0UL;
-
-  va=VMALLOC_VMADDR((unsigned long)address);
-
-  /* get the page directory. Use the kernel memory map. */
-  pgd = pgd_offset_k(va);
-
-  /* check whether we found an entry */
-  if (!pgd_none(*pgd))
-    {
-      /* get the page middle directory */
-      pmd = pmd_offset(pgd, va);
-      /* check whether we found an entry */
-      if (!pmd_none(*pmd))
-	{
-	  /* get a pointer to the page table entry */
-	  ptep = pte_offset(pmd, va);
-	  pte = *ptep;
-	  /* check for a valid page */
-	  if (pte_present(pte))
-	    {
-	      /* get the address the page is refering to */
-	      ret = (unsigned long)page_address(pte_page(pte));
-	      /* add the offset within the page to the page address */
-	      ret |= (va & (PAGE_SIZE -1));
-	    }
-	}
-    }
-  return((volatile void *)ret);
-}
-#endif
 
 /* ************************************* */
 
