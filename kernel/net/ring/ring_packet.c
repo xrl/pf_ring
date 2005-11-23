@@ -768,7 +768,7 @@ static int ring_create(struct socket *sock, int protocol) {
 #endif
 #else
   /* Kernel 2.4 */
-  sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
+  sk = sk_alloc(PF_RING, GFP_KERNEL, 1);
 #endif
 
   if (sk == NULL)
