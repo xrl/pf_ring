@@ -223,91 +223,6 @@ static struct sock_fprog	total_fcode
 	= { 1, &total_insn };
 #endif
 
-#define RING /* L.Deri */
-#define SAFE_RING_MODE /*
-			  Copy the bucket in order to avoid kernel
-			  crash if the application faults
-		       */
-
-#ifdef RING
-unsigned char *write_register;
-static struct pcap_stat ringStats;
-u_long  numPollCalls = 0, numReadCalls = 0;
-
-#define POLL_SLEEP_STEP         10 /* ns = 0.1 ms */
-#define POLL_SLEEP_MIN        POLL_SLEEP_STEP
-#define POLL_SLEEP_MAX        1000 /* ns */
-#define POLL_QUEUE_MIN_LEN     500 /* # packets */
-
-#ifdef SAFE_RING_MODE
-static char staticBucket[2048];
-#endif
-
-
-/* ******************************* */
-
-unsigned long long rdtsc() {
-  unsigned long long a;
-  asm volatile("rdtsc":"=A" (a));
-  return(a);
-}
-
-/* ******************************* */
-
-int pcap_set_cluster(pcap_t *handle, u_int clusterId) {
-  return(handle->ring_fd ? setsockopt(handle->ring_fd, 0, SO_ADD_TO_CLUSTER,
-				      &clusterId, sizeof(clusterId)): -1);
-}
-
-/* ******************************* */
-
-int pcap_remove_from_cluster(pcap_t *handle) {
-  return(handle->ring_fd ?
-	 setsockopt(handle->ring_fd, 0, SO_REMOVE_FROM_CLUSTER, NULL, 0) : -1);
-}
-
-/* ******************************* */
-
-int pcap_set_reflector(pcap_t *handle, char *reflectorDevice) {
-  return(handle->ring_fd ?
-	 setsockopt(handle->ring_fd, 0, SO_SET_REFLECTOR,
-		    &reflectorDevice, strlen(reflectorDevice)) : -1);
-}
-
-/* ******************************* */
-
-static int set_if_promisc(const char *device, int set_promisc) {
-  int sock_fd;
-  struct ifreq ifr;
-
-  if(device == NULL) return(-3);
-
-  sock_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-  if(sock_fd <= 0) return(-1);
-  
-  memset(&ifr, 0, sizeof(ifr));
-  strncpy(ifr.ifr_name, device, sizeof(ifr.ifr_name));
-  if(ioctl(sock_fd, SIOCGIFFLAGS, &ifr) == -1) {  
-    close(sock_fd);
-    return(-2);
-  }	  
-
-  if(set_promisc) {
-    if((ifr.ifr_flags & IFF_PROMISC) == 0) ifr.ifr_flags |= IFF_PROMISC;
-  } else {
-    /* Remove promisc */
-    if((ifr.ifr_flags & IFF_PROMISC) != 0) ifr.ifr_flags &= ~IFF_PROMISC;    
-  }
-  
-  if(ioctl(sock_fd, SIOCSIFFLAGS, &ifr) == -1) 
-    return(-1);
-  
-  close(sock_fd);
-  return(0);
-}
-
-#endif
-
 /*
  *  Get a handle for a live capture from the given device. You can
  *  pass NULL as device to get all packages (without link level
@@ -354,140 +269,6 @@ pcap_open_live(const char *device, int snaplen, int promisc, int to_ms,
 	memset(handle, 0, sizeof(*handle));
 	handle->snapshot	= snaplen;
 	handle->md.timeout	= to_ms;
-
-#ifdef RING
-	handle->ring_fd = handle->fd = socket(PF_RING, SOCK_RAW, htons(ETH_P_ALL));
-#ifdef RING_DEBUG
-	printf("Open RING [fd=%d]\n", handle->ring_fd);
-#endif
-	if(handle->ring_fd > 0) {
-	  struct sockaddr sa;
-	  int             rc;
-	  u_int memSlotsLen;
-
-	  err = 0;
-	  sa.sa_family   = PF_RING;
-	  snprintf(sa.sa_data, sizeof(sa.sa_data), "%s", device);
-	  rc = bind(handle->ring_fd, (struct sockaddr *)&sa, sizeof(sa));
-
-	  if(rc == 0) {
-
-
-	    handle->md.device = strdup(device);
-	    handle->ring_buffer = (char *)mmap(NULL, PAGE_SIZE,
-					       PROT_READ|PROT_WRITE,
-					       MAP_SHARED,
-					       handle->ring_fd, 0);
-
-	    if(handle->ring_buffer == MAP_FAILED) {
-	      sprintf(ebuf, "mmap() failed");
-	      return (NULL);
-	    }
-
-	    handle->slots_info = (FlowSlotInfo *)handle->ring_buffer;
-	    if(handle->slots_info->version != RING_FLOWSLOT_VERSION) {
-	      snprintf(ebuf, PCAP_ERRBUF_SIZE, "Wrong RING version: "
-		      "kernel is %i, libpcap was compiled with %i\n",
-		      handle->slots_info->version, RING_FLOWSLOT_VERSION);
-	      return (NULL);
-	    }
-	    memSlotsLen = handle->slots_info->tot_mem;
-	    munmap(handle->ring_buffer, PAGE_SIZE);
-
-	    handle->ring_buffer = (char *)mmap(NULL, memSlotsLen,
-					      PROT_READ|PROT_WRITE,
-					      MAP_SHARED, handle->ring_fd, 0);
-
-	    if(handle->ring_buffer == MAP_FAILED) {
-	      sprintf(ebuf, "mmap() failed");
-	      return (NULL);
-	    }
-
-	    handle->slots_info   = (FlowSlotInfo *)handle->ring_buffer;
-	    handle->ring_slots = (char *)(handle->ring_buffer+sizeof(FlowSlotInfo));
-
-	    /* Safety check */
-	    if(handle->slots_info->remove_idx >= handle->slots_info->tot_slots)
-	      handle->slots_info->remove_idx = 0;
-
-	    handle->page_id = PAGE_SIZE, handle->slot_id = 0,
-	      handle->pkts_per_page = 0;
-
-	    if(0) {
-	      int i;
-	      
-	      for(i=0; i<handle->slots_info->tot_slots; i++) {
-		unsigned long idx = i*handle->slots_info->slot_len;
-		FlowSlot *slot = (FlowSlot*)&handle->ring_slots[idx];
-		
-		printf("RING: Setting RING_MAGIC_VALUE into slot %d [displacement=%lu]\n", i, idx);
-		slot->magic = RING_MAGIC_VALUE; slot->slot_state = 0;
-		printf("RING: slot[%d]: magic=%d, slot_state=%d\n", 
-		       slot->magic, slot->slot_state);
-	      }
-	    }
-
-
-	    /* Set defaults */
-	    handle->linktype = DLT_EN10MB;
-	    handle->offset = 2;
-
-#ifdef RING_DEBUG
-	    printf("RING (%s): tot_slots=%d/slot_len=%d/"
-		   "insertIdx=%d/remove_idx=%d/dropped=%d\n",
-		   device,
-		   handle->slots_info->tot_slots,
-		   handle->slots_info->slot_len,
-		   handle->slots_info->insert_idx,
-		   handle->slots_info->remove_idx,
-		   handle->slots_info->tot_lost);
-#endif
-	    ringStats.ps_recv = handle->slots_info->tot_read;
-	    ringStats.ps_drop = handle->slots_info->tot_lost;
-
-	    if(promisc) {
-	      struct ifreq ifr;
-
-	      err = 0;
-	      memset(&ifr, 0, sizeof(ifr));
-	      strncpy(ifr.ifr_name, device, sizeof(ifr.ifr_name));
-	      if (ioctl(handle->fd, SIOCGIFFLAGS, &ifr) == -1) {
-		snprintf(ebuf, PCAP_ERRBUF_SIZE,
-			 "ioctl: %s", pcap_strerror(errno));
-		err = 1;
-	      }
-
-	      if(err == 0) {
-		if ((ifr.ifr_flags & IFF_PROMISC) == 0) {
-		  /*
-		   * Promiscuous mode isn't currently on,
-		   * so turn it on, and remember that
-		   * we should turn it off when the
-		   * pcap_t is closed.
-		   */
-
-		  ifr.ifr_flags |= IFF_PROMISC;
-		  if (ioctl(handle->fd, SIOCSIFFLAGS, &ifr) == -1) {
-		    snprintf(ebuf, PCAP_ERRBUF_SIZE,
-			     "ioctl: %s", pcap_strerror(errno));
-		    err = 1;
-		  }
-		}
-
-		if(err == 0)
-		  handle->md.clear_promisc = 1;
-	      }
-	    }
-
-	    if(err == 0)
-	      goto open_open_live_final;
-	  }
-
-	  /* Don't put 'else' above... */
-	  close(handle->ring_fd);
-	  /* Continue without ring support */
-	}
-#endif
 
 	/*
 	 * NULL and "any" are special devices which give us the hint to
@@ -628,9 +409,6 @@ pcap_open_live(const char *device, int snaplen, int promisc, int to_ms,
 		return NULL;
 	}
 
-#ifdef RING
- open_open_live_final:
-#endif
 	/*
 	 * "handle->fd" is a socket, so "select()" and "poll()"
 	 * should work on it.
@@ -684,120 +462,6 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 	socklen_t		fromlen;
 	int			packet_len, caplen;
 	struct pcap_pkthdr	pcap_header;
-
-#ifdef RING
-	if(handle->ring_buffer != NULL) {
-	  u_int idx, numRuns = 0, ptrAddr;
-	  FlowSlot *slot;
-	  
-	  slot = (FlowSlot*)&handle->ring_slots[handle->slots_info->remove_idx*handle->slots_info->slot_len];
-
-	  while(1) {
-	    u_int32_t queuedPkts;
-
-	    if(handle->slots_info->tot_insert >= handle->slots_info->tot_read)
-	      queuedPkts = handle->slots_info->tot_insert - handle->slots_info->tot_read;
-	    else
-	      queuedPkts = handle->slots_info->tot_slots + handle->slots_info->tot_insert - handle->slots_info->tot_read;
-
-	    if(queuedPkts && (slot->slot_state == 1)) {
-	      char *bucket = &slot->bucket;
-
-#ifdef RING_MAGIC
-	      if(slot->magic != RING_MAGIC_VALUE) {
-		printf("==>> Bad Magic [remove_idx=%u][insert_idx=%u][ptrAddr=%u]\n",
-		       handle->slots_info->remove_idx,
-		       handle->slots_info->insert_idx, 
-		       ptrAddr);
-		slot->magic = RING_MAGIC_VALUE;
-	      }
-#endif
-
-
-	      handle->md.stat.ps_recv++;
-
-#ifdef SAFE_RING_MODE
-	      {
-		struct pcap_pkthdr *hdr = (struct pcap_pkthdr*)bucket;
-		int bktLen = hdr->caplen;
-
-		if(bktLen > sizeof(staticBucket))
-		  bktLen = sizeof(staticBucket);
-
-		memcpy(staticBucket, &bucket[sizeof(struct pcap_pkthdr)], bktLen);
-
-#ifdef RING_DEBUG
-		printf("==>> [remove_idx=%u][insert_idx=%u][ptrAddr=%u]\n",
-		       handle->slots_info->remove_idx,
-		       handle->slots_info->insert_idx, 
-		       ptrAddr);
-#endif
-
-		callback(userdata, hdr, staticBucket);
-	      }
-#else
-	      callback(userdata,
-		       (const struct pcap_pkthdr*)bucket,
-		       (const u_char*)&bucket[sizeof(struct pcap_pkthdr)]);
-#endif
-
-	      if(handle->slots_info->remove_idx >= (handle->slots_info->tot_slots-1)) {
-		handle->slots_info->remove_idx = 0;
-		handle->page_id = PAGE_SIZE, handle->slot_id = 0, handle->pkts_per_page = 0;
-	      } else {
-		handle->slots_info->remove_idx++;
-		handle->pkts_per_page++, handle->slot_id += handle->slots_info->slot_len;
-	      }
-
-	      handle->slots_info->tot_read++;
-	      slot->slot_state = 0;
-
-	      return(1);
-	    } else {
-	      struct pollfd pfd;
-	      int rc;
-
-	      /* Sleep when nothing is happening */
-	      pfd.fd      = handle->ring_fd;
-	      pfd.events  = POLLIN|POLLERR;
-	      pfd.revents = 0;
-
-#ifdef RING_DEBUG
-	      printf("==>> poll [remove_idx=%u][insert_idx=%u][loss=%d][queuedPkts=%u]"
-		     "[slot_state=%d][tot_insert=%u][tot_read=%u]\n",
-		     handle->slots_info->remove_idx,
-		     handle->slots_info->insert_idx,
-		     handle->slots_info->tot_lost, 
-		     queuedPkts, slot->slot_state,
-		     handle->slots_info->tot_insert,
-		     handle->slots_info->tot_read);
-	      #endif
-	      
-#ifdef RING_DEBUG
-	      printf("==>> poll @ [remove_idx=%u][slot_id=%u]\n", handle->slots_info->remove_idx, handle->slot_id);
-#endif
-	      errno = 0;
-	      rc = poll(&pfd, 1, -1);
-#ifdef RING_DEBUG
-	      printf("==>> poll returned %d [%s][errno=%d][break_loop=%d]\n",
-		     rc, strerror(errno), errno, handle->break_loop);
-#endif
-	      numPollCalls++;
-
-	      if(rc == -1) {
-		if(errno == EINTR) {
-		  if(handle->break_loop) {
-		    handle->break_loop = 0;
-		    return(-2);
-		  } else
-		    return(0);
-		} else
-		  return(-1);
-	      }
-	    }
-	  } /* while() */
-	}
-#endif
 
 #ifdef HAVE_PF_PACKET_SOCKETS
 	/*
@@ -1099,22 +763,6 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	socklen_t len = sizeof (struct tpacket_stats);
 #endif
 
-#ifdef RING
-	if(handle->ring_fd > 0) {
-	  stats->ps_recv = handle->slots_info->tot_read-ringStats.ps_recv;
-	  stats->ps_drop = handle->slots_info->tot_lost-ringStats.ps_drop;
-#ifdef RING_DEBUG
-	  printf("RING: numPollCalls=%d [%.1f packets/call]\n",
-		 numPollCalls, (float)stats->ps_recv/(float)numPollCalls);
-	  printf("RING: [tot_pkts=%u][tot_read=%u][tot_lost=%u]\n", 
-		 handle->slots_info->tot_pkts,
-		 handle->slots_info->tot_read,
-		 handle->slots_info->tot_lost);
-#endif
-	  return(0);
-	}
-#endif
-
 #ifdef HAVE_TPACKET_STATS
 	/*
 	 * Try to get the packet counts from the kernel.
@@ -1314,11 +962,6 @@ pcap_setfilter_linux(pcap_t *handle, struct bpf_program *filter)
 			break;
 		}
 	}
-
-#ifdef RING
-	/* is this correct - PF_RING kernels not filter in kernel properly? */
-	if(handle->ring_fd <= 0) can_filter_in_kernel = 0;
-#endif
 
 	if (can_filter_in_kernel) {
 		if ((err = set_kernel_filter(handle, &fcode)) == 0)
@@ -1540,6 +1183,13 @@ static void map_arphrd_to_dlt(pcap_t *handle, int arptype, int cooked_ok)
 #endif
 	case ARPHRD_IEEE80211_PRISM:
 		handle->linktype = DLT_PRISM_HEADER;
+		break;
+
+#ifndef ARPHRD_IEEE80211_RADIOTAP /* new */
+#define ARPHRD_IEEE80211_RADIOTAP 803
+#endif
+	case ARPHRD_IEEE80211_RADIOTAP:
+		handle->linktype = DLT_IEEE802_11_RADIO;
 		break;
 
 	case ARPHRD_PPP:
@@ -1937,12 +1587,7 @@ iface_bind(int fd, int ifindex, char *ebuf)
 
 	/* Any pending errors, e.g., network is down? */
 
-#ifdef RING
-	if ((getsockopt(fd, PF_RING, SO_ERROR, &err, &errlen) == -1)
-	    && (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1)) {
-#else
 	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1) {
-#endif
 		snprintf(ebuf, PCAP_ERRBUF_SIZE,
 			"getsockopt: %s", pcap_strerror(errno));
 		return -2;
@@ -1999,22 +1644,6 @@ static void	pcap_close_linux( pcap_t *handle )
 	struct pcap	*p, *prevp;
 	struct ifreq	ifr;
 
-#ifdef RING
-	if(handle->ring_buffer != NULL) {
-	  munmap(handle->ring_buffer, handle->slots_info->tot_mem);
-	  handle->ring_buffer = NULL;
-	}
-#endif
-
-	if (handle->md.clear_promisc) {
-		/*
-		 * We put the interface into promiscuous mode; take
-		 * it out of promiscuous mode.
-		 *
-		 * XXX - if somebody else wants it in promiscuous mode,
-		 * this code cannot know that, so it'll take it out
-		 * of promiscuous mode.  That's not fixable in 2.0[.x]
-		 * kernels.
 	if (handle->md.clear_promisc) {
 		/*
 		 * We put the interface into promiscuous mode; take
@@ -2228,12 +1857,8 @@ iface_bind_old(int fd, const char *device, char *ebuf)
 	}
 
 	/* Any pending errors, e.g., network is down? */
-#ifdef RING
-	if((getsockopt(fd, PF_RING, SO_ERROR, &err, &errlen) == -1)
-	   && (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1)) {
-#else
+
 	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &errlen) == -1) {
-#endif
 		snprintf(ebuf, PCAP_ERRBUF_SIZE,
 			"getsockopt: %s", pcap_strerror(errno));
 		return -1;
@@ -2467,9 +2092,6 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 		 */
 		total_filter_on = 1;
 
-#ifdef RING
-		if(!handle->ring_fd) {
-#endif
 		/*
 		 * Save the socket's current mode, and put it in
 		 * non-blocking mode; we drain it by reading packets
@@ -2492,9 +2114,6 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 				return -2;
 			}
 		}
-#ifdef RING
-		}
-#endif
 	}
 
 	/*
@@ -2533,12 +2152,7 @@ reset_kernel_filter(pcap_t *handle)
 	/* setsockopt() barfs unless it get a dummy parameter */
 	int dummy;
 
-#ifdef RING
-	return setsockopt(handle->fd, handle->ring_fd > 0 ?
-	    PF_RING : SOL_SOCKET, SO_DETACH_FILTER, &dummy, sizeof(dummy));
-#else
 	return setsockopt(handle->fd, SOL_SOCKET, SO_DETACH_FILTER,
 				   &dummy, sizeof(dummy));
-#endif
 }
 #endif
