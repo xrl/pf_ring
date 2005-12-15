@@ -46,8 +46,6 @@ extern "C" {
 #include <packet32.h>
 #endif /* WIN32 */
 
-#define RING /* L.Deri */
-
 #ifdef MSDOS
 #include <fcntl.h>
 #include <io.h>
@@ -110,14 +108,8 @@ struct pcap_md {
 #endif /* HAVE_DAG_API */
 };
 
-/*
- * Ultrix, DEC OSF/1^H^H^H^H^H^H^H^H^HDigital UNIX^H^H^H^H^H^H^H^H^H^H^H^H
- * Tru64 UNIX, and NetBSD pad to make everything line up on a nice boundary.
- */
-#if defined(ultrix) || defined(__osf__) || (defined(__NetBSD__) && __NetBSD_Version__ > 106000000)
-#define       PCAP_FDDIPAD 3
-#endif
 
+#define RING
 #ifdef  RING
 
 #include <unistd.h>
@@ -131,40 +123,13 @@ struct pcap_md {
 #include <linux/ring.h>
 #endif
 
-#ifdef RING
 
-#define E1000_RXD_STAT_DD       0x01    /* Descriptor Done */
-
-struct e1000_rx_desc {
-  u_int64_t buffer_addr; /* Address of the descriptor's data buffer */
-  u_int16_t length;     /* Length of data DMAed into data buffer */
-  u_int16_t csum;       /* Packet checksum */
-  u_int8_t status;      /* Descriptor status */
-  u_int8_t errors;      /* Descriptor Errors */
-  u_int16_t special;
-};
-
-/* Transmit Descriptor */
-struct e1000_tx_desc {
-    u_int64_t buffer_addr;       /* Address of the descriptor's data buffer */
-    union {
-        u_int32_t data;
-        struct {
-            u_int16_t length;    /* Data buffer length */
-            u_int8_t cso;        /* Checksum offset */
-            u_int8_t cmd;        /* Descriptor control */
-        } flags;
-    } lower;
-    union {
-        u_int32_t data;
-        struct {
-            u_int8_t status;     /* Descriptor status */
-            u_int8_t css;        /* Checksum start */
-            u_int16_t special;
-        } fields;
-    } upper;
-};
-
+/*
+ * Ultrix, DEC OSF/1^H^H^H^H^H^H^H^H^HDigital UNIX^H^H^H^H^H^H^H^H^H^H^H^H
+ * Tru64 UNIX, and NetBSD pad to make everything line up on a nice boundary.
+ */
+#if defined(ultrix) || defined(__osf__) || (defined(__NetBSD__) && __NetBSD_Version__ > 106000000)
+#define       PCAP_FDDIPAD 3
 #endif
 
 struct pcap {
@@ -207,12 +172,13 @@ struct pcap {
 
 #ifdef RING
         /* PF_RING */
-	char *ring_buffer, *ring_slots;
-	int  ring_fd;
-	FlowSlotInfo *slots_info;
+    char *ring_buffer, *ring_slots;
+    int  ring_fd;
+    FlowSlotInfo *slots_info;
         u_int page_id, slot_id, pkts_per_page;
         u_int poll_sleep;
 #endif
+
 	/*
 	 * Place holder for pcap_next().
 	 */
