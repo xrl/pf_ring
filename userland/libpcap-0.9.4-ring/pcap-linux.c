@@ -223,6 +223,8 @@ static struct sock_fprog	total_fcode
 	= { 1, &total_insn };
 #endif
 
+#define RING /* L.Deri */
+
 #ifdef RING
 unsigned char *write_register;
 static struct pcap_stat ringStats;
@@ -701,6 +703,12 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
                             handle->slots_info->tot_insert - 
                             handle->slots_info->tot_read;
 
+			/* Check for break_loop before reading a packet or calling poll */
+ 	        if(handle->break_loop) {
+    	       handle->break_loop = 0;
+        	   return(-2);
+			}
+
             if(queuedPkts && (slot->slot_state == 1)) {
               char *bucket = &slot->bucket;
 
@@ -780,7 +788,7 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
               printf("==>> poll @ [remove_idx=%u][slot_id=%u]\n", handle->slots_info->remove_idx, handle->slot_id);
 #endif
               errno = 0;
-              rc = poll(&pfd, 1, -1);
+              rc = poll(&pfd, 1, POLL_SLEEP_MAX);
 #ifdef RING_DEBUG
               printf("==>> poll returned %d [%s][errno=%d][break_loop=%d]\n",
                      rc, strerror(errno), errno, handle->break_loop);
@@ -796,8 +804,8 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
                     return(0);
                 } else
                   return(-1);
-              }
-            }
+              } /* if rc == -1 */              
+            } /* else */            
           } /* while() */
         }
 #endif
