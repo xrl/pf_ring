@@ -83,7 +83,9 @@ pfring* pfring_open(char *device_name, int promisc) {
 
   ring->fd = socket(PF_RING, SOCK_RAW, htons(ETH_P_ALL));
 
+#ifdef RING_DEBUG
   printf("Open RING [fd=%d]\n", ring->fd);
+#endif
 
   if(ring->fd > 0) {
     struct sockaddr sa;
@@ -139,6 +141,7 @@ pfring* pfring_open(char *device_name, int promisc) {
       /* Set defaults */
       ring->device_name = strdup(device_name);
 
+#ifdef RING_DEBUG
       printf("RING (%s): tot_slots=%d/slot_len=%d/"
 	     "insertIdx=%d/remove_idx=%d/dropped=%d\n",
 	     device_name,
@@ -147,6 +150,7 @@ pfring* pfring_open(char *device_name, int promisc) {
 	     ring->slots_info->insert_idx,
 	     ring->slots_info->remove_idx,
 	     ring->slots_info->tot_lost);
+#endif
 
       if(promisc) {
 	if(set_if_promisc(device_name, 1) == 0)
@@ -212,7 +216,7 @@ int pfring_recv(pfring *ring, char* buffer, int buffer_len,
     queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
 
   if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
-    char *bucket = &slot->bucket;
+    char *bucket = (char*)&slot->bucket;
     struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
     int bktLen = _hdr->caplen;
 

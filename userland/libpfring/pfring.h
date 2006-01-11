@@ -4,6 +4,7 @@
  *
  */
 
+#ifndef HAVE_PCAP
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,8 @@
 #include <linux/if.h>
 #include <linux/if_ether.h>
 #include <linux/sockios.h>
+#endif
+
 #include <linux/ring.h>
 
 #define PAGE_SIZE         4096
@@ -43,6 +46,12 @@ typedef struct {
 typedef struct {
   u_long recv, drop;
 } pfring_stat;
+
+struct pfring_pkthdr {
+  struct timeval ts;    /* time stamp */
+  u_int32_t caplen;     /* length of portion present */
+  u_int32_t len;        /* length this packet (off wire) */
+};
 
 /* ********************************* */
 

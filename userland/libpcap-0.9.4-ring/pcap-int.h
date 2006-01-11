@@ -51,6 +51,11 @@ extern "C" {
 #include <io.h>
 #endif
 
+#ifdef HAVE_PF_RING
+#define HAVE_PCAP
+#include "pfring.h"
+#endif
+
 /*
  * Savefile
  */
@@ -108,22 +113,6 @@ struct pcap_md {
 #endif /* HAVE_DAG_API */
 };
 
-
-#define RING
-#ifdef  RING
-
-#include <unistd.h>
-#include <sys/mman.h>
-#include <errno.h>
-#include <sys/poll.h>
-
-#define PAGE_SIZE         4096
-
-#define HAVE_PCAP
-#include <linux/ring.h>
-#endif
-
-
 /*
  * Ultrix, DEC OSF/1^H^H^H^H^H^H^H^H^HDigital UNIX^H^H^H^H^H^H^H^H^H^H^H^H
  * Tru64 UNIX, and NetBSD pad to make everything line up on a nice boundary.
@@ -170,15 +159,6 @@ struct pcap {
 	u_char *bp;
 	int cc;
 
-#ifdef RING
-        /* PF_RING */
-    char *ring_buffer, *ring_slots;
-    int  ring_fd;
-    FlowSlotInfo *slots_info;
-        u_int page_id, slot_id, pkts_per_page;
-        u_int poll_sleep;
-#endif
-
 	/*
 	 * Place holder for pcap_next().
 	 */
@@ -210,6 +190,10 @@ struct pcap {
 	u_int *dlt_list;
 
 	struct pcap_pkthdr pcap_header;	/* This is needed for the pcap_next_ex() to work */
+
+#ifdef HAVE_PF_RING
+  pfring *ring;
+#endif
 };
 
 /*

@@ -381,10 +381,10 @@ int main(int argc, char* argv[]) {
   }
 
   while(1) {
-    char buffer[2048];
+    u_char buffer[2048];
     struct pfring_pkthdr hdr;
     
-    if(pfring_recv(pd, buffer, sizeof(buffer), &hdr, wait_for_packet) > 0)
+    if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0)
       dummyProcesssPacket(&hdr, buffer);
   }
 

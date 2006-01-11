@@ -9,6 +9,7 @@
 #include <pcap.h>
 #include <signal.h>
 #include <sched.h>
+#include <stdlib.h>
 
 #define ALARM_SLEEP       1
 #define DEFAULT_SNAPLEN 128
@@ -247,7 +248,7 @@ void dummyProcesssPacket(u_char *_deviceId,
 
   if(numPkts == 0) gettimeofday(&startTime, NULL);
   numPkts++, numBytes += h->len;
-}
+ }
 
 /* *************************************** */
 
