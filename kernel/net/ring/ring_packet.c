@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2004-05 - Luca Deri <deri@ntop.org>
+ * (C) 2004-06 - Luca Deri <deri@ntop.org>
  *
  * This code includes contributions courtesy of
  * - Jeff Randall <jrandall@nexvu.com>
@@ -251,19 +251,15 @@ static inline void ring_remove(struct sock *sk) {
   struct list_head *ptr;
   struct ring_element *entry;
 
-
   for(ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
     entry = list_entry(ptr, struct ring_element, list);
 
     if(entry->sk == sk) {
-      write_lock_irq(&ring_mgmt_lock);
       list_del(ptr);
       kfree(ptr);
-      write_unlock_irq(&ring_mgmt_lock);
       break;
     }
   }
-
 }
 
 /* ********************************** */
@@ -834,6 +830,8 @@ static int ring_release(struct socket *sock)
   printk("RING: ring_release entered\n");
 #endif
 
+  write_lock_irq(&ring_mgmt_lock);
+
   ring_remove(sk);
 
   sock_orphan(sk);
@@ -857,6 +855,8 @@ static int ring_release(struct socket *sock)
   skb_queue_purge(&sk->sk_write_queue);
 #endif
   sock_put(sk);
+
+  write_unlock_irq(&ring_mgmt_lock);
 
 #if defined(RING_DEBUG)
   printk("RING: ring_release leaving\n");
@@ -1527,7 +1527,7 @@ static void __exit ring_exit(void)
 
 static int __init ring_init(void)
 {
-  printk("Welcome to PF_RING %s\n(C) 2004-05 L.Deri <deri@ntop.org>\n",
+  printk("Welcome to PF_RING %s\n(C) 2004-06 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION);
 
   INIT_LIST_HEAD(&ring_table);
