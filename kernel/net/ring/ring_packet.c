@@ -7,13 +7,9 @@
  * - Helmut Manck <helmut.manck@secunet.com>
  * - Brad Doctor <brad@stillsecure.com>
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
+ * - Francesco Fusco <fusco@ntop.org>
  *
  */
-
-/* 
-   TO DO:
-   add an entry inside the /proc filesystem 
-*/
 
 #include <linux/version.h>
 #include <linux/config.h>
@@ -31,6 +27,7 @@
 #include <linux/tcp.h>
 #include <linux/udp.h>
 #include <linux/list.h>
+#include <linux/proc_fs.h> 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 #include <net/xfrm.h>
 #else
@@ -77,6 +74,8 @@ struct ring_element {
 struct ring_opt {
   struct net_device *ring_netdev;
 
+  u_short ring_id;
+
   /* Cluster */
   u_short cluster_id; /* 0 = no cluster */
 
@@ -111,11 +110,25 @@ struct ring_opt {
 
 /* List of all ring sockets. */
 static struct list_head ring_table;
+static u_int ring_table_size;
 
 /* List of all clusters */
 static struct ring_cluster *ring_cluster_list;
 
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
+
+/* ********************************** */
+
+/* /proc entry for ring module */
+struct proc_dir_entry *ring_proc_dir = NULL;
+struct proc_dir_entry *ring_proc = NULL;
+
+static int ring_proc_get_info(char *, char **, off_t, int, int *, void *);
+static void ring_proc_add(struct ring_opt *pfr);
+static void ring_proc_remove(struct ring_opt *pfr);
+static void ring_proc_init(void);
+static void ring_proc_term(void);
+static int ring_count = 0;
 
 /* ********************************** */
 
@@ -211,6 +224,114 @@ static void ring_sock_destruct(struct sock *sk) {
 }
 
 /* ********************************** */
+
+static void ring_proc_add(struct ring_opt *pfr) {
+  if(ring_proc_dir != NULL) {
+    char name[16];
+
+    pfr->ring_id = ring_count++;
+
+    snprintf(name, sizeof(name), "%d", pfr->ring_id);
+    create_proc_read_entry(name, 0, ring_proc_dir, 
+			   ring_proc_get_info, pfr);
+    /* printk("PF_RING: added /proc/net/pf_ring/%s\n", name); */
+  }
+}
+
+/* ********************************** */
+
+static void ring_proc_remove(struct ring_opt *pfr) {
+  if(ring_proc_dir != NULL) {
+    char name[16];
+    
+    snprintf(name, sizeof(name), "%d", pfr->ring_id);    
+    remove_proc_entry(name, ring_proc_dir);
+    /* printk("PF_RING: removed /proc/net/pf_ring/%s\n", name); */
+  }
+}
+
+/* ********************************** */
+
+static int ring_proc_get_info(char *buf, char **start, off_t offset,
+			      int len, int *unused, void *data)
+{
+  int rlen = 0;
+  struct ring_opt *pfr;
+  FlowSlotInfo *fsi;
+
+  if(data == NULL) {
+    /* /proc/net/pf_ring/info */
+    rlen = sprintf(buf,"Version       : %s\n", RING_VERSION);
+    rlen += sprintf(buf + rlen,"Bucket length : %d bytes\n", bucket_len);
+    rlen += sprintf(buf + rlen,"Ring slots    : %d\n", num_slots);
+    rlen += sprintf(buf + rlen,"Sample rate   : %d [1=no sampling]\n", sample_rate);
+
+    rlen += sprintf(buf + rlen,"Capture TX    : %s\n",
+		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
+    rlen += sprintf(buf + rlen,"Total rings   : %d\n", ring_table_size);
+  } else {
+    /* detailed statistics about a PF_RING */
+    pfr = (struct ring_opt*)data;
+
+    if(data) {
+      fsi = pfr->slots_info;
+
+      if(fsi) {
+	rlen = sprintf(buf,        "Bound Device  : %s\n",
+		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
+	rlen += sprintf(buf + rlen,"Version       : %d\n",  fsi->version);
+	rlen += sprintf(buf + rlen,"Sampling Rate : %d\n",  pfr->sample_rate);
+	rlen += sprintf(buf + rlen,"Cluster Id    : %d\n",  pfr->cluster_id);
+	rlen += sprintf(buf + rlen,"Tot Slots     : %d\n",  fsi->tot_slots);
+	rlen += sprintf(buf + rlen,"Slot Len      : %d\n",  fsi->slot_len);
+	rlen += sprintf(buf + rlen,"Data Len      : %d\n",  fsi->data_len);
+	rlen += sprintf(buf + rlen,"Tot Memory    : %d\n",  fsi->tot_mem);
+	rlen += sprintf(buf + rlen,"Tot Packets   : %lu\n", (unsigned long)fsi->tot_pkts);
+	rlen += sprintf(buf + rlen,"Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
+	rlen += sprintf(buf + rlen,"Tot Insert    : %lu\n", (unsigned long)fsi->tot_insert);
+	rlen += sprintf(buf + rlen,"Tot Read      : %lu\n", (unsigned long)fsi->tot_read);
+	
+      } else
+	rlen = sprintf(buf, "WARNING fsi == NULL\n");
+    } else
+      rlen = sprintf(buf, "WARNING data == NULL\n");
+  }
+
+  return rlen;
+}
+
+/* ********************************** */
+
+static void ring_proc_init(void) {
+  ring_proc_dir = proc_mkdir("pf_ring", proc_net);
+  
+  if(ring_proc_dir) {
+    ring_proc_dir->owner = THIS_MODULE;
+    ring_proc = create_proc_read_entry("info", 0, ring_proc_dir,
+				       ring_proc_get_info, NULL);
+    if(!ring_proc)
+      printk("PF_RING: unable to register proc file\n");
+    else {
+      ring_proc->owner = THIS_MODULE;
+      printk("PF_RING: registered /proc/net/pf_ring/\n");
+    }    
+  } else
+    printk("PF_RING: unable to create /proc/net/pf_ring\n");
+}
+
+/* ********************************** */
+
+static void ring_proc_term(void) {
+  if(ring_proc != NULL) {
+    remove_proc_entry("info", ring_proc_dir);
+    if(ring_proc_dir != NULL) remove_proc_entry("pf_ring", proc_net);
+
+    printk("PF_RING: deregistered /proc/net/pf_ring\n");
+  }
+}
+
+/* ********************************** */
+
 /*
  * ring_insert()
  *
@@ -231,12 +352,16 @@ static inline void ring_insert(struct sock *sk) {
     list_add(&next->list, &ring_table);
     write_unlock_irq(&ring_mgmt_lock);
   } else {
-    if (net_ratelimit())
+    if(net_ratelimit())
       printk("RING: could not kmalloc slot!!\n");
   }
+
+  ring_table_size++;
+  ring_proc_add(ring_sk(sk));  
 }
 
 /* ********************************** */
+
 /*
  * ring_remove()
  *
@@ -257,6 +382,7 @@ static inline void ring_remove(struct sock *sk) {
     if(entry->sk == sk) {
       list_del(ptr);
       kfree(ptr);
+      ring_table_size--;
       break;
     }
   }
@@ -536,6 +662,57 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
+static int parse_pkt(struct sk_buff *skb, u_char recv_packet,
+		      u_int8_t *proto,
+		      u_int32_t *src, u_int32_t *dst,
+		      u_int16_t *sport, u_int16_t *dport) {
+  int displ;
+  struct iphdr *ip;
+  u_char *ptr;
+  struct ethhdr *eh;
+  
+  if(recv_packet)
+    displ = 0;
+  else
+    displ = SKB_DISPLACEMENT;
+  
+  /*
+    skb->data+displ
+
+    Always points to to the IP part of the packet
+  */
+
+
+  ptr = (char*)(skb->data+displ-14 /* mac header */);
+  eh = (struct ethhdr*)(ptr);
+
+  if(ntohs(eh->h_proto) == 0x0800) {
+    ip = (struct iphdr*)(skb->data+displ);
+      
+    *src = ip->saddr, *dst = ip->daddr, *proto = ip->protocol;
+      
+    if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP)) {
+      if(ip->protocol == IPPROTO_TCP) {
+	struct tcphdr *tcp = (struct tcphdr*)(skb->data+displ
+					      +sizeof(struct iphdr));
+	*sport = tcp->source, *dport = tcp->dest;
+      } else if(ip->protocol == IPPROTO_UDP) {
+	struct udphdr *udp = (struct udphdr*)(skb->data+displ
+					      +sizeof(struct iphdr));
+	*sport = udp->source, *dport = udp->dest;
+      }
+      
+      printk("-> sport=[%d], dport=[%d]\n", ntohs(*sport), ntohs(*dport));
+    }
+
+    return(1);
+  }
+  
+  return(0);
+}
+
+/* ********************************** */
+
 static u_int hash_skb(struct ring_cluster *cluster_ptr,
 		      struct sk_buff *skb, u_char recv_packet) {
   u_int idx;
@@ -612,6 +789,16 @@ static int skb_ring_handler(struct sk_buff *skb,
 #ifdef PROFILING
   rdt1 = _rdtsc();
 #endif
+
+ {
+   u_int8_t proto;
+   u_int32_t src, dst;
+   u_int16_t sport, dport;
+   parse_pkt(skb, 1, &proto, &src, &dst, &sport, &dport);    
+   printk("==> [%u][%d] <-> [%u][%d]\n", 
+	  ntohl(src), ntohs(sport), ntohl(dst), ntohs(dport));
+ }
+
 
   /* [1] Check unclustered sockets */
   for (ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
@@ -819,8 +1006,7 @@ static int ring_release(struct socket *sock)
   struct sock *sk = sock->sk;
   struct ring_opt *pfr = ring_sk(sk);
 
-  if(!sk)
-    return 0;
+  if(!sk)  return 0;
 
 #if defined(RING_DEBUG)
   printk("RING: called ring_release\n");
@@ -830,11 +1016,15 @@ static int ring_release(struct socket *sock)
   printk("RING: ring_release entered\n");
 #endif
 
-  write_lock_irq(&ring_mgmt_lock);
-
-  ring_remove(sk);
-
+  /* 
+     The calls below must be placed outside the
+     write_lock_irq...write_unlock_irq block.
+  */
   sock_orphan(sk);
+  ring_proc_remove(ring_sk(sk));
+
+  write_lock_irq(&ring_mgmt_lock);
+  ring_remove(sk);
   sock->sk = NULL;
 
   /* Free the ring buffer */
@@ -854,8 +1044,8 @@ static int ring_release(struct socket *sock)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
   skb_queue_purge(&sk->sk_write_queue);
 #endif
-  sock_put(sk);
 
+  sock_put(sk);
   write_unlock_irq(&ring_mgmt_lock);
 
 #if defined(RING_DEBUG)
@@ -1519,7 +1709,7 @@ static void __exit ring_exit(void)
   set_skb_ring_handler(NULL);
   set_buffer_ring_handler(NULL);
   sock_unregister(PF_RING);
-
+  ring_proc_term();
   printk("PF_RING shut down.\n");
 }
 
@@ -1555,6 +1745,8 @@ static int __init ring_init(void)
 	   transparent_mode ? "Yes" : "No");
 
     printk("PF_RING initialized correctly.\n");
+
+    ring_proc_init();
     return 0;
   }
 }
