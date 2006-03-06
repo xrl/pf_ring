@@ -662,57 +662,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
-static int parse_pkt(struct sk_buff *skb, u_char recv_packet,
-		      u_int8_t *proto,
-		      u_int32_t *src, u_int32_t *dst,
-		      u_int16_t *sport, u_int16_t *dport) {
-  int displ;
-  struct iphdr *ip;
-  u_char *ptr;
-  struct ethhdr *eh;
-  
-  if(recv_packet)
-    displ = 0;
-  else
-    displ = SKB_DISPLACEMENT;
-  
-  /*
-    skb->data+displ
-
-    Always points to to the IP part of the packet
-  */
-
-
-  ptr = (char*)(skb->data+displ-14 /* mac header */);
-  eh = (struct ethhdr*)(ptr);
-
-  if(ntohs(eh->h_proto) == 0x0800) {
-    ip = (struct iphdr*)(skb->data+displ);
-      
-    *src = ip->saddr, *dst = ip->daddr, *proto = ip->protocol;
-      
-    if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP)) {
-      if(ip->protocol == IPPROTO_TCP) {
-	struct tcphdr *tcp = (struct tcphdr*)(skb->data+displ
-					      +sizeof(struct iphdr));
-	*sport = tcp->source, *dport = tcp->dest;
-      } else if(ip->protocol == IPPROTO_UDP) {
-	struct udphdr *udp = (struct udphdr*)(skb->data+displ
-					      +sizeof(struct iphdr));
-	*sport = udp->source, *dport = udp->dest;
-      }
-      
-      printk("-> sport=[%d], dport=[%d]\n", ntohs(*sport), ntohs(*dport));
-    }
-
-    return(1);
-  }
-  
-  return(0);
-}
-
-/* ********************************** */
-
 static u_int hash_skb(struct ring_cluster *cluster_ptr,
 		      struct sk_buff *skb, u_char recv_packet) {
   u_int idx;
@@ -789,16 +738,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 #ifdef PROFILING
   rdt1 = _rdtsc();
 #endif
-
- {
-   u_int8_t proto;
-   u_int32_t src, dst;
-   u_int16_t sport, dport;
-   parse_pkt(skb, 1, &proto, &src, &dst, &sport, &dport);    
-   printk("==> [%u][%d] <-> [%u][%d]\n", 
-	  ntohl(src), ntohs(sport), ntohl(dst), ntohs(dport));
- }
-
 
   /* [1] Check unclustered sockets */
   for (ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
