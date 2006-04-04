@@ -19,6 +19,7 @@
 #include <linux/skbuff.h>
 #include <linux/rtnetlink.h>
 #include <linux/in.h>
+#include <linux/inet.h>
 #include <linux/in6.h>
 #include <linux/init.h>
 #include <linux/filter.h>
@@ -35,6 +36,9 @@
 #endif
 #include <net/sock.h>
 #include <asm/io.h>   /* needed for virt_to_phys() */
+#ifdef CONFIG_INET
+#include <net/inet_common.h>
+#endif
 
 /* #define RING_DEBUG */
 
@@ -1549,6 +1553,7 @@ static int ring_ioctl(struct socket *sock,
 {
   switch(cmd)
     {
+#ifdef CONFIG_INET
     case SIOCGIFFLAGS:
     case SIOCSIFFLAGS:
     case SIOCGIFCONF:
@@ -1569,10 +1574,11 @@ static int ring_ioctl(struct socket *sock,
     case SIOCGIFNAME:
     case SIOCGIFCOUNT:
     case SIOCSIFHWBROADCAST:
-      return(dev_ioctl(cmd,(void *) arg));
+      return(inet_dgram_ops.ioctl(sock, cmd, arg));
+#endif
 
     default:
-      return -EOPNOTSUPP;
+      return -ENOIOCTLCMD;
     }
 
   return 0;
