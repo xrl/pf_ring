@@ -2,6 +2,8 @@
 
 #
 # Rocco Carbone <rocco@ntop.org> - 1Q 2004 GPL
+# Luca Deri <deri@ntop.org>
+# Allan Kerr <allan_kerr@agilent.com>
 
 # Modified beyond reason by cpw (if not Debian, then try PREFIX=linux
 # with source in /tmp, or let this script pull the kernel down.)
@@ -24,7 +26,7 @@ PREFIX=linux
 # kernel identifiers.
 VERSION=2
 PATCHLEVEL=6
-SUBLEVEL=13.2
+SUBLEVEL=16.1
 KERNEL_VERSION=$VERSION.$PATCHLEVEL.$SUBLEVEL
 EXTRAVERSION=-1-686-smp-$PATCH
 
@@ -135,7 +137,7 @@ if test $extract -eq 0; then
   rm -rf $KERNEL
   echo "Untarring Linux sources (read-write tree) in `pwd`"
   tar ${z}xf $SOURCES/$SOURCE
-  mv $KERNEL/* .
+  mv $KERNEL/* $KERNEL/.[^.]* .
   cd $here
 fi
 
@@ -194,7 +196,7 @@ if ! grep -q "#include <linux/ring.h>" $MYKERNEL/net/core/dev.c; then
     # and it should be added as soon as possible within the file.
     # (for example immediately after latest #include <...>)
   
-    line=`grep -n "#include" $MYKERNEL/net/core/dev.c|tail -1 | cut -d":" -f 1`
+    line=`grep -n "#include" $MYKERNEL/net/core/dev.c|tail -n 1 | cut -d":" -f 1`
     line=`expr $line + 1`
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
     cat $MYKERNEL/net/core/dev.c.tmp | sed "$line r $PATCH/kernel/net/core/PATCH-1-to-dev.c" > $MYKERNEL/net/core/dev.c
@@ -214,7 +216,7 @@ EOF
   # It is defined in the source file net/core/PATCH-2-to-dev.c.
   
   if test -f $PATCH/kernel/net/core/PATCH-2-to-dev.c; then
-    line=`grep -n "int netif_rx" $MYKERNEL/net/core/dev.c | tail -1 | cut -d":" -f 1`
+    line=`grep -n "int netif_rx *(" $MYKERNEL/net/core/dev.c | tail -n 1 | cut -d":" -f 1`
     line=`expr $line + 5`
   
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
@@ -225,7 +227,7 @@ EOF
     # to immediately return in case the packet has been copied into a ring.
     # It is defined in the source file net/core/PATCH-2-to-dev.c.
   
-    line=`grep -n "int netif_receive_skb" $MYKERNEL/net/core/dev.c | tail -1 | cut -d":" -f 1`
+    line=`grep -n "int netif_receive_skb" $MYKERNEL/net/core/dev.c | tail -n 1 | cut -d":" -f 1`
     line=`expr $line + 5`
   
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
@@ -247,7 +249,7 @@ EOF
     # It is defined in the source file net/core/PATCH-3-to-dev.c.
   
   if test -f $PATCH/kernel/net/core/PATCH-3-to-dev.c; then
-    line=`grep -n "Grab device queue" $MYKERNEL/net/core/dev.c | tail -1 | cut -d":" -f 1`
+    line=`grep -n "Grab device queue" $MYKERNEL/net/core/dev.c | tail -n 1 | cut -d":" -f 1`
     line=`expr $line - 1`
   
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
@@ -283,7 +285,7 @@ if ! grep -q "CONFIG_RING" $MYKERNEL/net/Makefile; then
   case $PATCHLEVEL in
   6)
     # Look for the last module and add a new directive.
-    line=`grep -n "8021q/" $MYKERNEL/net/Makefile | tail -1 | cut -d":" -f 1`
+    line=`grep -n "8021q/" $MYKERNEL/net/Makefile | tail -n 1 | cut -d":" -f 1`
     mv $MYKERNEL/net/Makefile $MYKERNEL/net/Makefile.tmp
     cat $MYKERNEL/net/Makefile.tmp | sed "$line a obj-\$(CONFIG_RING)		+= ring/" > $MYKERNEL/net/Makefile
     rm -f $MYKERNEL/net/Makefile.tmp
@@ -296,7 +298,7 @@ if ! grep -q "CONFIG_RING" $MYKERNEL/net/Makefile; then
     rm -f $MYKERNEL/net/Makefile.tmp
     # Add a line to define the compilation of the ring
     # Look for the line with VLAN_8021Q (usually last networking option) and add a new directive.
-    line=`grep -n "VLAN_8021Q" $MYKERNEL/net/Makefile | tail -1 | cut -d":" -f 1`
+    line=`grep -n "VLAN_8021Q" $MYKERNEL/net/Makefile | tail -n 1 | cut -d":" -f 1`
     mv $MYKERNEL/net/Makefile $MYKERNEL/net/Makefile.tmp
     cat $MYKERNEL/net/Makefile.tmp | sed "$line a subdir-\$(CONFIG_RING)		+= ring" > $MYKERNEL/net/Makefile
     rm -f $MYKERNEL/net/Makefile.tmp
@@ -331,7 +333,7 @@ if [ $PATCHLEVEL = "4" ]; then
 
   if ! grep -q "struct ring_opt.*pf_ring" $MYKERNEL/include/net/sock.h; then
     # Look for the line with af_packet and add the additional field pf_ring.
-    line=`grep -n "af_packet" $MYKERNEL/include/net/sock.h | tail -1 | cut -d":" -f 1`
+    line=`grep -n "af_packet" $MYKERNEL/include/net/sock.h | tail -n 1 | cut -d":" -f 1`
     line=`expr $line + 1`
   
     mv $MYKERNEL/include/net/sock.h $MYKERNEL/include/net/sock.h.tmp
@@ -371,7 +373,7 @@ if [ -f $MYKERNEL/net/Config.in ]; then
       cp $MYKERNEL/net/Config.in $MYKERNEL/net/Config.in.ORG
     fi
   
-    line=`grep -n "Socket Filtering" $MYKERNEL/net/Config.in | tail -1 | cut -d":" -f 1`
+    line=`grep -n "Socket Filtering" $MYKERNEL/net/Config.in | tail -n 1 | cut -d":" -f 1`
   
     mv $MYKERNEL/net/Config.in $MYKERNEL/net/Config.in.tmp
     cat $MYKERNEL/net/Config.in.tmp | sed "$line r $PATCH/kernel/net/PATCH-to-Config.in" > $MYKERNEL/net/Config.in
@@ -409,8 +411,8 @@ if [ -f $MYKERNEL/net/Kconfig ]; then
 
   if ! grep -q "net/ring/Kconfig" $MYKERNEL/net/Kconfig; then
     # Insert a new configuration directive.
-#    line=`grep -n "config NET_KEY" $MYKERNEL/net/Kconfig | tail -1 | cut -d":" -f 1`
-    line=`grep -n "config INET" $MYKERNEL/net/Kconfig | tail -1 | cut -d":" -f 1`
+#    line=`grep -n "config NET_KEY" $MYKERNEL/net/Kconfig | tail -n 1 | cut -d":" -f 1`
+    line=`grep -n "config INET" $MYKERNEL/net/Kconfig | tail -n 1 | cut -d":" -f 1`
     line=`expr $line - 1`
 
     mv $MYKERNEL/net/Kconfig $MYKERNEL/net/Kconfig.tmp
