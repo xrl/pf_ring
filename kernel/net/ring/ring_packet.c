@@ -156,17 +156,27 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 static u_int bucket_len = 128, num_slots = 4096, sample_rate = 1,
   transparent_mode = 1, enable_tx_capture = 0;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
+module_param(bucket_len, int, 128);
+module_param(num_slots,  int, 4096);
+module_param(sample_rate, int, 1);
+module_param(transparent_mode, int, 1);
+module_param(enable_tx_capture, int, 0);
+#else
 MODULE_PARM(bucket_len, "i");
-MODULE_PARM_DESC(bucket_len, "Number of ring buckets");
-MODULE_PARM(num_slots,  "i");
-MODULE_PARM_DESC(num_slots,  "Number of ring slots");
+MODULE_PARM(num_slots, "i");
 MODULE_PARM(sample_rate, "i");
-MODULE_PARM_DESC(sample_rate, "Ring packet sample rate");
 MODULE_PARM(transparent_mode, "i");
+MODULE_PARM(enable_tx_capture, "i");
+#endif
+
+MODULE_PARM_DESC(bucket_len, "Number of ring buckets");
+MODULE_PARM_DESC(num_slots,  "Number of ring slots");
+MODULE_PARM_DESC(sample_rate, "Ring packet sample rate");
 MODULE_PARM_DESC(transparent_mode,
 		 "Set to 1 to set transparent mode "
 		 "(slower but backwards compatible)");
-MODULE_PARM(enable_tx_capture, "i");
+
 MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
 
 /* ********************************** */
