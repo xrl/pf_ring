@@ -482,12 +482,18 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 
 #ifdef HAVE_PF_RING
 	if(handle->ring) {
-	  if(pfring_recv(handle->ring, (char*)handle->buffer, handle->bufsize,
-			 (struct pfring_pkthdr*)&pcap_header, 1 /* wait_for_incoming_packet */) > 0) {
+ retry:          
+	  packet_len = pfring_recv(handle->ring, (char*)handle->buffer,
+                                   handle->bufsize,
+                                   (struct pfring_pkthdr*)&pcap_header,
+                                   1 /* wait_for_incoming_packet */);
+          if (packet_len > 0) {
 	    bp = handle->buffer;
 	    caplen = pcap_header.caplen, packet_len = pcap_header.len;
 	    goto pfring_pcap_read_packet;
-	  } else
+          } else if (packet_len == -1 && errno == EINTR)
+            goto retry;
+	  else
 	    return(-1);	   
 	}
 	
