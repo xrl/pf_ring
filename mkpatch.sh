@@ -4,6 +4,7 @@
 # Rocco Carbone <rocco@ntop.org> - 1Q 2004 GPL
 # Luca Deri <deri@ntop.org>
 # Allan Kerr <allan_kerr@agilent.com>
+# Willy Tarreau <wtarreau@exosec.fr>
 
 # Modified beyond reason by cpw (if not Debian, then try PREFIX=linux
 # with source in /tmp, or let this script pull the kernel down.)
@@ -19,16 +20,27 @@ function I_should ()
   fi
 }
 
+function break_link ()
+{
+  local file
+
+  for file in "$@"; do
+    if [ -e "$file" ]; then
+      cp "$file" "$file.unlinked" && mv "$file.unlinked" "$file"
+    fi
+  done
+}
+
 PATCH=ring3
 PREFIX=linux
 # or
 #PREFIX=kernel-source
 # kernel identifiers.
-VERSION=2
-PATCHLEVEL=6
-SUBLEVEL=16.1
+VERSION=${VERSION:-2}
+PATCHLEVEL=${PATCHLEVEL:-6}
+SUBLEVEL=${SUBLEVEL:-16.1}
 KERNEL_VERSION=$VERSION.$PATCHLEVEL.$SUBLEVEL
-EXTRAVERSION=-1-686-smp-$PATCH
+EXTRAVERSION=${EXTRAVERSION:--1-686-smp-$PATCH}
 
 KERNEL=$PREFIX-$KERNEL_VERSION
 MYKERNEL=$PREFIX-${KERNEL_VERSION}$EXTRAVERSION
@@ -51,7 +63,7 @@ echo "Creating patch for Linux kernel $KERNEL ..."
 echo "Edit this file (mkpatch.sh) for a different kernel version"
 
 # Set it to "yes" if you want to keep a local copy of the original files.
-saveorg=yes
+saveorg=${saveorg:-yes}
 # Initialize errors which could accrue as we proceed
 errors=0
 
@@ -110,6 +122,7 @@ fi
 if [ ! -d $KERNEL ]; then
   echo "Untarring Linux sources (read-only tree) in "`pwd`"/$KERNEL"
   tar ${z}xf $SOURCES/$SOURCE
+  chmod -R u+w $KERNEL
 else
   echo "Looks like the source is already extracted here `pwd`/$KERNEL"
 fi
@@ -128,17 +141,12 @@ else
     echo "Ok, $MYKERNEL left in it's current state."
   fi
 fi
-here=`pwd`
+
 if test $extract -eq 0; then
-  cd $MYKERNEL
-
+  echo "Cloning Linux sources (read-write tree) in `pwd`"
 # Need to remove read-write kernel if we created it before
-
-  rm -rf $KERNEL
-  echo "Untarring Linux sources (read-write tree) in `pwd`"
-  tar ${z}xf $SOURCES/$SOURCE
-  mv $KERNEL/* $KERNEL/.[^.]* .
-  cd $here
+  rm -rf $MYKERNEL
+  cp -al $KERNEL $MYKERNEL
 fi
 
 #
@@ -348,6 +356,7 @@ if [ $PATCHLEVEL = "4" ]; then
     patch=`expr $patch + 1`
     echo -n "  ${patch}. Patching file net/netsyms.c ..."
     if ! grep -q "linux/ring.h" $MYKERNEL/net/netsyms.c; then
+      break_link $MYKERNEL/net/netsyms.c
       cat $PATCH/kernel/net/PATCH-to-netsyms.c >>  $MYKERNEL/net/netsyms.c
       echo " done"
     else

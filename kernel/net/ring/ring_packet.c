@@ -28,7 +28,7 @@
 #include <linux/tcp.h>
 #include <linux/udp.h>
 #include <linux/list.h>
-#include <linux/proc_fs.h> 
+#include <linux/proc_fs.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 #include <net/xfrm.h>
 #else
@@ -246,7 +246,7 @@ static void ring_proc_add(struct ring_opt *pfr) {
     pfr->ring_id = ring_count++;
 
     snprintf(name, sizeof(name), "%d", pfr->ring_id);
-    create_proc_read_entry(name, 0, ring_proc_dir, 
+    create_proc_read_entry(name, 0, ring_proc_dir,
 			   ring_proc_get_info, pfr);
     /* printk("PF_RING: added /proc/net/pf_ring/%s\n", name); */
   }
@@ -257,8 +257,8 @@ static void ring_proc_add(struct ring_opt *pfr) {
 static void ring_proc_remove(struct ring_opt *pfr) {
   if(ring_proc_dir != NULL) {
     char name[16];
-    
-    snprintf(name, sizeof(name), "%d", pfr->ring_id);    
+
+    snprintf(name, sizeof(name), "%d", pfr->ring_id);
     remove_proc_entry(name, ring_proc_dir);
     /* printk("PF_RING: removed /proc/net/pf_ring/%s\n", name); */
   }
@@ -304,7 +304,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen,"Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
 	rlen += sprintf(buf + rlen,"Tot Insert    : %lu\n", (unsigned long)fsi->tot_insert);
 	rlen += sprintf(buf + rlen,"Tot Read      : %lu\n", (unsigned long)fsi->tot_read);
-	
+
       } else
 	rlen = sprintf(buf, "WARNING fsi == NULL\n");
     } else
@@ -318,7 +318,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
 static void ring_proc_init(void) {
   ring_proc_dir = proc_mkdir("pf_ring", proc_net);
-  
+
   if(ring_proc_dir) {
     ring_proc_dir->owner = THIS_MODULE;
     ring_proc = create_proc_read_entry("info", 0, ring_proc_dir,
@@ -328,7 +328,7 @@ static void ring_proc_init(void) {
     else {
       ring_proc->owner = THIS_MODULE;
       printk("PF_RING: registered /proc/net/pf_ring/\n");
-    }    
+    }
   } else
     printk("PF_RING: unable to create /proc/net/pf_ring\n");
 }
@@ -371,7 +371,7 @@ static inline void ring_insert(struct sock *sk) {
   }
 
   ring_table_size++;
-  ring_proc_add(ring_sk(sk));  
+  ring_proc_add(ring_sk(sk));
 }
 
 /* ********************************** */
@@ -550,25 +550,36 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     /* send it */
     if (pfr->reflector_dev->xmit_lock_owner != cpu) {
+      /* Patch below courtesy of Matthew J. Roth <mroth@imminc.com> */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
       spin_lock_bh(&pfr->reflector_dev->xmit_lock);
       pfr->reflector_dev->xmit_lock_owner = cpu;
       spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
-
-      if (pfr->reflector_dev->hard_start_xmit(skb,
-					      pfr->reflector_dev) == 0) {
+#else
+      netif_tx_lock_bh(pfr->reflector_dev);
+#endif
+      if (pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev) == 0) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
         spin_lock_bh(&pfr->reflector_dev->xmit_lock);
 	pfr->reflector_dev->xmit_lock_owner = -1;
-	skb->data += displ;
 	spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
+#else
+	netif_tx_unlock_bh(pfr->reflector_dev);
+#endif
+	skb->data += displ;
 #if defined(RING_DEBUG)
 	printk("++ hard_start_xmit succeeded\n");
 #endif
 	return; /* OK */
       }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)) 
       spin_lock_bh(&pfr->reflector_dev->xmit_lock);
       pfr->reflector_dev->xmit_lock_owner = -1;
       spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
+#else
+      netif_tx_unlock_bh(pfr->reflector_dev);
+#endif
     }
 
 #if defined(RING_DEBUG)
@@ -969,7 +980,7 @@ static int ring_release(struct socket *sock)
   printk("RING: ring_release entered\n");
 #endif
 
-  /* 
+  /*
      The calls below must be placed outside the
      write_lock_irq...write_unlock_irq block.
   */
