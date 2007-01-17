@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2004-06 - Luca Deri <deri@ntop.org>
+ * (C) 2004-07 - Luca Deri <deri@ntop.org>
  *
  * This code includes contributions courtesy of
  * - Jeff Randall <jrandall@nexvu.com>
@@ -8,11 +8,31 @@
  * - Brad Doctor <brad@stillsecure.com>
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
  * - Francesco Fusco <fusco@ntop.org>
+ * - Michael Stiller <ms@2scale.net>
+ *
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  *
  */
 
 #include <linux/version.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19))
+#include <linux/autoconf.h>
+#else
 #include <linux/config.h>
+#endif
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/socket.h>
