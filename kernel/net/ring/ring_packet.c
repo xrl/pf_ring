@@ -798,14 +798,20 @@ static int skb_ring_handler(struct sk_buff *skb,
 
     if((pfr != NULL)
        && (pfr->cluster_id == 0 /* No cluster */)
-       && (pfr->ring_slots != NULL)
-       && (pfr->ring_netdev == skb->dev)) {
-      /* We've found the ring where the packet can be stored */
-      read_lock(&ring_mgmt_lock);
-      add_skb_to_ring(skb, pfr, recv_packet, real_skb);
-      read_unlock(&ring_mgmt_lock);
+       && (pfr->ring_slots != NULL)) {
+      if (pfr->ring_netdev == skb->dev) {
+	read_lock(&ring_mgmt_lock);
+	add_skb_to_ring(skb, pfr, recv_packet, real_skb);
+	read_unlock(&ring_mgmt_lock);
 
-      rc = 1; /* Ring found: we've done our job */
+	rc = 1;
+      } else if ((skb->dev->flags & IFF_SLAVE) /* bond device */
+		 && skb->dev->master == pfr->ring_netdev) {
+	read_lock(&ring_mgmt_lock);
+	add_skb_to_ring(skb, pfr, recv_packet, real_skb);
+	read_unlock(&ring_mgmt_lock);
+	rc = 1;
+      }
     }
   }
 
