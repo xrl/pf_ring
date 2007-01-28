@@ -485,6 +485,54 @@ static inline FlowSlot* get_remove_slot(struct ring_opt *pfr) {
     return(NULL);
 }
 
+/* ******************************************************* */
+
+static int parse_pkt(struct sk_buff *skb, u_int16_t skb_displ,
+		     u_int8_t *l3_proto, u_int16_t *eth_type,
+		     u_int16_t *l3_offset, u_int16_t *l4_offset,
+		     u_int16_t *vlan_id, u_int32_t *ipv4_src, u_int32_t *ipv4_dst,
+		     u_int16_t *l4_src_port, u_int16_t *l4_dst_port) {
+  struct iphdr *ip;
+  struct ethhdr *eh = (struct ethhdr*)(skb->data-skb_displ);
+  u_int16_t displ;
+
+  *l3_offset = *l4_offset = *l3_proto = 0;
+  *eth_type = ntohs(eh->h_proto);
+
+  if(*eth_type == 0x8100 /* 802.1q (VLAN) */) {
+    (*vlan_id) = (skb->data[14] & 15)*256 + skb->data[15];
+    *eth_type = (skb->data[16])*256 + skb->data[17];
+    displ = 4;
+  } else {
+    displ = 0;
+    (*vlan_id) = (u_int16_t)-1;
+  }
+
+  if(*eth_type == 0x0800 /* IP */) {
+    *l3_offset = displ+sizeof(struct ethhdr);
+    ip = (struct iphdr*)(skb->data-skb_displ+(*l3_offset));
+
+    *ipv4_src = ntohl(ip->saddr), *ipv4_dst = ntohl(ip->daddr), *l3_proto = ip->protocol;
+
+    if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP)) {
+      *l4_offset = (*l3_offset)+sizeof(struct iphdr);
+
+      if(ip->protocol == IPPROTO_TCP) {
+	struct tcphdr *tcp = (struct tcphdr*)(skb->data-skb_displ+(*l4_offset));
+	*l4_src_port = ntohs(tcp->source), *l4_dst_port = ntohs(tcp->dest);
+      } else if(ip->protocol == IPPROTO_UDP) {
+	struct udphdr *udp = (struct udphdr*)(skb->data-skb_displ+(*l4_offset));
+	*l4_src_port = ntohs(udp->source), *l4_dst_port = ntohs(udp->dest);
+      }
+    } else
+      *l4_src_port = *l4_dst_port = 0;
+
+    return(1);
+  } /* TODO: handle IPv6 */
+
+  return(0);
+}
+
 /* ********************************** */
 
 static void add_skb_to_ring(struct sk_buff *skb,
@@ -652,13 +700,25 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     hdr->ts.tv_sec = skb->tstamp.off_sec, hdr->ts.tv_usec = skb->tstamp.off_usec;
 #endif
-
     hdr->caplen    = skb->len+displ;
 
     if(hdr->caplen > pfr->slots_info->data_len)
       hdr->caplen = pfr->slots_info->data_len;
 
     hdr->len = skb->len+displ;
+    
+    /* Extensions */
+    parse_pkt(skb, displ,
+	      &hdr->l3_proto,
+	      &hdr->eth_type,
+	      &hdr->l3_offset,
+	      &hdr->l4_offset,
+	      &hdr->vlan_id, 
+	      &hdr->ipv4_src, 
+	      &hdr->ipv4_dst,
+	      &hdr->l4_src_port, 
+	      &hdr->l4_dst_port);
+
     memcpy(&bucket[sizeof(struct pcap_pkthdr)],
 	   skb->data-displ, hdr->caplen);
 

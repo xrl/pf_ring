@@ -231,6 +231,10 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     struct ip ip;
     int s = (h->ts.tv_sec + thiszone) % 86400;
 
+    printf("[eth_type=0x%04X]", h->eth_type);
+    printf("[l3_proto=%u]", (unsigned int)h->l3_proto);
+    printf("[%s -> ", intoa(h->ipv4_src));
+    printf("%s] ", intoa(h->ipv4_dst));
     printf("%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
