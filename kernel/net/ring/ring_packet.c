@@ -893,7 +893,8 @@ static int skb_ring_handler(struct sk_buff *skb,
 
 	if((pfr != NULL)
 	   && (pfr->ring_slots != NULL)
-	   && (pfr->ring_netdev == skb->dev)) {
+	   && ((pfr->ring_netdev == skb->dev) 
+	       || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
 	  /* We've found the ring where the packet can be stored */
           read_lock(&ring_mgmt_lock);
 	  add_skb_to_ring(skb, pfr, recv_packet, real_skb);
