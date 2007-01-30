@@ -490,7 +490,8 @@ static inline FlowSlot* get_remove_slot(struct ring_opt *pfr) {
 static int parse_pkt(struct sk_buff *skb, u_int16_t skb_displ,
 		     u_int8_t *l3_proto, u_int16_t *eth_type,
 		     u_int16_t *l3_offset, u_int16_t *l4_offset,
-		     u_int16_t *vlan_id, u_int32_t *ipv4_src, u_int32_t *ipv4_dst,
+		     u_int16_t *vlan_id, u_int32_t *ipv4_src, 
+		     u_int32_t *ipv4_dst,
 		     u_int16_t *l4_src_port, u_int16_t *l4_dst_port) {
   struct iphdr *ip;
   struct ethhdr *eh = (struct ethhdr*)(skb->data-skb_displ);
@@ -893,8 +894,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 
 	if((pfr != NULL)
 	   && (pfr->ring_slots != NULL)
-	   && ((pfr->ring_netdev == skb->dev) 
-	       || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
+	   && (pfr->ring_netdev == skb->dev)) {
 	  /* We've found the ring where the packet can be stored */
           read_lock(&ring_mgmt_lock);
 	  add_skb_to_ring(skb, pfr, recv_packet, real_skb);

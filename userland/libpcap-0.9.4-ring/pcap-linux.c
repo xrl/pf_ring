@@ -483,6 +483,19 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 #ifdef HAVE_PF_RING
 	if(handle->ring) {
  retry:          
+
+	  if (handle->break_loop) {
+	    /*
+	     * Yes - clear the flag that indicates that it
+	     * has, and return -2 as an indication that we
+	     * were told to break out of the loop.
+	     *
+	     * Patch courtesy of Michael Stiller <ms@2scale.net>
+	     */
+	    handle->break_loop = 0;
+	    return -2;
+          }
+
 	  packet_len = pfring_recv(handle->ring, (char*)handle->buffer,
                                    handle->bufsize,
                                    (struct pfring_pkthdr*)&pcap_header,
