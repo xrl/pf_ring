@@ -1,11 +1,10 @@
 /*
  * Definitions for packet ring
  *
- * 2004-06 Luca Deri <deri@ntop.org>
+ * 2004-07 Luca Deri <deri@ntop.org>
  */
 #ifndef __RING_H
 #define __RING_H
-
 
 #define INCLUDE_MAC_INFO
 
@@ -16,13 +15,20 @@
 #endif
 
 #define RING_MAGIC
-#define RING_MAGIC_VALUE      0x88
-#define RING_FLOWSLOT_VERSION    6
-#define RING_VERSION          "3.2.1"
+#define RING_MAGIC_VALUE            0x88
+#define RING_FLOWSLOT_VERSION          6
+#define RING_VERSION             "3.4.0"
 
 #define SO_ADD_TO_CLUSTER        99
 #define SO_REMOVE_FROM_CLUSTER  100
 #define SO_SET_REFLECTOR        101
+#define SO_SET_BLOOM            102
+#define SO_TOGGLE_BLOOM_STATE   103
+#define SO_RESET_BLOOM_FILTERS  104
+
+#define BITMASK_SET(n, p)       (((char*)p->bits_memory)[n/8] |= (1<<(n % 8)))
+#define BITMASK_CLR(n, p)       (((char*)p->bits_memory)[n/8] &= ~(1<<(n % 8)))
+#define BITMASK_ISSET(n, p)     (((char*)p->bits_memory)[n/8] &  (1<<(n % 8)))
 
 /* *********************************** */
 
@@ -32,14 +38,28 @@ struct pcap_pkthdr {
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
   /* packet parsing info */
-  u_int16_t eth_type; /* Ethernet type */
-  u_int16_t vlan_id;  /* VLAN Id or -1 for no vlan */
-  u_int8_t  l3_proto;  /* Layer 3 protocol */
+  u_int16_t eth_type;   /* Ethernet type */
+  u_int16_t vlan_id;    /* VLAN Id or -1 for no vlan */
+  u_int8_t  l3_proto;   /* Layer 3 protocol */
   u_int16_t l3_offset, l4_offset; /* Offsets of L3 and L4 elements */
   u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
   };
 #endif
+
+/* *********************************** */
+
+typedef struct _counter_list {
+  u_int32_t bit_id;
+  u_int32_t bit_counter;
+  struct _counter_list *next;
+} bitmask_counter_list;
+
+typedef struct {
+  u_int32_t num_bits, order, num_pages;
+  unsigned long bits_memory;
+  bitmask_counter_list *clashes;
+} bitmask_selector;
 
 /* *********************************** */
 

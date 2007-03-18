@@ -202,6 +202,32 @@ void pfring_close(pfring *ring) {
 
 /* **************************************************** */
 
+int pfring_toggle_bloom_state(pfring *ring, int enable_bloom) {
+  return(ring ? setsockopt(ring->fd, 0, SO_TOGGLE_BLOOM_STATE,
+			   &enable_bloom, sizeof(enable_bloom)): -1);
+
+}
+
+/* **************************************************** */
+
+int pfring_reset_bloom_filters(pfring *ring) {
+  int reset_filters = 1;
+
+  return(ring ? setsockopt(ring->fd, 0, SO_RESET_BLOOM_FILTERS,
+			   &reset_filters, sizeof(reset_filters)): -1);
+
+}
+
+/* **************************************************** */
+
+int pfring_set_bloom_filter(pfring *ring, char *bloom_filter) {
+  return((ring && bloom_filter) ? setsockopt(ring->fd, 0, SO_SET_BLOOM,
+					     bloom_filter, strlen(bloom_filter)): -1);
+
+}
+
+/* **************************************************** */
+
 int pfring_stats(pfring *ring, pfring_stat *stats) {
   if(ring && stats) {
     stats->recv = ring->slots_info->tot_read;

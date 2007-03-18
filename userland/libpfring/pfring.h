@@ -84,3 +84,6 @@ void pfring_close(pfring *ring);
 int pfring_stats(pfring *ring, pfring_stat *stats);
 int pfring_recv(pfring *ring, char* buffer, int buffer_len, 
 		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet);
+int pfring_toggle_bloom_state(pfring *ring, int enable_bloom);
+int pfring_set_bloom_filter(pfring *ring, char *bloom_filter);
+int pfring_reset_bloom_filters(pfring *ring);

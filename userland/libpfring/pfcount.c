@@ -298,19 +298,33 @@ int32_t gmt2local(time_t t) {
 /* *************************************** */
 
 void printHelp(void) {
-  printf("pfcount\n(C) 2005-06 Deri Luca <deri@ntop.org>\n");
+  printf("pfcount\n(C) 2005-07 Deri Luca <deri@ntop.org>\n");
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name]\n");
   printf("-f <filter>     [pfring filter]\n");
   printf("-c <cluster id> [cluster id]\n");
+  printf("-b <bloom>      [Bloom filter]\n");
   printf("-a              [Active packet wait]\n");
   printf("-v              [Verbose]\n");
+
+  printf("\nBloom filter syntax examples (-b):\n"
+	 "               +vlan=10\n" 
+	 "               -vlan=10\n" 
+	 "               +ip=192.168.0.1\n" 
+	 "               -ip=192.168.0.1\n" 
+	 "               +port=80\n" 
+	 "               -port=80\n" 
+	 "               +proto=tcp\n" 
+	 "               -proto=tcp\n" 
+	 "               +mac=00:11:22:33:44:55\n"  
+	 "               -mac=00:11:22:33:44:55\n");
+
 }
 
 /* *************************************** */
 
 int main(int argc, char* argv[]) {
-  char *device = NULL, c, *bpfFilter = NULL;
+  char *device = NULL, c, *bpfFilter = NULL, *bloom = NULL;
   int i, promisc;
   u_int clusterId = 0;
   u_char wait_for_packet = 1;
@@ -352,7 +366,7 @@ int main(int argc, char* argv[]) {
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:vf:")) != -1) {
+  while((c = getopt(argc,argv,"hi:c:vf:b:")) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -366,6 +380,9 @@ int main(int argc, char* argv[]) {
       break;
     case 'i':
       device = strdup(optarg);
+      break;
+    case 'b':
+      bloom = strdup(optarg);
       break;
     case 'v':
       verbose = 1;
@@ -390,6 +407,12 @@ int main(int argc, char* argv[]) {
   if(clusterId > 0) {
     int rc = pfring_set_cluster(pd, clusterId);    
     printf("pfring_set_cluster returned %d\n", rc);
+  }
+
+  if(bloom) {
+    pfring_reset_bloom_filters(pd);
+    pfring_set_bloom_filter(pd, bloom);
+    pfring_toggle_bloom_state(pd, 1);
   }
   
   signal(SIGINT, sigproc);
