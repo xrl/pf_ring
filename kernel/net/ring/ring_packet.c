@@ -128,7 +128,8 @@ struct ring_opt {
 
   /* Bloom Filters */
   u_char bitmask_enabled;
-  bitmask_selector mac_bitmask, vlan_bitmask, ip_bitmask, port_bitmask, proto_bitmask;
+  bitmask_selector mac_bitmask, vlan_bitmask, ip_bitmask, twin_ip_bitmask, 
+    port_bitmask, twin_port_bitmask, proto_bitmask;
   u_int32_t num_mac_bitmask_add, num_mac_bitmask_remove;
   u_int32_t num_vlan_bitmask_add, num_vlan_bitmask_remove;
   u_int32_t num_ip_bitmask_add, num_ip_bitmask_remove;
@@ -682,6 +683,22 @@ static void clear_bit_bitmask(bitmask_selector *selector, u_int32_t the_bit) {
 
 /* ********************************** */
 
+/* Hash function */
+static u_int32_t sdb_hash(u_int32_t value) {
+  u_int32_t hash = 0, i;
+  u_int8_t str[sizeof(value)];
+
+  memcpy(str, &value, sizeof(value));
+
+  for(i = 0; i < sizeof(value); i++) {
+    hash = str[i] + (hash << 6) + (hash << 16) - hash;
+  }
+
+  return(hash);
+}
+
+/* ********************************** */
+
 static void handle_bloom_filter_rule(struct ring_opt *pfr, char *buf) {
   u_int count;
 
@@ -726,18 +743,18 @@ static void handle_bloom_filter_rule(struct ring_opt *pfr, char *buf) {
 	u_int32_t ip_addr = ((a & 0xff) << 24) + ((b & 0xff) << 16) + ((c & 0xff) << 8) + (d & 0xff);
 
 	if(buf[0] == '+')
-	  set_bit_bitmask(&pfr->ip_bitmask, ip_addr), pfr->num_ip_bitmask_add++;
+	  set_bit_bitmask(&pfr->ip_bitmask, ip_addr), set_bit_bitmask(&pfr->ip_bitmask, sdb_hash(ip_addr)), pfr->num_ip_bitmask_add++;
 	else
-	  clear_bit_bitmask(&pfr->ip_bitmask, ip_addr), pfr->num_ip_bitmask_remove++;
+	  clear_bit_bitmask(&pfr->ip_bitmask, ip_addr), clear_bit_bitmask(&pfr->twin_ip_bitmask, sdb_hash(ip_addr)), pfr->num_ip_bitmask_remove++;
       } else
 	printk("PF_RING: -> Invalid IP address '%s'\n", &buf[4]);
     } else if(!strncmp(&buf[1], "port=", 5)) {
       sscanf(&buf[6], "%d", &the_bit);
 
       if(buf[0] == '+')
-	set_bit_bitmask(&pfr->port_bitmask, the_bit), pfr->num_port_bitmask_add++;
+	set_bit_bitmask(&pfr->port_bitmask, the_bit), set_bit_bitmask(&pfr->port_bitmask, sdb_hash(the_bit)), pfr->num_port_bitmask_add++;
       else
-	clear_bit_bitmask(&pfr->port_bitmask, the_bit), pfr->num_port_bitmask_remove++;
+	clear_bit_bitmask(&pfr->port_bitmask, the_bit), clear_bit_bitmask(&pfr->twin_port_bitmask, sdb_hash(the_bit)), pfr->num_port_bitmask_remove++;
     } else if(!strncmp(&buf[1], "proto=", 6)) {
       if(!strncmp(&buf[7], "tcp", 3))       the_bit = 6;
       else if(!strncmp(&buf[7], "udp", 3))  the_bit = 17;
@@ -758,8 +775,8 @@ static void handle_bloom_filter_rule(struct ring_opt *pfr, char *buf) {
 static void reset_bloom_filters(struct ring_opt *pfr) {
   reset_bitmask(&pfr->mac_bitmask);
   reset_bitmask(&pfr->vlan_bitmask);
-  reset_bitmask(&pfr->ip_bitmask);
-  reset_bitmask(&pfr->port_bitmask);
+  reset_bitmask(&pfr->ip_bitmask); reset_bitmask(&pfr->twin_ip_bitmask);
+  reset_bitmask(&pfr->port_bitmask); reset_bitmask(&pfr->twin_port_bitmask);
   reset_bitmask(&pfr->proto_bitmask);
 
   pfr->num_mac_bitmask_add   = pfr->num_mac_bitmask_remove   = 0;
@@ -776,8 +793,8 @@ static void reset_bloom_filters(struct ring_opt *pfr) {
 static void init_blooms(struct ring_opt *pfr) {
   alloc_bitmask(4096,  &pfr->mac_bitmask);
   alloc_bitmask(4096,  &pfr->vlan_bitmask);
-  alloc_bitmask(32768, &pfr->ip_bitmask);
-  alloc_bitmask(4096,  &pfr->port_bitmask);
+  alloc_bitmask(32768, &pfr->ip_bitmask); alloc_bitmask(32768, &pfr->twin_ip_bitmask);
+  alloc_bitmask(4096,  &pfr->port_bitmask); alloc_bitmask(4096,  &pfr->twin_port_bitmask);
   alloc_bitmask(4096,  &pfr->proto_bitmask);
   
   pfr->num_mac_bitmask_add   = pfr->num_mac_bitmask_remove = 0;
@@ -1400,8 +1417,8 @@ static int ring_release(struct socket *sock)
 
   free_bitmask(&pfr->mac_bitmask);
   free_bitmask(&pfr->vlan_bitmask);
-  free_bitmask(&pfr->ip_bitmask);
-  free_bitmask(&pfr->port_bitmask);
+  free_bitmask(&pfr->ip_bitmask); free_bitmask(&pfr->twin_ip_bitmask);
+  free_bitmask(&pfr->port_bitmask); free_bitmask(&pfr->twin_port_bitmask);
   free_bitmask(&pfr->proto_bitmask);
 
   kfree(pfr);
