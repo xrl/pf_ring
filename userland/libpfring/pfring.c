@@ -210,6 +210,17 @@ int pfring_toggle_bloom_state(pfring *ring, int enable_bloom) {
 
 /* **************************************************** */
 
+int pfring_set_search_string(pfring *ring, char* string) {
+  int rc;
+
+  rc = (ring && string) ? setsockopt(ring->fd, 0, SO_SET_STRING,
+				     string, strlen(string)): -1;
+
+  return(rc);
+}
+
+/* **************************************************** */
+
 int pfring_reset_bloom_filters(pfring *ring) {
   int reset_filters = 1;
 

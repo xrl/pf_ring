@@ -304,6 +304,7 @@ void printHelp(void) {
   printf("-f <filter>     [pfring filter]\n");
   printf("-c <cluster id> [cluster id]\n");
   printf("-b <bloom>      [Bloom filter]\n");
+  printf("-s <string>     [String to search on packets]\n");
   printf("-a              [Active packet wait]\n");
   printf("-v              [Verbose]\n");
 
@@ -324,7 +325,7 @@ void printHelp(void) {
 /* *************************************** */
 
 int main(int argc, char* argv[]) {
-  char *device = NULL, c, *bpfFilter = NULL, *bloom = NULL;
+  char *device = NULL, c, *bpfFilter = NULL, *bloom = NULL, *string = NULL;
   int i, promisc;
   u_int clusterId = 0;
   u_char wait_for_packet = 1;
@@ -366,7 +367,7 @@ int main(int argc, char* argv[]) {
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:vf:b:")) != -1) {
+  while((c = getopt(argc,argv,"hi:c:vf:b:s:a")) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -389,6 +390,9 @@ int main(int argc, char* argv[]) {
       break;
     case 'f':
       bpfFilter = strdup(optarg);
+      break;
+    case 's':
+      string = strdup(optarg);
       break;
     }
   }
@@ -414,7 +418,9 @@ int main(int argc, char* argv[]) {
     pfring_set_bloom_filter(pd, bloom);
     pfring_toggle_bloom_state(pd, 1);
   }
-  
+
+  if(string) pfring_set_search_string(pd, string);
+
   signal(SIGINT, sigproc);
 
   if(!verbose) {

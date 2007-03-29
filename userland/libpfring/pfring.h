@@ -87,3 +87,4 @@ int pfring_recv(pfring *ring, char* buffer, int buffer_len,
 int pfring_toggle_bloom_state(pfring *ring, int enable_bloom);
 int pfring_set_bloom_filter(pfring *ring, char *bloom_filter);
 int pfring_reset_bloom_filters(pfring *ring);
+int pfring_set_search_string(pfring *ring, char* string);
