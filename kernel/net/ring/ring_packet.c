@@ -2315,6 +2315,9 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
 	rlen += sprintf(buf + rlen,"Version       : %d\n",  fsi->version);
 	rlen += sprintf(buf + rlen,"Sampling Rate : %d\n",  pfr->sample_rate);
+	rlen += sprintf(buf + rlen,"BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
+	rlen += sprintf(buf + rlen,"Bloom Filters : %s\n",  pfr->bitmask_enabled ? "Enabled" : "Disabled");
+	rlen += sprintf(buf + rlen,"Pattern Search: %s\n",  pfr->acsm ? "Enabled" : "Disabled");
 	rlen += sprintf(buf + rlen,"Cluster Id    : %d\n",  pfr->cluster_id);
 	rlen += sprintf(buf + rlen,"Tot Slots     : %d\n",  fsi->tot_slots);
 	rlen += sprintf(buf + rlen,"Slot Len      : %d\n",  fsi->slot_len);
@@ -3944,8 +3947,8 @@ static int ring_setsockopt(struct socket *sock,
 	write_lock(&ring_mgmt_lock);
 	pfr->bpfFilter = filter;
 	write_unlock(&ring_mgmt_lock);
+	ret = 0;
       }
-      ret = 0;
       break;
 
     case SO_DETACH_FILTER:

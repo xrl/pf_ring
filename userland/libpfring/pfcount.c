@@ -305,7 +305,7 @@ void printHelp(void) {
   printf("pfcount\n(C) 2005-07 Deri Luca <deri@ntop.org>\n");
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name]\n");
-  printf("-f <filter>     [pfring filter]\n");
+  /* printf("-f <filter>     [pfring filter]\n"); */
   printf("-c <cluster id> [cluster id]\n");
   printf("-b <bloom>      [Bloom filter]\n");
   printf("-s <string>     [String to search on packets]\n");
@@ -371,7 +371,7 @@ int main(int argc, char* argv[]) {
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:vf:b:s:a")) != -1) {
+  while((c = getopt(argc,argv,"hi:c:vb:s:a" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -392,9 +392,11 @@ int main(int argc, char* argv[]) {
     case 'v':
       verbose = 1;
       break;
-    case 'f':
-      bpfFilter = strdup(optarg);
-      break;
+      /*
+	case 'f':
+	bpfFilter = strdup(optarg);
+	break;
+      */
     case 's':
       string = strdup(optarg);
       break;
