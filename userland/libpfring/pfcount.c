@@ -19,7 +19,7 @@
  *
  * VLAN support courtesy of Vincent Magnin <vincent.magnin@ci.unil.ch>
  *
-*/
+ */
 
 #include <signal.h>
 #include <sched.h>
@@ -54,10 +54,10 @@ unsigned long long numPkts = 0, numBytes = 0;
 
 /* *************************************** */
 /*
- * The time difference in microseconds
+ * The time difference in millisecond
  */
-long delta_time (struct timeval * now,
-                 struct timeval * before) {
+double delta_time (struct timeval * now,
+		   struct timeval * before) {
   time_t delta_seconds;
   time_t delta_microseconds;
 
@@ -72,7 +72,7 @@ long delta_time (struct timeval * now,
     delta_microseconds += 1000000;  /* 1e6 */
     -- delta_seconds;
   }
-  return((delta_seconds * 1000000) + delta_microseconds);
+  return((double)(delta_seconds * 1000) + (double)delta_microseconds/1000);
 }
 
 /* ******************************** */
@@ -80,33 +80,37 @@ long delta_time (struct timeval * now,
 void print_stats() {
   pfring_stat pfringStat;
   struct timeval endTime;
-  float deltaSec;
+  double deltaMillisec;
   static u_int64_t lastPkts = 0;
   u_int64_t diff;
   static struct timeval lastTime;
 
+  if(startTime.tv_sec == 0) return;
+
   gettimeofday(&endTime, NULL);
-  deltaSec = (double)delta_time(&endTime, &startTime)/1000000;
+  deltaMillisec = delta_time(&endTime, &startTime);
 
   if(pfring_stats(pd, &pfringStat) >= 0)
     fprintf(stderr, "=========================\n"
-	"Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
-        "Total Pkts=%d/Dropped=%.1f %%\n",
+	    "Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
+	    "Total Pkts=%d/Dropped=%.1f %%\n",
 	    pfringStat.recv, pfringStat.drop, pfringStat.recv-pfringStat.drop,
 	    pfringStat.recv == 0 ? 0 : (double)(pfringStat.drop*100)/(double)pfringStat.recv);
   fprintf(stderr, "%llu pkts [%.1f pkt/sec] - %llu bytes [%.2f Mbit/sec]\n",
-	  numPkts, (double)numPkts/deltaSec,
-	  numBytes, (double)8*numBytes/(double)(deltaSec*1000000));
-  
-  deltaSec = (double)delta_time(&endTime, &lastTime)/1000000;
-  diff = pfringStat.recv-lastPkts;
-  fprintf(stderr, "=========================\n"
-	  "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
-	  diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
+	  numPkts, (double)(numPkts*1000)/deltaMillisec,
+	  numBytes, (double)8*numBytes/(double)(deltaMillisec));
+
+  if(lastTime.tv_sec > 0) {
+    deltaMillisec = delta_time(&endTime, &lastTime);
+    diff = pfringStat.recv-lastPkts;
+    fprintf(stderr, "=========================\n"
+	    "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
+	    diff, deltaMillisec, ((double)diff/(double)(deltaMillisec/1000)));
+  }
+
   lastPkts = pfringStat.recv;
   
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
-
 
   fprintf(stderr, "=========================\n");
 }
@@ -280,7 +284,7 @@ int32_t gmt2local(time_t t) {
   *gmt = *gmtime(&t);
   loc = localtime(&t);
   dt = (loc->tm_hour - gmt->tm_hour) * 60 * 60 +
-        (loc->tm_min - gmt->tm_min) * 60;
+    (loc->tm_min - gmt->tm_min) * 60;
 
   /*
    * If the year or julian day is different, we span 00:00 GMT
@@ -344,24 +348,24 @@ int main(int argc, char* argv[]) {
 #define TEST_PROCESSOR_AFFINITY
 #ifdef TEST_PROCESSOR_AFFINITY
   {
-   unsigned long new_mask = 1;
-   unsigned int len = sizeof(new_mask);
-   unsigned long cur_mask;
-   pid_t p = 0; /* current process */
-   int ret;
+    unsigned long new_mask = 1;
+    unsigned int len = sizeof(new_mask);
+    unsigned long cur_mask;
+    pid_t p = 0; /* current process */
+    int ret;
    
-   ret = sched_getaffinity(p, len, NULL);
-   printf(" sched_getaffinity = %d, len = %u\n", ret, len);
+    ret = sched_getaffinity(p, len, NULL);
+    printf(" sched_getaffinity = %d, len = %u\n", ret, len);
    
-   ret = sched_getaffinity(p, len, &cur_mask);
-   printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
+    ret = sched_getaffinity(p, len, &cur_mask);
+    printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
    
-   ret = sched_setaffinity(p, len, &new_mask);
-   printf(" sched_setaffinity = %d, new_mask = %08lx\n", ret, new_mask);
+    ret = sched_setaffinity(p, len, &new_mask);
+    printf(" sched_setaffinity = %d, new_mask = %08lx\n", ret, new_mask);
    
-   ret = sched_getaffinity(p, len, &cur_mask);
-   printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
- }
+    ret = sched_getaffinity(p, len, &cur_mask);
+    printf(" sched_getaffinity = %d, cur_mask = %08lx\n", ret, cur_mask);
+  }
 #endif
 #endif
 

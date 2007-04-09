@@ -3,10 +3,18 @@ This directory contains:
 
 kernel/				Kernel related patches
 userland/			User space code
-userland/libpcap-0.8.1-ring/	Libpcap enhanced with PF_RING support
+userland/libpfring/		user space library used to manpulate PF_RING
+userland/libpcap-0.9.4-ring/	Libpcap enhanced with PF_RING support
 userland/pcount/		P(acket)count application (use it for your tests)
 
+See also:
+
+- PF_RING and Snort
+http://synfulpacket.blogspot.com/2006/11/pfring-and-snort.html
+
+- Advanced Packet Capturing Howto: PF_RING, NAPI and extended libpcap on Debian Sarge
+http://bjou.homeunix.net/blog/2006/12/advanced-packet-capturing-howto-pf_ring-napi-and-extended-libpcap-on-debian-sarge/
 
 ------------
 Luca Deri, Rocco Carbone
-April 2004
+April 2004-07

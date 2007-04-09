@@ -1,5 +1,4 @@
 
 Make sure that when you build the libpcap library, you modify the libpcap Makefile as follows:
-1. Add "-I ../libpfring" to the INCLS variable
-2. Add "-l ../libpfring/libpfring.a" to the LIBS variable
-
+1. Add " -I ../../kernel/include -I ../libpfring" to the INCLS variable
+2. Add "../libpfring/pfring.o" to the LIBS variable

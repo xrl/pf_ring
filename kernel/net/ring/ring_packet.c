@@ -1,4 +1,4 @@
-/*
+/* ***************************************************************
  *
  * (C) 2004-07 - Luca Deri <deri@ntop.org>
  *
@@ -98,7 +98,7 @@ struct ring_element {
 struct ring_opt {
   struct net_device *ring_netdev;
 
-  u_short ring_id;
+  u_short ring_pid;
 
   /* Cluster */
   u_short cluster_id; /* 0 = no cluster */
@@ -165,7 +165,6 @@ static void ring_proc_add(struct ring_opt *pfr);
 static void ring_proc_remove(struct ring_opt *pfr);
 static void ring_proc_init(void);
 static void ring_proc_term(void);
-static int ring_count = 0;
 
 /* ********************************** */
 
@@ -190,11 +189,11 @@ static unsigned int bucket_len = 128, num_slots = 4096, sample_rate = 1,
   transparent_mode = 1, enable_tx_capture = 1;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
-module_param(bucket_len, uint, 0);
-module_param(num_slots,  uint, 0);
-module_param(sample_rate, uint, 0);
-module_param(transparent_mode, uint, 0);
-module_param(enable_tx_capture, uint, 0);
+module_param(bucket_len, uint, 0644);
+module_param(num_slots,  uint, 0644);
+module_param(sample_rate, uint, 0644);
+module_param(transparent_mode, uint, 0644);
+module_param(enable_tx_capture, uint, 0644);
 #else
 MODULE_PARM(bucket_len, "i");
 MODULE_PARM(num_slots, "i");
@@ -376,7 +375,7 @@ inline int toupper(int ch) {
   return ch;
 }
 
-static void init_xlatcase()
+static void init_xlatcase(void)
 {
   int i;
   for (i = 0; i < 256; i++)
@@ -384,6 +383,7 @@ static void init_xlatcase()
       xlatcase[i] = toupper(i);
     }
 }
+
 /*
  *    Case Conversion
  */
@@ -1396,7 +1396,7 @@ int acsmSetAlphabetSize2( ACSM_STRUCT2 * acsm, int n )
 /*
  *  Create a new AC state machine
  */
-ACSM_STRUCT2 * acsmNew2 ()
+static ACSM_STRUCT2 * acsmNew2 (void)
 {
   ACSM_STRUCT2 * p;
 
@@ -2261,9 +2261,9 @@ static void ring_proc_add(struct ring_opt *pfr) {
   if(ring_proc_dir != NULL) {
     char name[16];
 
-    pfr->ring_id = ring_count++;
+    pfr->ring_pid = current->pid; 
 
-    snprintf(name, sizeof(name), "%d", pfr->ring_id);
+    snprintf(name, sizeof(name), "%d", pfr->ring_pid);
     create_proc_read_entry(name, 0, ring_proc_dir,
 			   ring_proc_get_info, pfr);
     /* printk("PF_RING: added /proc/net/pf_ring/%s\n", name); */
@@ -2276,7 +2276,7 @@ static void ring_proc_remove(struct ring_opt *pfr) {
   if(ring_proc_dir != NULL) {
     char name[16];
 
-    snprintf(name, sizeof(name), "%d", pfr->ring_id);
+    snprintf(name, sizeof(name), "%d", pfr->ring_pid);
     remove_proc_entry(name, ring_proc_dir);
     /* printk("PF_RING: removed /proc/net/pf_ring/%s\n", name); */
   }
@@ -2293,14 +2293,16 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
   if(data == NULL) {
     /* /proc/net/pf_ring/info */
-    rlen = sprintf(buf,"Version       : %s\n", RING_VERSION);
-    rlen += sprintf(buf + rlen,"Bucket length : %d bytes\n", bucket_len);
-    rlen += sprintf(buf + rlen,"Ring slots    : %d\n", num_slots);
-    rlen += sprintf(buf + rlen,"Sample rate   : %d [1=no sampling]\n", sample_rate);
+    rlen = sprintf(buf,"Version             : %s\n", RING_VERSION);
+    rlen += sprintf(buf + rlen,"Bucket length       : %d bytes\n", bucket_len);
+    rlen += sprintf(buf + rlen,"Ring slots          : %d\n", num_slots);
+    rlen += sprintf(buf + rlen,"Sample rate         : %d [1=no sampling]\n", sample_rate);
 
-    rlen += sprintf(buf + rlen,"Capture TX    : %s\n",
+    rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    rlen += sprintf(buf + rlen,"Total rings   : %d\n", ring_table_size);
+    rlen += sprintf(buf + rlen,"Transparent mode    : %s\n", 
+		    transparent_mode ? "Yes" : "No");
+    rlen += sprintf(buf + rlen,"Total rings         : %d\n", ring_table_size);
   } else {
     /* detailed statistics about a PF_RING */
     pfr = (struct ring_opt*)data;
