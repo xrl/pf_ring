@@ -740,7 +740,7 @@ CopyMatchListEntry (ACSM_PATTERN2 * px)
   p = (ACSM_PATTERN2 *) AC_MALLOC (sizeof (ACSM_PATTERN2));
   MEMASSERT (p, "CopyMatchListEntry");
 
-  memcpy (p, px, sizeof (ACSM_PATTERN2));
+  memcpy(p, px, sizeof (ACSM_PATTERN2));
 
   p->next = 0;
 
@@ -2812,15 +2812,15 @@ inline int MatchFound (void* id, int index, void *data) { return(0); }
 static void add_skb_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    u_char recv_packet,
-			    u_char real_skb /* 1=skb 0=faked skb */) {
+			    u_char real_skb /* 1=real skb, 0=faked skb */) {
   FlowSlot *theSlot;
   int idx, displ, fwd_pkt = 0;
 
   if(recv_packet) {
     /* Hack for identifying a packet received by the e1000 */
-    if(real_skb) {
+    if(real_skb)
       displ = SKB_DISPLACEMENT;
-    } else
+    else
       displ = 0; /* Received by the e1000 wrapper */
   } else
     displ = 0;
@@ -3048,14 +3048,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	if((payload_len > 0) 
 	   && ((hdr->l4_src_port == 80) || (hdr->l4_dst_port == 80))) {
 	  int rc;
-	  
-	  if(0) {
-	    char buf[1500];
-	    
-	    memcpy(buf, payload, payload_len);
-	    buf[payload_len] = '\0';
-	    printk("[%s]\n", payload);
-	  }
 
 	  /* printk("Tring to match pattern [len=%d][%s]\n", payload_len, payload); */
 	  rc = acsmSearch2(pfr->acsm, payload, payload_len, MatchFound, (void *)0) ? 1 : 0;
@@ -3073,7 +3065,11 @@ static void add_skb_to_ring(struct sk_buff *skb,
     }
 
     if(fwd_pkt) {
-      memcpy(&bucket[sizeof(struct pcap_pkthdr)], skb->data-displ, hdr->caplen);
+      /* memcpy(&bucket[sizeof(struct pcap_pkthdr)], skb->data-displ, hdr->caplen); */
+
+      /* Fix courtesy of Andrew Gallatin <gallatyn@myri.com> */
+      /* printk("[displ=%d][skb_headlen=%d]\n", displ, skb_headlen(skb)); */
+      skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
 
 #if defined(RING_DEBUG)
       {
@@ -3175,7 +3171,7 @@ static u_int hash_skb(struct ring_cluster *cluster_ptr,
 
 static int skb_ring_handler(struct sk_buff *skb,
 			    u_char recv_packet,
-			    u_char real_skb /* 1=skb 0=faked skb */) {
+			    u_char real_skb /* 1=real skb, 0=faked skb */) {
   struct sock *skElement;
   int rc = 0;
   struct list_head *ptr;
@@ -3272,9 +3268,10 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
   if(transparent_mode) rc = 0;
-
+  
   if((rc != 0) && real_skb)
     dev_kfree_skb(skb); /* Free the skb */
+  
 
 #ifdef PROFILING
   rdt2 = _rdtsc()-rdt2;
