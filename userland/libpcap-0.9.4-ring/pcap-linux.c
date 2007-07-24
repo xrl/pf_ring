@@ -707,15 +707,19 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 		}
 	}
 
-#ifndef HAVE_PF_RING
-	/* Fill in our own header data */
-	if (ioctl(handle->fd, SIOCGSTAMP, &pcap_header.ts) == -1) {
-		snprintf(handle->errbuf, sizeof(handle->errbuf),
-			 "ioctl: %s", pcap_strerror(errno));
-		return -1;
+#ifdef HAVE_PF_RING
+	if(!handle->ring) {
+#endif
+	  /* Fill in our own header data */
+	  if (ioctl(handle->fd, SIOCGSTAMP, &pcap_header.ts) == -1) {
+	    snprintf(handle->errbuf, sizeof(handle->errbuf),
+		     "ioctl: %s", pcap_strerror(errno));
+	    return -1;
+	  }
+	  pcap_header.caplen	= caplen;
+	  pcap_header.len		= packet_len;
+#ifdef HAVE_PF_RING
 	}
-	pcap_header.caplen	= caplen;
-	pcap_header.len		= packet_len;
 #endif
 
 	/*
