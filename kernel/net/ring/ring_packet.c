@@ -9,6 +9,7 @@
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
  * - Francesco Fusco <fusco@ntop.org>
  * - Michael Stiller <ms@2scale.net>
+ * - Hitoshi Irino <irino@sfc.wide.ad.jp>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -95,6 +96,14 @@ struct ring_element {
 
 /* ************************************************* */
 
+typedef struct {
+  filtering_rule rule;
+  ACSM_STRUCT2 *acsm; /* Aho-Corasick */
+  struct list_head list;
+} filtering_rule_element;
+
+/* ************************************************* */
+
 struct ring_opt {
   struct net_device *ring_netdev;
 
@@ -121,23 +130,15 @@ struct ring_opt {
   /* BPF Filter */
   struct sk_filter *bpfFilter;
 
-  /* Aho-Corasick */
-  ACSM_STRUCT2 * acsm;
-
   /* Locks */
   atomic_t num_ring_slots_waiters;
   wait_queue_head_t ring_slots_waitqueue;
   rwlock_t ring_index_lock;
 
-  /* Bloom Filters */
-  u_char bitmask_enabled;
-  bitmask_selector mac_bitmask, vlan_bitmask, ip_bitmask, twin_ip_bitmask,
-    port_bitmask, twin_port_bitmask, proto_bitmask;
-  u_int32_t num_mac_bitmask_add, num_mac_bitmask_remove;
-  u_int32_t num_vlan_bitmask_add, num_vlan_bitmask_remove;
-  u_int32_t num_ip_bitmask_add, num_ip_bitmask_remove;
-  u_int32_t num_port_bitmask_add, num_port_bitmask_remove;
-  u_int32_t num_proto_bitmask_add, num_proto_bitmask_remove;
+  /* Filtering Rules */
+  u_int16_t num_filtering_rules;
+  u_int8_t rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
+  struct list_head rules;
 
   /* Indexes (Internal) */
   u_int insert_page_id, insert_slot_id;
@@ -455,7 +456,7 @@ typedef struct _qnode
   int state;
   struct _qnode *next;
 }
-  QNODE;
+QNODE;
 
 /*
  *    Simple QUEUE Structure
@@ -465,7 +466,7 @@ typedef struct _queue
   QNODE * head, *tail;
   int count;
 }
-  QUEUE;
+QUEUE;
 
 /*
  *   Initialize the queue
@@ -2261,7 +2262,7 @@ static void ring_proc_add(struct ring_opt *pfr) {
   if(ring_proc_dir != NULL) {
     char name[16];
 
-    pfr->ring_pid = current->pid; 
+    pfr->ring_pid = current->pid;
 
     snprintf(name, sizeof(name), "%d", pfr->ring_pid);
     create_proc_read_entry(name, 0, ring_proc_dir,
@@ -2300,7 +2301,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
     rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    rlen += sprintf(buf + rlen,"Transparent mode    : %s\n", 
+    rlen += sprintf(buf + rlen,"Transparent mode    : %s\n",
 		    transparent_mode ? "Yes" : "No");
     rlen += sprintf(buf + rlen,"Total rings         : %d\n", ring_table_size);
   } else {
@@ -2316,8 +2317,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen,"Version       : %d\n",  fsi->version);
 	rlen += sprintf(buf + rlen,"Sampling Rate : %d\n",  pfr->sample_rate);
 	rlen += sprintf(buf + rlen,"BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
-	rlen += sprintf(buf + rlen,"Bloom Filters : %s\n",  pfr->bitmask_enabled ? "Enabled" : "Disabled");
-	rlen += sprintf(buf + rlen,"Pattern Search: %s\n",  pfr->acsm ? "Enabled" : "Disabled");
+	rlen += sprintf(buf + rlen,"# Filt. Rules : %d\n",  pfr->num_filtering_rules);
 	rlen += sprintf(buf + rlen,"Cluster Id    : %d\n",  pfr->cluster_id);
 	rlen += sprintf(buf + rlen,"Tot Slots     : %d\n",  fsi->tot_slots);
 	rlen += sprintf(buf + rlen,"Slot Len      : %d\n",  fsi->slot_len);
@@ -2327,7 +2327,6 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen,"Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
 	rlen += sprintf(buf + rlen,"Tot Insert    : %lu\n", (unsigned long)fsi->tot_insert);
 	rlen += sprintf(buf + rlen,"Tot Read      : %lu\n", (unsigned long)fsi->tot_read);
-
       } else
 	rlen = sprintf(buf, "WARNING fsi == NULL\n");
     } else
@@ -2541,271 +2540,67 @@ static int parse_pkt(struct sk_buff *skb, u_int16_t skb_displ,
   return(0); /* No IP */
 }
 
-/* **************************************************************** */
-
-static void reset_bitmask(bitmask_selector *selector)
-{
-  memset((char*)selector->bits_memory, 0, selector->num_bits/8);
-
-  while(selector->clashes != NULL) {
-    bitmask_counter_list *next = selector->clashes->next;
-    kfree(selector->clashes);
-    selector->clashes = next;
-  }
-}
-
-/* **************************************************************** */
-
-static void alloc_bitmask(u_int32_t tot_bits, bitmask_selector *selector)
-{
-  u_int tot_mem = tot_bits/8;
-
-  if(tot_mem <= PAGE_SIZE)
-    selector->order = 1;
-  else {
-    for(selector->order = 0; (PAGE_SIZE << selector->order) < tot_mem; selector->order++)
-      ;
-  }
-
-  printk("BITMASK: [order=%d][tot_mem=%d]\n", selector->order, tot_mem);
-
-  while((selector->bits_memory = __get_free_pages(GFP_ATOMIC, selector->order)) == 0)
-    if(selector->order-- == 0)
-      break;
-
-  if(selector->order == 0) {
-    printk("BITMASK: ERROR not enough memory for bitmask\n");
-    selector->num_bits = 0;
-    return;
-  }
-
-  tot_mem = PAGE_SIZE << selector->order;
-  printk("BITMASK: succesfully allocated [tot_mem=%d][order=%d]\n",
-	 tot_mem, selector->order);
-
-  selector->num_bits = tot_mem*8;
-  selector->clashes = NULL;
-  reset_bitmask(selector);
-}
-
-/* ********************************** */
-
-static void free_bitmask(bitmask_selector *selector)
-{
-  if(selector->bits_memory > 0)
-    free_pages(selector->bits_memory, selector->order);
-}
-
-/* ********************************** */
-
-static void set_bit_bitmask(bitmask_selector *selector, u_int32_t the_bit) {
-  u_int32_t idx = the_bit % selector->num_bits;
-
-  if(BITMASK_ISSET(idx, selector)) {
-    bitmask_counter_list *head = selector->clashes;
-
-    printk("BITMASK: bit %u was already set\n", the_bit);
-
-    while(head != NULL) {
-      if(head->bit_id == the_bit) {
-	head->bit_counter++;
-	printk("BITMASK: bit %u is now set to %d\n", the_bit, head->bit_counter);
-	return;
-      }
-
-      head = head->next;
-    }
-
-    head = kmalloc(sizeof(bitmask_counter_list), GFP_KERNEL);
-    if(head) {
-      head->bit_id = the_bit;
-      head->bit_counter = 1 /* previous value */ + 1 /* the requested set */;
-      head->next = selector->clashes;
-      selector->clashes = head;
-    } else {
-      printk("BITMASK: not enough memory\n");
-      return;
-    }
-  } else {
-    BITMASK_SET(idx, selector);
-    printk("BITMASK: bit %u is now set\n", the_bit);
-  }
-}
-
-/* ********************************** */
-
-static u_char is_set_bit_bitmask(bitmask_selector *selector, u_int32_t the_bit) {
-  u_int32_t idx = the_bit % selector->num_bits;
-  return(BITMASK_ISSET(idx, selector));
-}
-
-/* ********************************** */
-
-static void clear_bit_bitmask(bitmask_selector *selector, u_int32_t the_bit) {
-  u_int32_t idx = the_bit % selector->num_bits;
-
-  if(!BITMASK_ISSET(idx, selector))
-    printk("BITMASK: bit %u was not set\n", the_bit);
-  else {
-    bitmask_counter_list *head = selector->clashes, *prev = NULL;
-
-    while(head != NULL) {
-      if(head->bit_id == the_bit) {
-	head->bit_counter--;
-
-	printk("BITMASK: bit %u is now set to %d\n",
-	       the_bit, head->bit_counter);
-
-	if(head->bit_counter == 1) {
-	  /* We can now delete this entry as '1' can be
-	     accommodated into the bitmask */
-
-	  if(prev == NULL)
-	    selector->clashes = head->next;
-	  else
-	    prev->next = head->next;
-
-	  kfree(head);
-	}
-	return;
-      }
-
-      prev = head; head = head->next;
-    }
-
-    BITMASK_CLR(idx, selector);
-    printk("BITMASK: bit %u is now reset\n", the_bit);
-  }
-}
-
-/* ********************************** */
-
-/* Hash function */
-static u_int32_t sdb_hash(u_int32_t value) {
-  u_int32_t hash = 0, i;
-  u_int8_t str[sizeof(value)];
-
-  memcpy(str, &value, sizeof(value));
-
-  for(i = 0; i < sizeof(value); i++) {
-    hash = str[i] + (hash << 6) + (hash << 16) - hash;
-  }
-
-  return(hash);
-}
-
-/* ********************************** */
-
-static void handle_bloom_filter_rule(struct ring_opt *pfr, char *buf) {
-  u_int count;
-
-  if(buf == NULL)
-    return;
-  else
-    count = strlen(buf);
-
-  printk("PF_RING: -> handle_bloom_filter_rule(%s)\n", buf);
-
-  if((buf[count-1] == '\n') || (buf[count-1] == '\r')) buf[count-1] = '\0';
-
-  if(count > 1) {
-    u_int32_t the_bit;
-
-    if(!strncmp(&buf[1], "vlan=", 5)) {
-      sscanf(&buf[6], "%d", &the_bit);
-
-      if(buf[0] == '+')
-	set_bit_bitmask(&pfr->vlan_bitmask, the_bit), pfr->num_vlan_bitmask_add++;
-      else
-	clear_bit_bitmask(&pfr->vlan_bitmask, the_bit), pfr->num_vlan_bitmask_remove++;
-    } else if(!strncmp(&buf[1], "mac=", 4)) {
-      int a, b, c, d, e, f;
-
-      if(sscanf(&buf[5], "%02x:%02x:%02x:%02x:%02x:%02x:",
-		&a, &b, &c, &d, &e, &f) == 6) {
-	u_int32_t mac_addr =  (a & 0xff) + (b & 0xff) + ((c & 0xff) << 24) + ((d & 0xff) << 16) + ((e & 0xff) << 8) + (f & 0xff);
-
-	/* printk("PF_RING: -> [%u][%u][%u][%u][%u][%u] -> [%u]\n", a, b, c, d, e, f, mac_addr); */
-
-	if(buf[0] == '+')
-	  set_bit_bitmask(&pfr->mac_bitmask, mac_addr), pfr->num_mac_bitmask_add++;
-	else
-	  clear_bit_bitmask(&pfr->mac_bitmask, mac_addr), pfr->num_mac_bitmask_remove++;
-      } else
-	printk("PF_RING: -> Invalid MAC address '%s'\n", &buf[5]);
-    } else if(!strncmp(&buf[1], "ip=", 3)) {
-      int a, b, c, d;
-
-      if(sscanf(&buf[4], "%d.%d.%d.%d", &a, &b, &c, &d) == 4) {
-	u_int32_t ip_addr = ((a & 0xff) << 24) + ((b & 0xff) << 16) + ((c & 0xff) << 8) + (d & 0xff);
-
-	if(buf[0] == '+')
-	  set_bit_bitmask(&pfr->ip_bitmask, ip_addr), set_bit_bitmask(&pfr->ip_bitmask, sdb_hash(ip_addr)), pfr->num_ip_bitmask_add++;
-	else
-	  clear_bit_bitmask(&pfr->ip_bitmask, ip_addr), clear_bit_bitmask(&pfr->twin_ip_bitmask, sdb_hash(ip_addr)), pfr->num_ip_bitmask_remove++;
-      } else
-	printk("PF_RING: -> Invalid IP address '%s'\n", &buf[4]);
-    } else if(!strncmp(&buf[1], "port=", 5)) {
-      sscanf(&buf[6], "%d", &the_bit);
-
-      if(buf[0] == '+')
-	set_bit_bitmask(&pfr->port_bitmask, the_bit), set_bit_bitmask(&pfr->port_bitmask, sdb_hash(the_bit)), pfr->num_port_bitmask_add++;
-      else
-	clear_bit_bitmask(&pfr->port_bitmask, the_bit), clear_bit_bitmask(&pfr->twin_port_bitmask, sdb_hash(the_bit)), pfr->num_port_bitmask_remove++;
-    } else if(!strncmp(&buf[1], "proto=", 6)) {
-      if(!strncmp(&buf[7], "tcp", 3))       the_bit = 6;
-      else if(!strncmp(&buf[7], "udp", 3))  the_bit = 17;
-      else if(!strncmp(&buf[7], "icmp", 4)) the_bit = 1;
-      else sscanf(&buf[7], "%d", &the_bit);
-
-      if(buf[0] == '+')
-	set_bit_bitmask(&pfr->proto_bitmask, the_bit);
-      else
-	clear_bit_bitmask(&pfr->proto_bitmask, the_bit);
-    } else
-      printk("PF_RING: -> Unknown rule type '%s'\n", buf);
-  }
-}
-
-/* ********************************** */
-
-static void reset_bloom_filters(struct ring_opt *pfr) {
-  reset_bitmask(&pfr->mac_bitmask);
-  reset_bitmask(&pfr->vlan_bitmask);
-  reset_bitmask(&pfr->ip_bitmask); reset_bitmask(&pfr->twin_ip_bitmask);
-  reset_bitmask(&pfr->port_bitmask); reset_bitmask(&pfr->twin_port_bitmask);
-  reset_bitmask(&pfr->proto_bitmask);
-
-  pfr->num_mac_bitmask_add   = pfr->num_mac_bitmask_remove   = 0;
-  pfr->num_vlan_bitmask_add  = pfr->num_vlan_bitmask_remove  = 0;
-  pfr->num_ip_bitmask_add    = pfr->num_ip_bitmask_remove    = 0;
-  pfr->num_port_bitmask_add  = pfr->num_port_bitmask_remove  = 0;
-  pfr->num_proto_bitmask_add = pfr->num_proto_bitmask_remove = 0;
-
-  printk("PF_RING: rules have been reset\n");
-}
-
-/* ********************************** */
-
-static void init_blooms(struct ring_opt *pfr) {
-  alloc_bitmask(4096,  &pfr->mac_bitmask);
-  alloc_bitmask(4096,  &pfr->vlan_bitmask);
-  alloc_bitmask(32768, &pfr->ip_bitmask); alloc_bitmask(32768, &pfr->twin_ip_bitmask);
-  alloc_bitmask(4096,  &pfr->port_bitmask); alloc_bitmask(4096,  &pfr->twin_port_bitmask);
-  alloc_bitmask(4096,  &pfr->proto_bitmask);
-
-  pfr->num_mac_bitmask_add   = pfr->num_mac_bitmask_remove = 0;
-  pfr->num_vlan_bitmask_add  = pfr->num_vlan_bitmask_remove = 0;
-  pfr->num_ip_bitmask_add    = pfr->num_ip_bitmask_remove   = 0;
-  pfr->num_port_bitmask_add  = pfr->num_port_bitmask_remove = 0;
-  pfr->num_proto_bitmask_add = pfr->num_proto_bitmask_remove = 0;
-
-  reset_bloom_filters(pfr);
-}
-
 /* ********************************** */
 
 inline int MatchFound (void* id, int index, void *data) { return(0); }
+
+/* ********************************** */
+
+/* 0 = no match, 1 = match */
+static int match_filtering_rule(filtering_rule_element *rule,
+				struct pcap_pkthdr *hdr,
+				struct sk_buff *skb,
+				int displ)
+{
+  int debug = 0;
+
+  if(debug) {
+    printk("match_filtering_rule(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u) ",
+	   hdr->vlan_id, hdr->l3_proto, hdr->ipv4_src, hdr->l4_src_port,
+	   hdr->ipv4_dst, hdr->l4_dst_port);
+    printk("[rule(vlan=%u, proto=%u, ip=%u, port=%u-%u)]\n",
+	   rule->rule.vlan_id, rule->rule.proto, rule->rule.host_ip, rule->rule.port_low,
+	   rule->rule.port_high);
+  }
+
+  if((rule->rule.vlan_id > 0) && (hdr->vlan_id  != rule->rule.vlan_id)) return(0);
+  if((rule->rule.proto > 0)   && (hdr->l3_proto != rule->rule.proto))   return(0);
+
+  if(((rule->rule.host_netmask > 0)
+      && ((hdr->ipv4_src & rule->rule.host_netmask) != rule->rule.host_ip))
+     && ((hdr->ipv4_dst & rule->rule.host_netmask) != rule->rule.host_ip))
+    return(0);
+
+  if((rule->rule.port_high > 0)
+     && (!((hdr->l4_src_port >= rule->rule.port_low) && (hdr->l4_src_port <= rule->rule.port_high)))
+     && (!((hdr->l4_dst_port >= rule->rule.port_low) && (hdr->l4_dst_port <= rule->rule.port_high))))
+    return(0);
+
+  if(rule->rule.balance_pool > 0) {
+    u_int32_t balance_hash = (hdr->vlan_id
+			      + hdr->l3_proto
+			      + hdr->ipv4_src + hdr->l4_src_port
+			      + hdr->ipv4_dst + hdr->l4_dst_port) % rule->rule.balance_pool;
+
+    if(balance_hash != rule->rule.balance_id) return(0);
+  }
+
+  if(rule->acsm != NULL) {
+    if((hdr->payload_offset > 0) && ((skb->len+skb->mac_len) > hdr->payload_offset)) {
+      char *payload = (skb->data-displ+hdr->payload_offset);
+      int rc, payload_len = skb->len /* + skb->mac_len */ - hdr->payload_offset;
+
+      /* printk("Tring to match pattern [len=%d][%s]\n", payload_len, payload); */
+      rc = acsmSearch2(rule->acsm, payload, payload_len, MatchFound, (void *)0) ? 1 : 0;
+
+      if(rc == 0)
+	return(0); /* No match */
+    } else
+      return(0); /* No payload data */
+  }
+
+  return(1); /* match */
+}
 
 /* ********************************** */
 
@@ -2947,7 +2742,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
   if((theSlot != NULL) && (theSlot->slot_state == 0)) {
     struct pcap_pkthdr *hdr;
     char *bucket;
-    int is_ip_pkt, debug = 0;
+    int is_ip_pkt;
+    struct list_head *ptr;
 
     /* Update Index */
     idx++;
@@ -2958,12 +2754,13 @@ static void add_skb_to_ring(struct sk_buff *skb,
     /* BD - API changed for time keeping */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14))
     if(skb->stamp.tv_sec == 0) do_gettimeofday(&skb->stamp);
-
     hdr->ts.tv_sec = skb->stamp.tv_sec, hdr->ts.tv_usec = skb->stamp.tv_usec;
-#else
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
     if(skb->tstamp.off_sec == 0) __net_timestamp(skb);
-
     hdr->ts.tv_sec = skb->tstamp.off_sec, hdr->ts.tv_usec = skb->tstamp.off_usec;
+#else /* 2.6.22 and above */
+    if(skb->tstamp.tv64 == 0) __net_timestamp(skb);
+    hdr->ts = ktime_to_timeval(skb->tstamp);
 #endif
     hdr->caplen    = skb->len+displ;
 
@@ -2985,84 +2782,22 @@ static void add_skb_to_ring(struct sk_buff *skb,
 			  &hdr->l4_dst_port,
 			  &hdr->payload_offset);
 
-    if(is_ip_pkt && pfr->bitmask_enabled) {
-      int vlan_match = 0;
+    fwd_pkt = pfr->rules_default_accept_policy;
 
-      fwd_pkt = 0;
+    read_lock(&ring_mgmt_lock);
+    for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+      {
+	filtering_rule_element *entry;
 
-      if(debug) {
-	if(is_ip_pkt)
-	  printk(KERN_INFO "PF_RING: [proto=%d][vlan=%d][sport=%d][dport=%d][src=%u][dst=%u]\n",
-		 hdr->l3_proto, hdr->vlan_id, hdr->l4_src_port, hdr->l4_dst_port, hdr->ipv4_src, hdr->ipv4_dst);
-	else
-	  printk(KERN_INFO "PF_RING: [proto=%d][vlan=%d]\n", hdr->l3_proto, hdr->vlan_id);
-      }
+	entry = list_entry(ptr, filtering_rule_element, list);
 
-      if(hdr->vlan_id != (u_int16_t)-1) {
-	vlan_match = is_set_bit_bitmask(&pfr->vlan_bitmask, hdr->vlan_id);
-      } else
-	vlan_match = 1;
-
-      if(vlan_match) {
-	struct ethhdr *eh = (struct ethhdr*)(skb->data);
-	u_int32_t src_mac =  (eh->h_source[0] & 0xff) + (eh->h_source[1] & 0xff) + ((eh->h_source[2] & 0xff) << 24)
-	  + ((eh->h_source[3] & 0xff) << 16) + ((eh->h_source[4] & 0xff) << 8) + (eh->h_source[5] & 0xff);
-
-	if(debug) printk(KERN_INFO "PF_RING: [src_mac=%u]\n", src_mac);
-
-	fwd_pkt |= is_set_bit_bitmask(&pfr->mac_bitmask, src_mac);
-
-	if(!fwd_pkt) {
-	  u_int32_t dst_mac =  (eh->h_dest[0] & 0xff) + (eh->h_dest[1] & 0xff) + ((eh->h_dest[2] & 0xff) << 24)
-	    + ((eh->h_dest[3] & 0xff) << 16) + ((eh->h_dest[4] & 0xff) << 8) + (eh->h_dest[5] & 0xff);
-
-	  if(debug) printk(KERN_INFO "PF_RING: [dst_mac=%u]\n", dst_mac);
-
-	  fwd_pkt |= is_set_bit_bitmask(&pfr->mac_bitmask, dst_mac);
-
-	  if(is_ip_pkt && (!fwd_pkt)) {
-	    fwd_pkt |= is_set_bit_bitmask(&pfr->ip_bitmask, hdr->ipv4_src);
-
-	    if(!fwd_pkt) {
-	      fwd_pkt |= is_set_bit_bitmask(&pfr->ip_bitmask, hdr->ipv4_dst);
-
-	      if((!fwd_pkt) && ((hdr->l3_proto == IPPROTO_TCP)
-				|| (hdr->l3_proto == IPPROTO_UDP))) {
-		fwd_pkt |= is_set_bit_bitmask(&pfr->port_bitmask, hdr->l4_src_port);
-		if(!fwd_pkt) fwd_pkt |= is_set_bit_bitmask(&pfr->port_bitmask, hdr->l4_dst_port);
-	      }
-
-	      if(!fwd_pkt) fwd_pkt |= is_set_bit_bitmask(&pfr->proto_bitmask, hdr->l3_proto);
-	    }
+	if(match_filtering_rule(entry, hdr, skb, displ))
+	  {
+	    fwd_pkt = entry->rule.pass_action;
+	    break;
 	  }
-	}
-      }
-    } else
-      fwd_pkt = 1;
-
-    if(fwd_pkt && (pfr->acsm != NULL)) {
-      if((hdr->payload_offset > 0) && ((skb->len+skb->mac_len) > hdr->payload_offset)) {
-	char *payload = (skb->data-displ+hdr->payload_offset);
-	int payload_len = skb->len /* + skb->mac_len */ - hdr->payload_offset;
-
-	if((payload_len > 0) 
-	   && ((hdr->l4_src_port == 80) || (hdr->l4_dst_port == 80))) {
-	  int rc;
-
-	  /* printk("Tring to match pattern [len=%d][%s]\n", payload_len, payload); */
-	  rc = acsmSearch2(pfr->acsm, payload, payload_len, MatchFound, (void *)0) ? 1 : 0;
-
-	  // printk("Match result: %d\n", fwd_pkt);
-	  if(rc) {
-	    printk("Pattern matched!\n");
-	  } else {
-	    fwd_pkt = 0;
-	  }
-	} else
-	  fwd_pkt = 0;
-      }	else
-	fwd_pkt = 0;
-    }
+      } /* for */
+    read_unlock(&ring_mgmt_lock);
 
     if(fwd_pkt) {
       /* memcpy(&bucket[sizeof(struct pcap_pkthdr)], skb->data-displ, hdr->caplen); */
@@ -3217,7 +2952,8 @@ static int skb_ring_handler(struct sk_buff *skb,
     if((pfr != NULL)
        && (pfr->cluster_id == 0 /* No cluster */)
        && (pfr->ring_slots != NULL)
-       && ((pfr->ring_netdev == skb->dev) || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
+       && ((pfr->ring_netdev == skb->dev)
+	   || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
       /* We've found the ring where the packet can be stored */
       read_lock(&ring_mgmt_lock);
       add_skb_to_ring(skb, pfr, recv_packet, real_skb);
@@ -3245,7 +2981,8 @@ static int skb_ring_handler(struct sk_buff *skb,
 
 	if((pfr != NULL)
 	   && (pfr->ring_slots != NULL)
-	   && ((pfr->ring_netdev == skb->dev) || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
+	   && ((pfr->ring_netdev == skb->dev)
+	       || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
 	  /* We've found the ring where the packet can be stored */
           read_lock(&ring_mgmt_lock);
 	  add_skb_to_ring(skb, pfr, recv_packet, real_skb);
@@ -3268,10 +3005,11 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
   if(transparent_mode) rc = 0;
-  
+
+#if 0
   if((rc != 0) && real_skb)
     dev_kfree_skb(skb); /* Free the skb */
-  
+#endif
 
 #ifdef PROFILING
   rdt2 = _rdtsc()-rdt2;
@@ -3301,13 +3039,15 @@ static int buffer_ring_handler(struct net_device *dev,
 	 dev->name == NULL ? "<NULL>" : dev->name, len);
 #endif
 
+  skb.dev = dev, skb.len = len, skb.data = data, skb.data_len = len;
+
   /* BD - API changed for time keeping */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14))
-  skb.dev = dev, skb.len = len, skb.data = data,
-    skb.data_len = len, skb.stamp.tv_sec = 0; /* Calculate the time */
+  skb.stamp.tv_sec = 0;
+#elif (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
+  skb.tstamp.off_sec = 0;
 #else
-  skb.dev = dev, skb.len = len, skb.data = data,
-    skb.data_len = len, skb.tstamp.off_sec = 0; /* Calculate the time */
+  skb.tstamp.tv64 = 0;
 #endif
 
   skb_ring_handler(&skb, 1, 0 /* fake skb */);
@@ -3379,8 +3119,6 @@ static int ring_create(struct socket *sock, int protocol) {
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   pfr->ring_index_lock = RW_LOCK_UNLOCKED;
   atomic_set(&pfr->num_ring_slots_waiters, 0);
-  init_blooms(pfr);
-  pfr->acsm = NULL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
   sk->sk_family       = PF_RING;
@@ -3411,6 +3149,7 @@ static int ring_release(struct socket *sock)
 {
   struct sock *sk = sock->sk;
   struct ring_opt *pfr = ring_sk(sk);
+  struct list_head *ptr;
 
   if(!sk)  return 0;
 
@@ -3444,13 +3183,19 @@ static int ring_release(struct socket *sock)
     free_pages(pfr->ring_memory, pfr->order);
   }
 
-  free_bitmask(&pfr->mac_bitmask);
-  free_bitmask(&pfr->vlan_bitmask);
-  free_bitmask(&pfr->ip_bitmask); free_bitmask(&pfr->twin_ip_bitmask);
-  free_bitmask(&pfr->port_bitmask); free_bitmask(&pfr->twin_port_bitmask);
-  free_bitmask(&pfr->proto_bitmask);
+  for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+    {
+      filtering_rule_element *rule;
 
-  if(pfr->acsm != NULL) acsmFree2(pfr->acsm);
+      rule = list_entry(ptr, filtering_rule_element, list);
+
+#if defined(RING_DEBUG)
+      printk("RING: Deleting rule_id %d\n", rule->rule.rule_id);
+#endif
+
+      if(rule->acsm) acsmFree2(rule->acsm);
+      kfree(rule);
+    }
 
   kfree(pfr);
   ring_sk(sk) = NULL;
@@ -3571,6 +3316,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 #endif
 
   pfr->insert_page_id = 1, pfr->insert_slot_id = 0;
+  INIT_LIST_HEAD(&pfr->rules), pfr->rules_default_accept_policy = 1, pfr->num_filtering_rules = 0;
 
   /*
     IMPORTANT
@@ -3704,8 +3450,8 @@ static int ring_mmap(struct file *file,
 static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 			struct msghdr *msg, size_t len, int flags)
 #else
-  static int ring_recvmsg(struct socket *sock, struct msghdr *msg, int len,
-			  int flags, struct scm_cookie *scm)
+     static int ring_recvmsg(struct socket *sock, struct msghdr *msg, int len,
+			     int flags, struct scm_cookie *scm)
 #endif
 {
   FlowSlot* slot;
@@ -3887,9 +3633,12 @@ static int ring_setsockopt(struct socket *sock,
 			   char *optval, int optlen)
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
-  int val, found, ret = 0;
-  u_int cluster_id, do_enable;
-  char devName[8], bloom_filter[256], aho_pattern[256];
+  int val, found, ret = 0 /* OK */;
+  u_int cluster_id, debug = 0;
+  char devName[8];
+  struct list_head *ptr, *prev = NULL;
+  filtering_rule_element *entry, *rule;
+  u_int16_t rule_id;
 
   if(pfr == NULL) return(-EINVAL);
 
@@ -3902,61 +3651,65 @@ static int ring_setsockopt(struct socket *sock,
     {
     case SO_ATTACH_FILTER:
       ret = -EINVAL;
-      if (optlen == sizeof(struct sock_fprog)) {
-	unsigned int fsize;
-	struct sock_fprog fprog;
-	struct sk_filter *filter;
+      if (optlen == sizeof(struct sock_fprog))
+	{
+	  unsigned int fsize;
+	  struct sock_fprog fprog;
+	  struct sk_filter *filter;
 
-	ret = -EFAULT;
+	  ret = -EFAULT;
 
-	/*
-	  NOTE
+	  /*
+	    NOTE
 
-	  Do not call copy_from_user within a held
-	  splinlock (e.g. ring_mgmt_lock) as this caused
-	  problems when certain debugging was enabled under
-	  2.6.5 -- including hard lockups of the machine.
-	*/
-	if(copy_from_user(&fprog, optval, sizeof(fprog)))
-	  break;
+	    Do not call copy_from_user within a held
+	    splinlock (e.g. ring_mgmt_lock) as this caused
+	    problems when certain debugging was enabled under
+	    2.6.5 -- including hard lockups of the machine.
+	  */
+	  if(copy_from_user(&fprog, optval, sizeof(fprog)))
+	    break;
 
-	fsize = sizeof(struct sock_filter) * fprog.len;
-	filter = kmalloc(fsize, GFP_KERNEL);
+	  fsize = sizeof(struct sock_filter) * fprog.len;
+	  filter = kmalloc(fsize, GFP_KERNEL);
 
-	if(filter == NULL) {
-	  ret = -ENOMEM;
-	  break;
+	  if(filter == NULL)
+	    {
+	      ret = -ENOMEM;
+	      break;
+	    }
+
+	  if(copy_from_user(filter->insns, fprog.filter, fsize))
+	    break;
+
+	  filter->len = fprog.len;
+
+	  if(sk_chk_filter(filter->insns, filter->len) != 0)
+	    {
+	      /* Bad filter specified */
+	      kfree(filter);
+	      pfr->bpfFilter = NULL;
+	      break;
+	    }
+
+	  /* get the lock, set the filter, release the lock */
+	  write_lock(&ring_mgmt_lock);
+	  pfr->bpfFilter = filter;
+	  write_unlock(&ring_mgmt_lock);
+	  ret = 0;
 	}
-
-	if(copy_from_user(filter->insns, fprog.filter, fsize))
-	  break;
-
-	filter->len = fprog.len;
-
-	if(sk_chk_filter(filter->insns, filter->len) != 0) {
-	  /* Bad filter specified */
-	  kfree(filter);
-	  pfr->bpfFilter = NULL;
-	  break;
-	}
-
-	/* get the lock, set the filter, release the lock */
-	write_lock(&ring_mgmt_lock);
-	pfr->bpfFilter = filter;
-	write_unlock(&ring_mgmt_lock);
-	ret = 0;
-      }
       break;
 
     case SO_DETACH_FILTER:
       write_lock(&ring_mgmt_lock);
       found = 1;
-      if(pfr->bpfFilter != NULL) {
-	kfree(pfr->bpfFilter);
-	pfr->bpfFilter = NULL;
-	write_unlock(&ring_mgmt_lock);
-	break;
-      }
+      if(pfr->bpfFilter != NULL)
+	{
+	  kfree(pfr->bpfFilter);
+	  pfr->bpfFilter = NULL;
+	  write_unlock(&ring_mgmt_lock);
+	  break;
+	}
       ret = -ENONET;
       break;
 
@@ -3982,10 +3735,11 @@ static int ring_setsockopt(struct socket *sock,
       if(optlen >= (sizeof(devName)-1))
 	return -EINVAL;
 
-      if(optlen > 0) {
-	if(copy_from_user(devName, optval, optlen))
-	  return -EFAULT;
-      }
+      if(optlen > 0)
+	{
+	  if(copy_from_user(devName, optval, optlen))
+	    return -EFAULT;
+	}
 
       devName[optlen] = '\0';
 
@@ -4005,83 +3759,145 @@ static int ring_setsockopt(struct socket *sock,
 #endif
       break;
 
-    case SO_SET_BLOOM:
-      if(optlen >= (sizeof(bloom_filter)-1))
+    case SO_TOGGLE_FILTER_POLICY:
+      if(optlen != sizeof(u_int8_t))
 	return -EINVAL;
+      else {
+	u_int8_t new_policy;
 
-      if(optlen > 0) {
-	if(copy_from_user(bloom_filter, optval, optlen))
+	if(copy_from_user(&new_policy, optval, optlen))
 	  return -EFAULT;
+
+	write_lock(&ring_mgmt_lock);
+	pfr->rules_default_accept_policy = new_policy;
+	write_unlock(&ring_mgmt_lock);
+	if(debug) printk("SO_TOGGLE_FILTER_POLICY: default policy is %s\n",
+			 pfr->rules_default_accept_policy ? "accept" : "drop");
       }
-
-      bloom_filter[optlen] = '\0';
-
-      write_lock(&ring_mgmt_lock);
-      handle_bloom_filter_rule(pfr, bloom_filter);
-      write_unlock(&ring_mgmt_lock);
       break;
 
-    case SO_SET_STRING:
-      if(optlen >= (sizeof(aho_pattern)-1))
+    case SO_ADD_FILTERING_RULE:
+      if(optlen != sizeof(filtering_rule))
 	return -EINVAL;
-
-      if(optlen > 0) {
-	if(copy_from_user(aho_pattern, optval, optlen))
-	  return -EFAULT;
-      }
-
-      aho_pattern[optlen] = '\0';
-
-      write_lock(&ring_mgmt_lock);
-      if(pfr->acsm != NULL) acsmFree2(pfr->acsm);
-      if(optlen > 0) {
-#if 1
-	if((pfr->acsm = acsmNew2()) != NULL) {
-	  int nc=1 /* case sensitive */, i = 0;
-
-	  pfr->acsm->acsmFormat = ACF_BANDED;
-	  acsmAddPattern2(pfr->acsm,  (unsigned char*)aho_pattern,
-			  (int)strlen(aho_pattern), nc, 0, 0,(void*)aho_pattern, i);
-	  acsmCompile2(pfr->acsm);
-	}
-#else
-	pfr->acsm =  kmalloc (10, GFP_KERNEL); /* TEST */
-#endif
-      }
-      write_unlock(&ring_mgmt_lock);
-      break;
-
-    case SO_TOGGLE_BLOOM_STATE:
-      if(optlen >= (sizeof(bloom_filter)-1))
-	return -EINVAL;
-
-      if(optlen > 0) {
-	if(copy_from_user(&do_enable, optval, optlen))
-	  return -EFAULT;
-      }
-
-      write_lock(&ring_mgmt_lock);
-      if(do_enable)
-	pfr->bitmask_enabled = 1;
       else
-	pfr->bitmask_enabled = 0;
-      write_unlock(&ring_mgmt_lock);
-      printk("SO_TOGGLE_BLOOM_STATE: bloom bitmask %s\n",
-	     pfr->bitmask_enabled ? "enabled" : "disabled");
+	{
+	  rule = (filtering_rule_element*)kmalloc(sizeof(filtering_rule_element), GFP_KERNEL);
+
+	  if((rule == NULL) || copy_from_user(&rule->rule, optval, optlen))
+	    return -EFAULT;
+
+	  INIT_LIST_HEAD(&rule->list);
+
+	  /* Compile pattern if present */
+	  if(strlen(rule->rule.payload_pattern) > 0)
+	    {
+	      if((rule->acsm = acsmNew2()) != NULL)
+		{
+		  int nc=1 /* case sensitive */, i = 0;
+		  unsigned char *aho_pattern = rule->rule.payload_pattern;
+
+		  rule->acsm->acsmFormat = ACF_BANDED;
+		  acsmAddPattern2(rule->acsm, aho_pattern,
+				  (int)strlen(aho_pattern), nc, 0, 0,(void*)aho_pattern, i);
+		  acsmCompile2(rule->acsm);
+		}
+	    } else
+	      rule->acsm = NULL;
+
+	  write_lock(&ring_mgmt_lock);
+
+	  if(debug) printk("SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
+
+	  /* Implement an ordered add */
+	  for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+	    {
+	      entry = list_entry(ptr, filtering_rule_element, list);
+
+	      if(debug) printk("SO_ADD_FILTERING_RULE: [current rule %d][rule to add %d]\n",
+			       entry->rule.rule_id, rule->rule.rule_id);
+
+	      if(entry->rule.rule_id == rule->rule.rule_id)
+		{
+		  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
+		  if(entry->acsm != NULL) acsmFree2(entry->acsm);
+		  entry->acsm = rule->acsm;
+		  kfree(rule);
+		  rule = NULL;
+		  if(debug) printk("SO_ADD_FILTERING_RULE: overwritten rule_id %d\n", entry->rule.rule_id);
+		  break;
+		} else if(entry->rule.rule_id > rule->rule.rule_id)
+		  {
+		    if(prev == NULL)
+		      {
+			list_add(&rule->list, &pfr->rules); /* Add as first entry */
+			pfr->num_filtering_rules++;
+			if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as head rule\n", rule->rule.rule_id);
+		      }
+		    else {
+		      list_add(&rule->list, prev);
+		      pfr->num_filtering_rules++;
+		      if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d\n", rule->rule.rule_id);
+		    }
+
+		    rule = NULL;
+		    break;
+		  } else
+		    prev = ptr;
+	    } /* for */
+
+	  if(rule != NULL)
+	    {
+	      if(prev == NULL)
+		{
+		  list_add(&rule->list, &pfr->rules); /* Add as first entry */
+		  pfr->num_filtering_rules++;
+		  if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as first rule\n", rule->rule.rule_id);
+		}
+	      else
+		{
+		  list_add_tail(&rule->list, &pfr->rules); /* Add as first entry */
+		  pfr->num_filtering_rules++;
+		  if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as last rule\n", rule->rule.rule_id);
+		}
+	    }
+	  write_unlock(&ring_mgmt_lock);
+	}
       break;
 
-    case SO_RESET_BLOOM_FILTERS:
-      if(optlen >= (sizeof(bloom_filter)-1))
+    case SO_REMOVE_FILTERING_RULE:
+      if(optlen != sizeof(u_int16_t /* rule _id */))
 	return -EINVAL;
+      else
+	{
+	  u_int8_t rule_found = 0;
 
-      if(optlen > 0) {
-	if(copy_from_user(&do_enable, optval, optlen))
-	  return -EFAULT;
-      }
+	  if(copy_from_user(&rule_id, optval, optlen))
+	    return -EFAULT;
 
-      write_lock(&ring_mgmt_lock);
-      reset_bloom_filters(pfr);
-      write_unlock(&ring_mgmt_lock);
+	  write_lock(&ring_mgmt_lock);
+
+	  for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+	    {
+	      entry = list_entry(ptr, filtering_rule_element, list);
+
+	      if(entry->rule.rule_id == rule_id)
+		{
+		  if(entry->acsm) acsmFree2(entry->acsm);
+		  list_del(ptr);
+		  pfr->num_filtering_rules--;
+		  kfree(ptr);
+		  if(debug) printk("SO_REMOVE_FILTERING_RULE: rule %d has been removed\n", rule_id);
+		  rule_found = 1;
+		  break;
+		}
+	    } /* for */
+
+	  write_unlock(&ring_mgmt_lock);
+	  if(!rule_found) {
+	    if(debug) printk("SO_REMOVE_FILTERING_RULE: rule %d does not exist\n", rule_id);
+	    return -EFAULT; /* Rule not found */
+	  }
+	}
       break;
 
     default:

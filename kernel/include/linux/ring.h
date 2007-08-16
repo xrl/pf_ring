@@ -17,19 +17,15 @@
 #define RING_MAGIC
 #define RING_MAGIC_VALUE            0x88
 #define RING_FLOWSLOT_VERSION          6
-#define RING_VERSION             "3.4.1"
+#define RING_VERSION             "3.5.0"
 
-#define SO_ADD_TO_CLUSTER        99
-#define SO_REMOVE_FROM_CLUSTER  100
-#define SO_SET_REFLECTOR        101
-#define SO_SET_BLOOM            102
-#define SO_SET_STRING           103
-#define SO_TOGGLE_BLOOM_STATE   104
-#define SO_RESET_BLOOM_FILTERS  105
-
-#define BITMASK_SET(n, p)       (((char*)p->bits_memory)[n/8] |= (1<<(n % 8)))
-#define BITMASK_CLR(n, p)       (((char*)p->bits_memory)[n/8] &= ~(1<<(n % 8)))
-#define BITMASK_ISSET(n, p)     (((char*)p->bits_memory)[n/8] &  (1<<(n % 8)))
+#define SO_ADD_TO_CLUSTER         99
+#define SO_REMOVE_FROM_CLUSTER   100
+#define SO_SET_REFLECTOR         101
+#define SO_SET_STRING            102
+#define SO_ADD_FILTERING_RULE    103
+#define SO_REMOVE_FILTERING_RULE 104
+#define SO_TOGGLE_FILTER_POLICY  105
 
 /* *********************************** */
 
@@ -139,6 +135,7 @@ typedef struct {
 /* *********************************** */
 
 #ifndef HAVE_PCAP
+
 struct pcap_pkthdr {
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
@@ -199,6 +196,32 @@ typedef struct flowSlot {
   u_char     slot_state; /* 0=empty, 1=full   */
   u_char     bucket;     /* bucket[bucketLen] */
 } FlowSlot;
+
+/* *********************************** */
+
+typedef struct {
+  u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
+  u_int8_t pass_action;              /* 0=drop packet if match rule, pass packet otherwise */
+  u_int8_t balance_id, balance_pool; /* If balance_pool > 0, then pass the packet
+					above only if the 
+					(hash(proto, sip, sport, dip, dport) % balance_pool) = balance_id
+				     */
+  u_int8_t proto;                    /* Use 0 for 'any' protocol */
+  u_int16_t vlan_id;                 /* Use '0' for any vlan */
+  u_int32_t host_ip, host_netmask;   /* Netmask 0 means 'any' host. This is applied to both source
+				        and destination.
+				     */
+  u_int16_t port_low, port_high;     /* All ports between port_low...port_high 
+					0 means 'any' port. This is applied to both source
+				        and destination. This means that 
+					(proto, sip, sport, dip, dport) matches the rule if
+					one in "sip & sport", "sip & dport" "dip & sport"
+					match.
+				     */
+  char payload_pattern[32];          /* If strlen(payload_pattern) > 0, the packet payload
+					must match the specified pattern
+				     */
+} filtering_rule;
 
 /* *********************************** */
 

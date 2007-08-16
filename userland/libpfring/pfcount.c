@@ -307,29 +307,15 @@ void printHelp(void) {
   printf("-i <device>     [Device name]\n");
   /* printf("-f <filter>     [pfring filter]\n"); */
   printf("-c <cluster id> [cluster id]\n");
-  printf("-b <bloom>      [Bloom filter]\n");
   printf("-s <string>     [String to search on packets]\n");
   printf("-a              [Active packet wait]\n");
   printf("-v              [Verbose]\n");
-
-  printf("\nBloom filter syntax examples (-b):\n"
-	 "               +vlan=10\n" 
-	 "               -vlan=10\n" 
-	 "               +ip=192.168.0.1\n" 
-	 "               -ip=192.168.0.1\n" 
-	 "               +port=80\n" 
-	 "               -port=80\n" 
-	 "               +proto=tcp\n" 
-	 "               -proto=tcp\n" 
-	 "               +mac=00:11:22:33:44:55\n"  
-	 "               -mac=00:11:22:33:44:55\n");
-
 }
 
 /* *************************************** */
 
 int main(int argc, char* argv[]) {
-  char *device = NULL, c, *bpfFilter = NULL, *bloom = NULL, *string = NULL;
+  char *device = NULL, c, *bpfFilter = NULL, *string = NULL;
   int i, promisc;
   u_int clusterId = 0;
   u_char wait_for_packet = 1;
@@ -371,7 +357,7 @@ int main(int argc, char* argv[]) {
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:vb:s:a" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:vs:a" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -385,9 +371,6 @@ int main(int argc, char* argv[]) {
       break;
     case 'i':
       device = strdup(optarg);
-      break;
-    case 'b':
-      bloom = strdup(optarg);
       break;
     case 'v':
       verbose = 1;
@@ -419,13 +402,30 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  if(bloom) {
-    pfring_reset_bloom_filters(pd);
-    pfring_set_bloom_filter(pd, bloom);
-    pfring_toggle_bloom_state(pd, 1);
-  }
+#if 0
+  if(1) {
+    filtering_rule rule;
+    
+    pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
 
-  if(string) pfring_set_search_string(pd, string);
+    memset(&rule, 0, sizeof(rule));
+
+    if(1) {
+      rule.rule_id = 5; 
+      rule.pass_action = 1; /* ACCEPT */
+      rule.port_low = 0, rule.port_high = 1024;
+      rule.host_ip = ntohl(inet_addr("10.37.128.0")), rule.host_netmask = 0xFFFF0000;
+      // snprintf(rule.payload_pattern, sizeof(rule.payload_pattern), "hello");
+      pfring_add_filtering_rule(pd, &rule);
+    } else {
+      rule.rule_id = 10; pfring_add_filtering_rule(pd, &rule);
+      rule.rule_id = 5; pfring_add_filtering_rule(pd, &rule);
+      rule.rule_id = 15; pfring_add_filtering_rule(pd, &rule);
+      rule.rule_id = 5; pfring_add_filtering_rule(pd, &rule);
+      pfring_remove_filtering_rule(pd, 15);
+    }
+  }
+#endif
 
   signal(SIGINT, sigproc);
 

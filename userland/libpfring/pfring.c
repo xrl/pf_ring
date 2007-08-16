@@ -202,39 +202,45 @@ void pfring_close(pfring *ring) {
 
 /* **************************************************** */
 
-int pfring_toggle_bloom_state(pfring *ring, int enable_bloom) {
-  return(ring ? setsockopt(ring->fd, 0, SO_TOGGLE_BLOOM_STATE,
-			   &enable_bloom, sizeof(enable_bloom)): -1);
+int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy) {
+  return(ring ? setsockopt(ring->fd, 0, SO_TOGGLE_FILTER_POLICY, 
+			   &rules_default_accept_policy,
+			   sizeof(rules_default_accept_policy)): -1);
 
 }
 
 /* **************************************************** */
 
-int pfring_set_search_string(pfring *ring, char* string) {
+int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   int rc;
 
-  rc = (ring && string) ? setsockopt(ring->fd, 0, SO_SET_STRING,
-				     string, strlen(string)): -1;
+  if((!rule_to_add) || (!ring)) return(-1);
+
+  /* Sanitize entry */
+  if(rule_to_add->port_low > rule_to_add->port_high)
+    rule_to_add->port_low = rule_to_add->port_high;
+  
+  if(rule_to_add->balance_id > rule_to_add->balance_pool)
+    rule_to_add->balance_id = 0;
+  
+  if(rule_to_add->host_netmask > 0)
+    rule_to_add->host_ip = (rule_to_add->host_ip & rule_to_add->host_netmask);
+
+  rc = setsockopt(ring->fd, 0, SO_ADD_FILTERING_RULE,
+		  rule_to_add, sizeof(filtering_rule));
 
   return(rc);
 }
 
 /* **************************************************** */
 
-int pfring_reset_bloom_filters(pfring *ring) {
-  int reset_filters = 1;
+int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
+  int rc;
 
-  return(ring ? setsockopt(ring->fd, 0, SO_RESET_BLOOM_FILTERS,
-			   &reset_filters, sizeof(reset_filters)): -1);
+  rc = ring ? setsockopt(ring->fd, 0, SO_REMOVE_FILTERING_RULE,
+			 &rule_id, sizeof(rule_id)): -1;
 
-}
-
-/* **************************************************** */
-
-int pfring_set_bloom_filter(pfring *ring, char *bloom_filter) {
-  return((ring && bloom_filter) ? setsockopt(ring->fd, 0, SO_SET_BLOOM,
-					     bloom_filter, strlen(bloom_filter)): -1);
-
+  return(rc);
 }
 
 /* **************************************************** */
