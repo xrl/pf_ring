@@ -10,7 +10,8 @@
  * - Francesco Fusco <fusco@ntop.org>
  * - Michael Stiller <ms@2scale.net>
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
- *
+ * - Andrew Gallatin <gallatyn@myri.com>
+ * - Matthew J. Roth <mroth@imminc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -76,6 +77,15 @@ static inline int remap_page_range(struct vm_area_struct *vma,
 
 /* ************************************************* */
 
+#define TH_FIN_MULTIPLIER	0x01
+#define TH_SYN_MULTIPLIER	0x02
+#define TH_RST_MULTIPLIER	0x04
+#define TH_PUSH_MULTIPLIER	0x08
+#define TH_ACK_MULTIPLIER	0x10
+#define TH_URG_MULTIPLIER	0x20
+
+/* ************************************************* */
+
 #define CLUSTER_LEN       8
 
 struct ring_cluster {
@@ -130,15 +140,15 @@ struct ring_opt {
   /* BPF Filter */
   struct sk_filter *bpfFilter;
 
-  /* Locks */
-  atomic_t num_ring_slots_waiters;
-  wait_queue_head_t ring_slots_waitqueue;
-  rwlock_t ring_index_lock;
-
   /* Filtering Rules */
   u_int16_t num_filtering_rules;
   u_int8_t rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
   struct list_head rules;
+
+  /* Locks */
+  atomic_t num_ring_slots_waiters;
+  wait_queue_head_t ring_slots_waitqueue;
+  rwlock_t ring_index_lock;
 
   /* Indexes (Internal) */
   u_int insert_page_id, insert_slot_id;
@@ -186,8 +196,8 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 /* ********************************** */
 
 /* Defaults */
-static unsigned int bucket_len = 128, num_slots = 4096, sample_rate = 1,
-  transparent_mode = 1, enable_tx_capture = 1;
+static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096, sample_rate = 1;
+static unsigned int transparent_mode = 1, enable_tx_capture = 1;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
 module_param(bucket_len, uint, 0644);
@@ -203,7 +213,7 @@ MODULE_PARM(transparent_mode, "i");
 MODULE_PARM(enable_tx_capture, "i");
 #endif
 
-MODULE_PARM_DESC(bucket_len, "Number of ring buckets");
+MODULE_PARM_DESC(bucket_len, "Size (in bytes) a ring bucket");
 MODULE_PARM_DESC(num_slots,  "Number of ring slots");
 MODULE_PARM_DESC(sample_rate, "Ring packet sample rate");
 MODULE_PARM_DESC(transparent_mode,
@@ -2495,12 +2505,12 @@ static int parse_pkt(struct sk_buff *skb, u_int16_t skb_displ,
 		     u_int16_t *vlan_id, u_int32_t *ipv4_src,
 		     u_int32_t *ipv4_dst,
 		     u_int16_t *l4_src_port, u_int16_t *l4_dst_port,
-		     u_int16_t *payload_offset) {
+		     u_int8_t *tcp_flags, u_int16_t *payload_offset) {
   struct iphdr *ip;
   struct ethhdr *eh = (struct ethhdr*)(skb->data-skb_displ);
   u_int16_t displ;
 
-  *l3_offset = *l4_offset = *l3_proto = *payload_offset = 0;
+  *l3_offset = *l4_offset = *l3_proto = *payload_offset = *tcp_flags = 0;
   *eth_type = ntohs(eh->h_proto);
 
   if(*eth_type == 0x8100 /* 802.1q (VLAN) */) {
@@ -2525,6 +2535,8 @@ static int parse_pkt(struct sk_buff *skb, u_int16_t skb_displ,
 	struct tcphdr *tcp = (struct tcphdr*)(skb->data-skb_displ+(*l4_offset));
 	*l4_src_port = ntohs(tcp->source), *l4_dst_port = ntohs(tcp->dest);
 	*payload_offset = (*l4_offset)+(tcp->doff * 4);
+	*tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) + 
+	  (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
       } else if(ip->protocol == IPPROTO_UDP) {
 	struct udphdr *udp = (struct udphdr*)(skb->data-skb_displ+(*l4_offset));
 	*l4_src_port = ntohs(udp->source), *l4_dst_port = ntohs(udp->dest);
@@ -2624,7 +2636,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
   pfr->slots_info->tot_pkts++;
   write_unlock(&pfr->ring_index_lock);
 
-  /* BPF Filtering (from af_packet.c) */
+  /* ************************** */
+
+  /* [1] BPF Filtering (from af_packet.c) */
   if(pfr->bpfFilter != NULL) {
     unsigned res = 1, len;
 
@@ -2649,81 +2663,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
       return;
     }
-  }
-
-  /* ************************** */
-
-  if(pfr->sample_rate > 1) {
-    if(pfr->pktToSample == 0) {
-      write_lock(&pfr->ring_index_lock);
-      pfr->pktToSample = pfr->sample_rate;
-      write_unlock(&pfr->ring_index_lock);
-    } else {
-      write_lock(&pfr->ring_index_lock);
-      pfr->pktToSample--;
-      write_unlock(&pfr->ring_index_lock);
-
-#if defined(RING_DEBUG)
-      printk("add_skb_to_ring(skb): sampled packet [len=%d]"
-	     "[tot=%llu][insertIdx=%d][pkt_type=%d][cloned=%d]\n",
-	     (int)skb->len, pfr->slots_info->tot_pkts,
-	     pfr->slots_info->insert_idx,
-	     skb->pkt_type, skb->cloned);
-#endif
-      return;
-    }
-  }
-
-  /* ************************************* */
-
-  if((pfr->reflector_dev != NULL)
-     && (!netif_queue_stopped(pfr->reflector_dev))) {
-    int cpu = smp_processor_id();
-
-    /* increase reference counter so that this skb is not freed */
-    atomic_inc(&skb->users);
-
-    skb->data -= displ;
-
-    /* send it */
-    if (pfr->reflector_dev->xmit_lock_owner != cpu) {
-      /* Patch below courtesy of Matthew J. Roth <mroth@imminc.com> */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
-      spin_lock_bh(&pfr->reflector_dev->xmit_lock);
-      pfr->reflector_dev->xmit_lock_owner = cpu;
-      spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
-#else
-      netif_tx_lock_bh(pfr->reflector_dev);
-#endif
-      if (pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev) == 0) {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
-        spin_lock_bh(&pfr->reflector_dev->xmit_lock);
-	pfr->reflector_dev->xmit_lock_owner = -1;
-	spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
-#else
-	netif_tx_unlock_bh(pfr->reflector_dev);
-#endif
-	skb->data += displ;
-#if defined(RING_DEBUG)
-	printk("++ hard_start_xmit succeeded\n");
-#endif
-	return; /* OK */
-      }
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
-      spin_lock_bh(&pfr->reflector_dev->xmit_lock);
-      pfr->reflector_dev->xmit_lock_owner = -1;
-      spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
-#else
-      netif_tx_unlock_bh(pfr->reflector_dev);
-#endif
-    }
-
-#if defined(RING_DEBUG)
-    printk("++ hard_start_xmit failed\n");
-#endif
-    skb->data += displ;
-    return; /* -ENETDOWN */
   }
 
   /* ************************************* */
@@ -2780,10 +2719,14 @@ static void add_skb_to_ring(struct sk_buff *skb,
 			  &hdr->ipv4_dst,
 			  &hdr->l4_src_port,
 			  &hdr->l4_dst_port,
+			  &hdr->tcp_flags,
 			  &hdr->payload_offset);
 
     fwd_pkt = pfr->rules_default_accept_policy;
 
+    /* ************************** */
+
+    /* [2] Filter packet according to rules */
     read_lock(&ring_mgmt_lock);
     for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
       {
@@ -2800,42 +2743,119 @@ static void add_skb_to_ring(struct sk_buff *skb,
     read_unlock(&ring_mgmt_lock);
 
     if(fwd_pkt) {
-      /* memcpy(&bucket[sizeof(struct pcap_pkthdr)], skb->data-displ, hdr->caplen); */
+      /* We accept the packet: it needs to be queued */
 
-      /* Fix courtesy of Andrew Gallatin <gallatyn@myri.com> */
-      /* printk("[displ=%d][skb_headlen=%d]\n", displ, skb_headlen(skb)); */
-      skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
+      /* [3] Packet sampling */
+      if(pfr->sample_rate > 1) {
+	if(pfr->pktToSample == 0) {
+	  write_lock(&pfr->ring_index_lock);
+	  pfr->pktToSample = pfr->sample_rate;
+	  write_unlock(&pfr->ring_index_lock);
+	} else {
+	  write_lock(&pfr->ring_index_lock);
+	  pfr->pktToSample--;
+	  write_unlock(&pfr->ring_index_lock);
 
 #if defined(RING_DEBUG)
-      {
-	static unsigned int lastLoss = 0;
-
-	if(pfr->slots_info->tot_lost
-	   && (lastLoss != pfr->slots_info->tot_lost)) {
-	  printk("add_skb_to_ring(%d): [data_len=%d]"
-		 "[hdr.caplen=%d][skb->len=%d]"
-		 "[pcap_pkthdr=%d][removeIdx=%d]"
-		 "[loss=%lu][page=%u][slot=%u]\n",
-		 idx-1, pfr->slots_info->data_len, hdr->caplen, skb->len,
-		 sizeof(struct pcap_pkthdr),
-		 pfr->slots_info->remove_idx,
-		 (long unsigned int)pfr->slots_info->tot_lost,
-		 pfr->insert_page_id, pfr->insert_slot_id);
-
-	  lastLoss = pfr->slots_info->tot_lost;
+	  printk("add_skb_to_ring(skb): sampled packet [len=%d]"
+		 "[tot=%llu][insertIdx=%d][pkt_type=%d][cloned=%d]\n",
+		 (int)skb->len, pfr->slots_info->tot_pkts,
+		 pfr->slots_info->insert_idx,
+		 skb->pkt_type, skb->cloned);
+#endif
+	  return;
 	}
       }
+
+	/* [4] Check if there is a reflector device defined */
+	if((pfr->reflector_dev != NULL)
+	   && (!netif_queue_stopped(pfr->reflector_dev)))
+	  {
+	    int cpu = smp_processor_id();
+
+	    /* increase reference counter so that this skb is not freed */
+	    atomic_inc(&skb->users);
+
+	    skb->data -= displ;
+
+	    /* send it */
+	    if (pfr->reflector_dev->xmit_lock_owner != cpu)
+	      {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
+		spin_lock_bh(&pfr->reflector_dev->xmit_lock);
+		pfr->reflector_dev->xmit_lock_owner = cpu;
+		spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
+#else
+		netif_tx_lock_bh(pfr->reflector_dev);
+#endif
+		if (pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev) == 0) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
+		  spin_lock_bh(&pfr->reflector_dev->xmit_lock);
+		  pfr->reflector_dev->xmit_lock_owner = -1;
+		  spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
+#else
+		  netif_tx_unlock_bh(pfr->reflector_dev);
+#endif
+		  skb->data += displ;
+#if defined(RING_DEBUG)
+		  printk("++ hard_start_xmit succeeded\n");
+#endif
+		  return; /* OK */
+		}
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
+		spin_lock_bh(&pfr->reflector_dev->xmit_lock);
+		pfr->reflector_dev->xmit_lock_owner = -1;
+		spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
+#else
+		netif_tx_unlock_bh(pfr->reflector_dev);
+#endif
+	      }
+
+#if defined(RING_DEBUG)
+	    printk("++ hard_start_xmit failed\n");
+#endif
+	    skb->data += displ;
+	    return; /* -ENETDOWN */
+	  }
+
+	/* No reflector device: the packet needs to be queued */
+	
+	if(hdr->caplen > 0) {
+	  /* Copy the packet into the bucket */
+	  skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
+	}
+
+#if defined(RING_DEBUG)
+	{
+	  static unsigned int lastLoss = 0;
+
+	  if(pfr->slots_info->tot_lost
+	     && (lastLoss != pfr->slots_info->tot_lost)) {
+	    printk("add_skb_to_ring(%d): [data_len=%d]"
+		   "[hdr.caplen=%d][skb->len=%d]"
+		   "[pcap_pkthdr=%d][removeIdx=%d]"
+		   "[loss=%lu][page=%u][slot=%u]\n",
+		   idx-1, pfr->slots_info->data_len, hdr->caplen, skb->len,
+		   sizeof(struct pcap_pkthdr),
+		   pfr->slots_info->remove_idx,
+		   (long unsigned int)pfr->slots_info->tot_lost,
+		   pfr->insert_page_id, pfr->insert_slot_id);
+
+	    lastLoss = pfr->slots_info->tot_lost;
+	  }
+	}
 #endif
 
-      write_lock(&pfr->ring_index_lock);
-      if(idx == pfr->slots_info->tot_slots)
-	pfr->slots_info->insert_idx = 0;
-      else
-	pfr->slots_info->insert_idx = idx;
+	write_lock(&pfr->ring_index_lock);
+	if(idx == pfr->slots_info->tot_slots)
+	  pfr->slots_info->insert_idx = 0;
+	else
+	  pfr->slots_info->insert_idx = idx;
 
-      pfr->slots_info->tot_insert++;
-      theSlot->slot_state = 1;
-      write_unlock(&pfr->ring_index_lock);
+	pfr->slots_info->tot_insert++;
+	theSlot->slot_state = 1;
+	write_unlock(&pfr->ring_index_lock);      
     }
   } else {
     write_lock(&pfr->ring_index_lock);
@@ -2851,7 +2871,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
   }
 
   if(fwd_pkt) {
-
     /* wakeup in case of poll() */
     if(waitqueue_active(&pfr->ring_slots_waitqueue))
       wake_up_interruptible(&pfr->ring_slots_waitqueue);
@@ -4027,7 +4046,8 @@ static void __exit ring_exit(void)
 
 static int __init ring_init(void)
 {
-  printk("Welcome to PF_RING %s\n(C) 2004-07 L.Deri <deri@ntop.org>\n",
+  printk("Welcome to PF_RING %s\n"
+	 "(C) 2004-07 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION);
 
   INIT_LIST_HEAD(&ring_table);

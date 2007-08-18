@@ -243,7 +243,7 @@ int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
   return(rc);
 }
 
-/* **************************************************** */
+/* ******************************* */
 
 int pfring_stats(pfring *ring, pfring_stat *stats) {
   if(ring && stats) {

@@ -264,7 +264,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     else
       printf("[eth_type=0x%04X]", eth_type);
     
-    printf("[caplen=%d][len=%d]\n", h->caplen, h->len);
+    printf("[tcp_flags=%d][caplen=%d][len=%d]\n", h->tcp_flags, h->caplen, h->len);
   }
 
   if(numPkts == 0) gettimeofday(&startTime, NULL);
@@ -402,7 +402,6 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-#if 0
   if(1) {
     filtering_rule rule;
     
@@ -425,7 +424,6 @@ int main(int argc, char* argv[]) {
       pfring_remove_filtering_rule(pd, 15);
     }
   }
-#endif
 
   signal(SIGINT, sigproc);
 

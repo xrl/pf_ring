@@ -16,8 +16,8 @@
 
 #define RING_MAGIC
 #define RING_MAGIC_VALUE            0x88
-#define RING_FLOWSLOT_VERSION          6
-#define RING_VERSION             "3.5.0"
+#define RING_FLOWSLOT_VERSION          7
+#define RING_VERSION             "3.5.1"
 
 #define SO_ADD_TO_CLUSTER         99
 #define SO_REMOVE_FROM_CLUSTER   100
@@ -147,6 +147,7 @@ struct pcap_pkthdr {
   u_int16_t l3_offset, l4_offset, payload_offset; /* Offsets of L3/L4/payload elements */
   u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
+  u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
 };
 #endif
 

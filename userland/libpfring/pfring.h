@@ -61,6 +61,7 @@ typedef struct {
   u_long recv, drop;
 } pfring_stat;
 
+/* NOTE: keep 'struct pfring_pkthdr' in sync with 'struct pcap_pkthdr' (ring.h) */
 struct pfring_pkthdr {
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
@@ -72,6 +73,7 @@ struct pfring_pkthdr {
   u_int16_t l3_offset, l4_offset; /* Offsets of L3 and L4 elements */
   u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */ 
+  u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
 };
 
 /* ********************************* */
@@ -84,7 +86,8 @@ void pfring_close(pfring *ring);
 int pfring_stats(pfring *ring, pfring_stat *stats);
 int pfring_recv(pfring *ring, char* buffer, int buffer_len, 
 		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet);
-int pfring_toggle_bloom_state(pfring *ring, int enable_bloom);
-int pfring_set_bloom_filter(pfring *ring, char *bloom_filter);
-int pfring_reset_bloom_filters(pfring *ring);
-int pfring_set_search_string(pfring *ring, char* string);
+
+int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add);
+int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id);
+int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy);
+
