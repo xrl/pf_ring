@@ -86,8 +86,8 @@ void pfring_close(pfring *ring);
 int pfring_stats(pfring *ring, pfring_stat *stats);
 int pfring_recv(pfring *ring, char* buffer, int buffer_len, 
 		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet);
-
 int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add);
 int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id);
 int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy);
-
+int pfring_version(pfring *ring, u_int32_t *version);
+int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */);

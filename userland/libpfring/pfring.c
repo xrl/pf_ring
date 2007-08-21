@@ -211,6 +211,17 @@ int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_p
 
 /* **************************************************** */
 
+int pfring_version(pfring *ring, u_int32_t *version) {
+  if(ring == NULL) 
+    return(-1);
+  else {
+    socklen_t len = sizeof(u_int32_t);
+    return(getsockopt(ring->fd, 0, SO_GET_RING_VERSION, version, &len));
+  }
+}
+
+/* **************************************************** */
+
 int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   int rc;
 
@@ -239,6 +250,17 @@ int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
 
   rc = ring ? setsockopt(ring->fd, 0, SO_REMOVE_FILTERING_RULE,
 			 &rule_id, sizeof(rule_id)): -1;
+
+  return(rc);
+}
+
+/* **************************************************** */
+
+int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */) {
+  int rc;
+
+  rc = ring ? setsockopt(ring->fd, 0, SO_SET_SAMPLING_RATE,
+			 &rate, sizeof(rate)): -1;
 
   return(rc);
 }

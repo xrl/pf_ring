@@ -395,6 +395,15 @@ int main(int argc, char* argv[]) {
   if((pd = pfring_open(device, promisc)) == NULL) {
     printf("pfring_open error\n");
     return(-1);
+  } else {
+    u_int32_t version;
+
+    pfring_version(pd, &version);
+
+    printf("Using PF_RING v.%d.%d.%d\n", 
+	   (version & 0xFFFF0000) >> 16,
+	   (version & 0x0000FF00) >> 8,
+	   version & 0x000000FF);	   
   }
   
   if(clusterId > 0) {

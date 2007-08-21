@@ -15,10 +15,14 @@
 #endif
 
 #define RING_MAGIC
-#define RING_MAGIC_VALUE            0x88
-#define RING_FLOWSLOT_VERSION          7
-#define RING_VERSION             "3.5.1"
+#define RING_MAGIC_VALUE             0x88
+#define RING_FLOWSLOT_VERSION           7
 
+/* Versioning */
+#define RING_VERSION              "3.5.2"
+#define RING_VERSION_NUM         0x030502
+
+/* Set */
 #define SO_ADD_TO_CLUSTER         99
 #define SO_REMOVE_FROM_CLUSTER   100
 #define SO_SET_REFLECTOR         101
@@ -26,6 +30,10 @@
 #define SO_ADD_FILTERING_RULE    103
 #define SO_REMOVE_FILTERING_RULE 104
 #define SO_TOGGLE_FILTER_POLICY  105
+#define SO_SET_SAMPLING_RATE     106
+
+/* Get */
+#define SO_GET_RING_VERSION      110
 
 /* *********************************** */
 
