@@ -2782,9 +2782,11 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	}
 
       /* No reflector device: the packet needs to be queued */	
+      printk("skb_copy_bits(%d,%d)\n", hdr->caplen, bucket_len);
       if(hdr->caplen > 0) {
 	/* Copy the packet into the bucket */
-	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
+	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)],
+		      min(hdr->caplen, bucket_len));
       }
 
 #if defined(RING_DEBUG)

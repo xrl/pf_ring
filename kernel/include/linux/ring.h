@@ -185,6 +185,10 @@ enum cluster_type {
 #define RING_MIN_SLOT_SIZE    (60+sizeof(struct pcap_pkthdr))
 #define RING_MAX_SLOT_SIZE    (1514+sizeof(struct pcap_pkthdr))
 
+#ifndef min
+#define min(a,b) ((a < b) ? a : b)
+#endif
+
 /* *********************************** */
 
 typedef struct flowSlotInfo {

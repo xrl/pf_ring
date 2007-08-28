@@ -24,4 +24,4 @@ pfcount.o: pfcount.c
 	$(CC) -c $(INCLUDE) $<
 
 clean:
-	/bin/rm -f $(TARGET) *.o *~
+	/bin/rm -f $(TARGET) *.o *~ $(LIBPFRING)

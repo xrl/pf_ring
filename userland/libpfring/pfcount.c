@@ -411,7 +411,7 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  if(1) {
+  if(0) {
     filtering_rule rule;
     
     pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
