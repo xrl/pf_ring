@@ -161,20 +161,6 @@ struct pcap_pkthdr {
 
 /* *********************************** */
 
-typedef struct _counter_list {
-  u_int32_t bit_id;
-  u_int32_t bit_counter;
-  struct _counter_list *next;
-} bitmask_counter_list;
-
-typedef struct {
-  u_int32_t num_bits, order, num_pages;
-  unsigned long bits_memory;
-  bitmask_counter_list *clashes;
-} bitmask_selector;
-
-/* *********************************** */
-
 enum cluster_type {
   cluster_per_flow = 0,
   cluster_round_robin

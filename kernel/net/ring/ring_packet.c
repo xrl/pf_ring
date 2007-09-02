@@ -94,8 +94,12 @@ struct ring_cluster {
   enum cluster_type   hashing_mode;
   u_short             hashing_id;
   struct sock         *sk[CLUSTER_LEN];
-  struct ring_cluster *next;      /* NULL = last element of the cluster */
 };
+
+typedef struct {
+  struct ring_cluster cluster;
+  struct list_head list;
+} ring_cluster_element;
 
 /* ************************************************* */
 
@@ -161,7 +165,7 @@ static struct list_head ring_table;
 static u_int ring_table_size;
 
 /* List of all clusters */
-static struct ring_cluster *ring_cluster_list;
+struct list_head ring_cluster_list;
 
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
 
@@ -2414,10 +2418,12 @@ static inline void ring_insert(struct sock *sk) {
  * or when we reach the end of the list.
  */
 static inline void ring_remove(struct sock *sk) {
-  struct list_head *ptr;
+  struct list_head *ptr, *tmp_ptr;
   struct ring_element *entry;
 
-  for(ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
+  printk("RING: ring_remove()\n");
+
+  list_for_each_safe(ptr, tmp_ptr, &ring_table) {
     entry = list_entry(ptr, struct ring_element, list);
 
     if(entry->sk == sk) {
@@ -2427,6 +2433,8 @@ static inline void ring_remove(struct sock *sk) {
       break;
     }
   }
+
+  printk("RING: leaving ring_remove()\n");
 }
 
 /* ********************************** */
@@ -2434,7 +2442,6 @@ static inline void ring_remove(struct sock *sk) {
 static u_int32_t num_queued_pkts(struct ring_opt *pfr) {
 
   if(pfr->ring_slots != NULL) {
-
     u_int32_t tot_insert = pfr->slots_info->insert_idx,
 #if defined(RING_DEBUG)
       tot_read = pfr->slots_info->tot_read, tot_pkts;
@@ -2622,15 +2629,15 @@ static void add_skb_to_ring(struct sk_buff *skb,
 {
   FlowSlot *theSlot;
   int idx, fwd_pkt = 0;
+  struct list_head *ptr, *tmp_ptr;
 
-  /*
-    printk("add_skb_to_ring: [displ=%d][is_ip_pkt=%d][%d -> %d]\n", 
-           displ, is_ip_pkt, hdr->l4_src_port, hdr->l4_dst_port);
-  */
+#if defined(RING_DEBUG)
+  printk("add_skb_to_ring: [displ=%d][is_ip_pkt=%d][%d -> %d]\n", 
+	 displ, is_ip_pkt, hdr->l4_src_port, hdr->l4_dst_port);
+#endif
 
-  write_lock(&pfr->ring_index_lock);
+  write_lock_irq(&pfr->ring_index_lock);
   pfr->slots_info->tot_pkts++;
-  write_unlock(&pfr->ring_index_lock);
 
   /* ************************** */
 
@@ -2640,11 +2647,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     len = skb->len-skb->data_len;
 
-    write_lock(&pfr->ring_index_lock);
     skb->data -= displ;
     res = sk_run_filter(skb, pfr->bpfFilter->insns, pfr->bpfFilter->len);
     skb->data += displ;
-    write_unlock(&pfr->ring_index_lock);
 
     if(res == 0) {
       /* Filter failed */
@@ -2656,6 +2661,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	     skb->pkt_type, skb->cloned);
 #endif
 
+      write_unlock_irq(&pfr->ring_index_lock);
       return;
     }
   }
@@ -2675,7 +2681,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
   if((theSlot != NULL) && (theSlot->slot_state == 0)) {
     char *bucket;
-    struct list_head *ptr;
 
     /* Update Index */
     idx++;
@@ -2690,12 +2695,12 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     /* [2] Filter packet according to rules */
     read_lock(&ring_mgmt_lock);
-    for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+    list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
       {
 	filtering_rule_element *entry;
-
+	
 	entry = list_entry(ptr, filtering_rule_element, list);
-
+	
 	if(match_filtering_rule(entry, hdr, skb, displ))
 	  {
 	    fwd_pkt = entry->rule.pass_action;
@@ -2710,13 +2715,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
       /* [3] Packet sampling */
       if(pfr->sample_rate > 1) {
 	if(pfr->pktToSample == 0) {
-	  write_lock(&pfr->ring_index_lock);
 	  pfr->pktToSample = pfr->sample_rate;
-	  write_unlock(&pfr->ring_index_lock);
 	} else {
-	  write_lock(&pfr->ring_index_lock);
 	  pfr->pktToSample--;
-	  write_unlock(&pfr->ring_index_lock);
 
 #if defined(RING_DEBUG)
 	  printk("add_skb_to_ring(skb): sampled packet [len=%d]"
@@ -2725,6 +2726,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
 		 pfr->slots_info->insert_idx,
 		 skb->pkt_type, skb->cloned);
 #endif
+
+	  write_unlock_irq(&pfr->ring_index_lock);
 	  return;
 	}
       }
@@ -2762,6 +2765,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
 #if defined(RING_DEBUG)
 		printk("++ hard_start_xmit succeeded\n");
 #endif
+
+		write_unlock_irq(&pfr->ring_index_lock);
 		return; /* OK */
 	      }
 
@@ -2778,15 +2783,15 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	  printk("++ hard_start_xmit failed\n");
 #endif
 	  skb->data += displ;
+	  write_unlock_irq(&pfr->ring_index_lock);
 	  return; /* -ENETDOWN */
 	}
 
       /* No reflector device: the packet needs to be queued */	
-      printk("skb_copy_bits(%d,%d)\n", hdr->caplen, bucket_len);
       if(hdr->caplen > 0) {
 	/* Copy the packet into the bucket */
-	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)],
-		      min(hdr->caplen, bucket_len));
+	int len = min(hdr->caplen, bucket_len);
+	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], len);
       }
 
 #if defined(RING_DEBUG)
@@ -2810,7 +2815,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
       }
 #endif
 
-      write_lock(&pfr->ring_index_lock);
       if(idx == pfr->slots_info->tot_slots)
 	pfr->slots_info->insert_idx = 0;
       else
@@ -2818,12 +2822,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
       pfr->slots_info->tot_insert++;
       theSlot->slot_state = 1;
-      write_unlock(&pfr->ring_index_lock);      
     }
   } else {
-    write_lock(&pfr->ring_index_lock);
     pfr->slots_info->tot_lost++;
-    write_unlock(&pfr->ring_index_lock);
 
 #if defined(RING_DEBUG)
     printk("add_skb_to_ring(skb): packet lost [loss=%lu]"
@@ -2832,6 +2833,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	   pfr->slots_info->remove_idx, pfr->slots_info->insert_idx);
 #endif
   }
+
+  write_unlock_irq(&pfr->ring_index_lock);
 
   if(fwd_pkt) {
     /* wakeup in case of poll() */
@@ -2842,16 +2845,16 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
-static u_int hash_skb(struct ring_cluster *cluster_ptr,
+static u_int hash_skb(ring_cluster_element *cluster_ptr,
 		      struct sk_buff *skb, 
 		      int displ) 
 {
   u_int idx;
   struct iphdr *ip;
 
-  if(cluster_ptr->hashing_mode == cluster_round_robin) 
+  if(cluster_ptr->cluster.hashing_mode == cluster_round_robin) 
     {
-      idx = cluster_ptr->hashing_id++;
+      idx = cluster_ptr->cluster.hashing_id++;
     } 
   else 
     {
@@ -2863,9 +2866,7 @@ static u_int hash_skb(struct ring_cluster *cluster_ptr,
 
 	    Always points to to the IP part of the packet
 	  */
-
 	  ip = (struct iphdr*)(skb->data+displ);
-
 	  idx = ip->saddr+ip->daddr+ip->protocol;
 
 	  if(ip->protocol == IPPROTO_TCP) 
@@ -2885,7 +2886,7 @@ static u_int hash_skb(struct ring_cluster *cluster_ptr,
 	idx = skb->len;
     }
 
-  return(idx % cluster_ptr->num_cluster_elements);
+  return(idx % cluster_ptr->cluster.num_cluster_elements);
 }
 
 /* ********************************** */
@@ -2897,9 +2898,9 @@ static int skb_ring_handler(struct sk_buff *skb,
   struct sock *skElement;
   int rc = 0, is_ip_pkt;
   struct list_head *ptr;
-  struct ring_cluster *cluster_ptr;
   struct pcap_pkthdr hdr;
   int displ;
+
 
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
@@ -2951,45 +2952,42 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
   hdr.len = hdr.caplen = skb->len+displ;
-  
+
+  read_lock(&ring_mgmt_lock);
+
   /* [1] Check unclustered sockets */
-  for (ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
+  list_for_each(ptr, &ring_table) {
     struct ring_opt *pfr;
     struct ring_element *entry;
 
     entry = list_entry(ptr, struct ring_element, list);
 
-    read_lock(&ring_mgmt_lock);
     skElement = entry->sk;
     pfr = ring_sk(skElement);
-    read_unlock(&ring_mgmt_lock);
 
     if((pfr != NULL)
        && (pfr->cluster_id == 0 /* No cluster */)
        && (pfr->ring_slots != NULL)
        && ((pfr->ring_netdev == skb->dev)
-	   || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
+	   || ((skb->dev->flags & IFF_SLAVE) 
+	       && (pfr->ring_netdev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
-      read_lock(&ring_mgmt_lock);
       add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ);
-      read_unlock(&ring_mgmt_lock);
-
       rc = 1; /* Ring found: we've done our job */
     }
   }
 
   /* [2] Check socket clusters */
-  cluster_ptr = ring_cluster_list;
-
-  while(cluster_ptr != NULL) {
+  list_for_each(ptr, &ring_cluster_list) {
+    ring_cluster_element *cluster_ptr;
     struct ring_opt *pfr;
 
-    if(cluster_ptr->num_cluster_elements > 0) {
+    cluster_ptr = list_entry(ptr, ring_cluster_element, list);
+
+    if(cluster_ptr->cluster.num_cluster_elements > 0) {
       u_int skb_hash = hash_skb(cluster_ptr, skb, displ);
 
-      read_lock(&ring_mgmt_lock);
-      skElement = cluster_ptr->sk[skb_hash];
-      read_unlock(&ring_mgmt_lock);
+      skElement = cluster_ptr->cluster.sk[skb_hash];
 
       if(skElement != NULL) {
 	pfr = ring_sk(skElement);
@@ -2997,19 +2995,17 @@ static int skb_ring_handler(struct sk_buff *skb,
 	if((pfr != NULL)
 	   && (pfr->ring_slots != NULL)
 	   && ((pfr->ring_netdev == skb->dev)
-	       || ((skb->dev->flags & IFF_SLAVE) && pfr->ring_netdev == skb->dev->master))) {
+	       || ((skb->dev->flags & IFF_SLAVE) 
+		   && (pfr->ring_netdev == skb->dev->master)))) {
 	  /* We've found the ring where the packet can be stored */
-          read_lock(&ring_mgmt_lock);
 	  add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ);
-          read_unlock(&ring_mgmt_lock);
-
 	  rc = 1; /* Ring found: we've done our job */
 	}
       }
     }
-
-    cluster_ptr = cluster_ptr->next;
   }
+
+  read_unlock(&ring_mgmt_lock);
 
 #ifdef PROFILING
   rdt1 = _rdtsc()-rdt1;
@@ -3132,8 +3128,9 @@ static int ring_create(struct socket *sock, int protocol) {
   }
   memset(pfr, 0, sizeof(*pfr));
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
-  pfr->ring_index_lock = RW_LOCK_UNLOCKED;
+  rwlock_init(&pfr->ring_index_lock);
   atomic_set(&pfr->num_ring_slots_waiters, 0);
+  INIT_LIST_HEAD(&pfr->rules);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
   sk->sk_family       = PF_RING;
@@ -3164,7 +3161,7 @@ static int ring_release(struct socket *sock)
 {
   struct sock *sk = sock->sk;
   struct ring_opt *pfr = ring_sk(sk);
-  struct list_head *ptr;
+  struct list_head *ptr, *tmp_ptr;
 
   if(!sk)  return 0;
 
@@ -3176,6 +3173,7 @@ static int ring_release(struct socket *sock)
   printk("RING: ring_release entered\n");
 #endif
 
+  printk("RING: ring_release [%d]\n", 0);
   /*
     The calls below must be placed outside the
     write_lock_irq...write_unlock_irq block.
@@ -3187,18 +3185,7 @@ static int ring_release(struct socket *sock)
   ring_remove(sk);
   sock->sk = NULL;
 
-  /* Free the ring buffer */
-  if(pfr->ring_memory) {
-    struct page *page, *page_end;
-
-    page_end = virt_to_page(pfr->ring_memory + (PAGE_SIZE << pfr->order) - 1);
-    for(page = virt_to_page(pfr->ring_memory); page <= page_end; page++)
-      ClearPageReserved(page);
-
-    free_pages(pfr->ring_memory, pfr->order);
-  }
-
-  for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+  list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
     {
       filtering_rule_element *rule;
 
@@ -3209,8 +3196,20 @@ static int ring_release(struct socket *sock)
 #endif
 
       if(rule->acsm) acsmFree2(rule->acsm);
+      list_del(ptr);
       kfree(rule);
     }
+
+  /* Free the ring buffer */
+  if(pfr->ring_memory) {
+    struct page *page, *page_end;
+
+    page_end = virt_to_page(pfr->ring_memory + (PAGE_SIZE << pfr->order) - 1);
+    for(page = virt_to_page(pfr->ring_memory); page <= page_end; page++)
+      ClearPageReserved(page);
+
+    free_pages(pfr->ring_memory, pfr->order);
+  }
 
   kfree(pfr);
   ring_sk(sk) = NULL;
@@ -3332,7 +3331,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 
   pfr->sample_rate = 1; /* No sampling */
   pfr->insert_page_id = 1, pfr->insert_slot_id = 0;
-  INIT_LIST_HEAD(&pfr->rules), pfr->rules_default_accept_policy = 1, pfr->num_filtering_rules = 0;
+  pfr->rules_default_accept_policy = 1, pfr->num_filtering_rules = 0;
 
   /*
     IMPORTANT
@@ -3360,9 +3359,11 @@ static int ring_bind(struct socket *sock,
   /*
    *	Check legality
    */
-  if (addr_len != sizeof(struct sockaddr))
+  if(addr_len != sizeof(struct sockaddr))
     return -EINVAL;
-  if (sa->sa_family != PF_RING)
+  if(sa->sa_family != PF_RING)
+    return -EINVAL;
+  if(sa->sa_data == NULL)
     return -EINVAL;
 
   /* Safety check: add trailing zero if missing */
@@ -3532,15 +3533,15 @@ unsigned int ring_poll(struct file * file,
 
 /* ************************************* */
 
-int add_to_cluster_list(struct ring_cluster *el,
+int add_to_cluster_list(ring_cluster_element *el,
 			struct sock *sock) {
 
-  if(el->num_cluster_elements == CLUSTER_LEN)
+  if(el->cluster.num_cluster_elements == CLUSTER_LEN)
     return(-1); /* Cluster full */
 
-  ring_sk_datatype(ring_sk(sock))->cluster_id = el->cluster_id;
-  el->sk[el->num_cluster_elements] = sock;
-  el->num_cluster_elements++;
+  ring_sk_datatype(ring_sk(sock))->cluster_id = el->cluster.cluster_id;
+  el->cluster.sk[el->cluster.num_cluster_elements] = sock;
+  el->cluster.num_cluster_elements++;
   return(0);
 }
 
@@ -3576,7 +3577,7 @@ int remove_from_cluster_list(struct ring_cluster *el,
 static int remove_from_cluster(struct sock *sock,
 			       struct ring_opt *pfr)
 {
-  struct ring_cluster *el;
+  struct list_head *ptr, *tmp_ptr;
 
 #if defined(RING_DEBUG)
   printk("--> remove_from_cluster(%d)\n", pfr->cluster_id);
@@ -3585,13 +3586,14 @@ static int remove_from_cluster(struct sock *sock,
   if(pfr->cluster_id == 0 /* 0 = No Cluster */)
     return(0); /* Noting to do */
 
-  el = ring_cluster_list;
+  list_for_each_safe(ptr, tmp_ptr, &ring_cluster_list) {
+    ring_cluster_element *cluster_ptr;
 
-  while(el != NULL) {
-    if(el->cluster_id == pfr->cluster_id) {
-      return(remove_from_cluster_list(el, sock));
-    } else
-      el = el->next;
+    cluster_ptr = list_entry(ptr, ring_cluster_element, list);
+
+    if(cluster_ptr->cluster.cluster_id == pfr->cluster_id) {
+      return(remove_from_cluster_list(&cluster_ptr->cluster, sock));      
+    }
   }
 
   return(-EINVAL); /* Not found */
@@ -3603,7 +3605,8 @@ static int add_to_cluster(struct sock *sock,
 			  struct ring_opt *pfr,
 			  u_short cluster_id)
 {
-  struct ring_cluster *el;
+  struct list_head *ptr, *tmp_ptr;
+  ring_cluster_element *cluster_ptr;
 
 #ifndef RING_DEBUG
   printk("--> add_to_cluster(%d)\n", cluster_id);
@@ -3614,29 +3617,31 @@ static int add_to_cluster(struct sock *sock,
   if(pfr->cluster_id != 0)
     remove_from_cluster(sock, pfr);
 
-  el = ring_cluster_list;
+  list_for_each_safe(ptr, tmp_ptr, &ring_cluster_list) {
+    cluster_ptr = list_entry(ptr, ring_cluster_element, list);
 
-  while(el != NULL) {
-    if(el->cluster_id == cluster_id) {
-      return(add_to_cluster_list(el, sock));
-    } else
-      el = el->next;
+    if(cluster_ptr->cluster.cluster_id == cluster_id) {
+      return(add_to_cluster_list(cluster_ptr, sock));
+    }
   }
 
+
   /* There's no existing cluster. We need to create one */
-  if((el = kmalloc(sizeof(struct ring_cluster), GFP_KERNEL)) == NULL)
+  if((cluster_ptr = kmalloc(sizeof(ring_cluster_element), GFP_KERNEL)) == NULL)
     return(-ENOMEM);
 
-  el->cluster_id = cluster_id;
-  el->num_cluster_elements = 1;
-  el->hashing_mode = cluster_per_flow; /* Default */
-  el->hashing_id   = 0;
+  INIT_LIST_HEAD(&cluster_ptr->list);
 
-  memset(el->sk, 0, sizeof(el->sk));
-  el->sk[0] = sock;
-  el->next = ring_cluster_list;
-  ring_cluster_list = el;
+  cluster_ptr->cluster.cluster_id = cluster_id;
+  cluster_ptr->cluster.num_cluster_elements = 1;
+  cluster_ptr->cluster.hashing_mode = cluster_per_flow; /* Default */
+  cluster_ptr->cluster.hashing_id   = 0;
+
+  memset(cluster_ptr->cluster.sk, 0, sizeof(cluster_ptr->cluster.sk));
+  cluster_ptr->cluster.sk[0] = sock;
   pfr->cluster_id = cluster_id;
+
+  list_add(&cluster_ptr->list, &ring_cluster_list); /* Add as first entry */
 
   return(0); /* 0 = OK */
 }
@@ -3652,7 +3657,7 @@ static int ring_setsockopt(struct socket *sock,
   int val, found, ret = 0 /* OK */;
   u_int cluster_id, debug = 0;
   char devName[8];
-  struct list_head *ptr, *prev = NULL;
+  struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
   u_int16_t rule_id;
 
@@ -3798,6 +3803,8 @@ static int ring_setsockopt(struct socket *sock,
 	return -EINVAL;
       else
 	{
+	  struct list_head *ptr, *tmp_ptr;
+
 	  rule = (filtering_rule_element*)kmalloc(sizeof(filtering_rule_element), GFP_KERNEL);
 
 	  if((rule == NULL) || copy_from_user(&rule->rule, optval, optlen))
@@ -3826,7 +3833,7 @@ static int ring_setsockopt(struct socket *sock,
 	  if(debug) printk("SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
 
 	  /* Implement an ordered add */
-	  for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+	  list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
 	    {
 	      entry = list_entry(ptr, filtering_rule_element, list);
 
@@ -3887,13 +3894,14 @@ static int ring_setsockopt(struct socket *sock,
       else
 	{
 	  u_int8_t rule_found = 0;
+	  struct list_head *ptr, *tmp_ptr;
 
 	  if(copy_from_user(&rule_id, optval, optlen))
 	    return -EFAULT;
 
 	  write_lock(&ring_mgmt_lock);
 
-	  for(ptr = pfr->rules.next; ptr != &pfr->rules; ptr = ptr->next)
+	  list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
 	    {
 	      entry = list_entry(ptr, filtering_rule_element, list);
 
@@ -4068,18 +4076,22 @@ static struct proto ring_proto = {
 
 static void __exit ring_exit(void)
 {
-  struct list_head *ptr;
+  struct list_head *ptr, *tmp_ptr;
   struct ring_element *entry;
 
-  for(ptr = ring_table.next; ptr != &ring_table; ptr = ptr->next) {
+  list_for_each_safe(ptr, tmp_ptr, &ring_table) {
     entry = list_entry(ptr, struct ring_element, list);
+    list_del(ptr);
     kfree(entry);
   }
 
-  while(ring_cluster_list != NULL) {
-    struct ring_cluster *next = ring_cluster_list->next;
-    kfree(ring_cluster_list);
-    ring_cluster_list = next;
+  list_for_each_safe(ptr, tmp_ptr, &ring_cluster_list) {
+    ring_cluster_element *cluster_ptr;
+
+    cluster_ptr = list_entry(ptr, ring_cluster_element, list);
+
+    list_del(ptr);
+    kfree(cluster_ptr);
   }
 
   set_skb_ring_handler(NULL);
@@ -4098,7 +4110,7 @@ static int __init ring_init(void)
 	 RING_VERSION);
 
   INIT_LIST_HEAD(&ring_table);
-  ring_cluster_list = NULL;
+  INIT_LIST_HEAD(&ring_cluster_list);
 
   sock_register(&ring_family_ops);
 
