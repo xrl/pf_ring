@@ -2421,7 +2421,9 @@ static inline void ring_remove(struct sock *sk) {
   struct list_head *ptr, *tmp_ptr;
   struct ring_element *entry;
 
+#if defined(RING_DEBUG)
   printk("RING: ring_remove()\n");
+#endif
 
   list_for_each_safe(ptr, tmp_ptr, &ring_table) {
     entry = list_entry(ptr, struct ring_element, list);
@@ -2434,7 +2436,9 @@ static inline void ring_remove(struct sock *sk) {
     }
   }
 
+#if defined(RING_DEBUG)
   printk("RING: leaving ring_remove()\n");
+#endif
 }
 
 /* ********************************** */
@@ -3017,6 +3021,11 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   if(transparent_mode) rc = 0;
 
+  /*
+    FIX
+    Note: the statement below must be chacekd as it causes
+    troubles when used in transparent mode
+  */
   if((rc != 0) && real_skb)
     dev_kfree_skb(skb); /* Free the skb */
 
@@ -3171,7 +3180,6 @@ static int ring_release(struct socket *sock)
   printk("RING: ring_release entered\n");
 #endif
 
-  printk("RING: ring_release [%d]\n", 0);
   /*
     The calls below must be placed outside the
     write_lock_irq...write_unlock_irq block.
