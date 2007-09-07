@@ -3017,10 +3017,8 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   if(transparent_mode) rc = 0;
 
-#if 0
   if((rc != 0) && real_skb)
     dev_kfree_skb(skb); /* Free the skb */
-#endif
 
 #ifdef PROFILING
   rdt2 = _rdtsc()-rdt2;
