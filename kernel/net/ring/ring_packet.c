@@ -8,7 +8,7 @@
  * - Brad Doctor <brad@stillsecure.com>
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
  * - Francesco Fusco <fusco@ntop.org>
- * - Michael Stiller <ms@2scale.net>
+ * - Michael Stiller <ms@2scale.net> (author of the VM memory support)
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
  * - Andrew Gallatin <gallatyn@myri.com>
  * - Matthew J. Roth <mroth@imminc.com>
@@ -64,6 +64,8 @@
 
 /* #define RING_DEBUG */
 
+/* ***************** Legacy code ************************ */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
 static inline int remap_page_range(struct vm_area_struct *vma,
 				   unsigned long uvaddr,
@@ -74,6 +76,73 @@ static inline int remap_page_range(struct vm_area_struct *vma,
 			 size, prot));
 }
 #endif
+
+/* ***** Code taken from other kernel modules ******** */
+
+/* 
+ * rvmalloc / rvfree copied from usbvideo.c
+ */
+static void *rvmalloc(unsigned long size)
+{
+  void *mem;
+  unsigned long adr;
+  unsigned long pages = 0;
+
+
+#if defined(RING_DEBUG)
+  printk("RING: rvmalloc: %lu bytes\n", size);
+#endif
+
+  size = PAGE_ALIGN(size);
+  mem = vmalloc_32(size);
+  if (!mem)
+    return NULL;
+
+  memset(mem, 0, size); /* Clear the ram out, no junk to the user */
+  adr = (unsigned long) mem;
+  while (size > 0) {
+    SetPageReserved(vmalloc_to_page((void *)adr));
+    pages++;
+    adr += PAGE_SIZE;
+    size -= PAGE_SIZE;
+  }
+
+#if defined(RING_DEBUG)
+  printk("RING: rvmalloc: %lu pages\n", pages);
+#endif
+  return mem;
+}
+
+/* ************************************************** */
+
+static void rvfree(void *mem, unsigned long size)
+{
+  unsigned long adr;
+  unsigned long pages = 0;
+
+#if defined(RING_DEBUG)
+  printk("RING: rvfree: %lu bytes\n", size);
+#endif
+
+  if (!mem)
+    return;
+
+  adr = (unsigned long) mem;
+  while ((long) size > 0) {
+    ClearPageReserved(vmalloc_to_page((void *)adr));
+    pages++;
+    adr += PAGE_SIZE;
+    size -= PAGE_SIZE;
+  }
+#if defined(RING_DEBUG)
+  printk("RING: rvfree: %lu pages\n", pages);
+  printk("RING: rvfree: calling vfree....\n");
+#endif
+  vfree(mem);
+#if defined(RING_DEBUG)
+  printk("RING: rvfree: after vfree....\n");
+#endif
+}
 
 /* ************************************************* */
 
@@ -120,7 +189,6 @@ typedef struct {
 
 struct ring_opt {
   struct net_device *ring_netdev;
-
   u_short ring_pid;
 
   /* Cluster */
@@ -133,7 +201,7 @@ struct ring_opt {
   unsigned long order;
 
   /* Ring Slots */
-  unsigned long ring_memory;
+  void * ring_memory;
   FlowSlotInfo *slots_info; /* Basically it points to ring_memory */
   char *ring_slots;  /* Basically it points to ring_memory
 			+sizeof(FlowSlotInfo) */
@@ -201,26 +269,20 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 
 /* Defaults */
 static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096;
-static unsigned int transparent_mode = 1, enable_tx_capture = 1;
+static unsigned int enable_tx_capture = 1;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
 module_param(bucket_len, uint, 0644);
 module_param(num_slots,  uint, 0644);
-module_param(transparent_mode, uint, 0644);
 module_param(enable_tx_capture, uint, 0644);
 #else
 MODULE_PARM(bucket_len, "i");
 MODULE_PARM(num_slots, "i");
-MODULE_PARM(transparent_mode, "i");
 MODULE_PARM(enable_tx_capture, "i");
 #endif
 
 MODULE_PARM_DESC(bucket_len, "Size (in bytes) a ring bucket");
 MODULE_PARM_DESC(num_slots,  "Number of ring slots");
-MODULE_PARM_DESC(transparent_mode,
-		 "Set to 1 to set transparent mode "
-		 "(slower but backwards compatible)");
-
 MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
 
 /* ********************************** */
@@ -2305,13 +2367,11 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
   if(data == NULL) {
     /* /proc/net/pf_ring/info */
-    rlen = sprintf(buf,"Version             : %s\n", RING_VERSION);
+    rlen = sprintf(buf,        "Version             : %s\n", RING_VERSION);
     rlen += sprintf(buf + rlen,"Bucket length       : %d bytes\n", bucket_len);
     rlen += sprintf(buf + rlen,"Ring slots          : %d\n", num_slots);
     rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    rlen += sprintf(buf + rlen,"Transparent mode    : %s\n",
-		    transparent_mode ? "Yes" : "No");
     rlen += sprintf(buf + rlen,"Total rings         : %d\n", ring_table_size);
   } else {
     /* detailed statistics about a PF_RING */
@@ -2829,7 +2889,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
     }
   } else {
     pfr->slots_info->tot_lost++;
-
+    
 #if defined(RING_DEBUG)
     printk("add_skb_to_ring(skb): packet lost [loss=%lu]"
 	   "[removeIdx=%u][insertIdx=%u]\n",
@@ -2904,7 +2964,6 @@ static int skb_ring_handler(struct sk_buff *skb,
   struct list_head *ptr;
   struct pcap_pkthdr hdr;
   int displ;
-
 
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
@@ -3019,13 +3078,6 @@ static int skb_ring_handler(struct sk_buff *skb,
   rdt2 = _rdtsc();
 #endif
 
-  if(transparent_mode) rc = 0;
-
-  /*
-    FIX
-    Note: the statement below must be chacekd as it causes
-    troubles when used in transparent mode
-  */
   if((rc != 0) && real_skb)
     dev_kfree_skb(skb); /* Free the skb */
 
@@ -3068,9 +3120,7 @@ static int buffer_ring_handler(struct net_device *dev,
   skb.tstamp.tv64 = 0;
 #endif
 
-  skb_ring_handler(&skb, 1, 0 /* fake skb */);
-
-  return(0);
+  return(skb_ring_handler(&skb, 1, 0 /* fake skb */));
 }
 
 /* ********************************** */
@@ -3169,15 +3219,12 @@ static int ring_release(struct socket *sock)
   struct sock *sk = sock->sk;
   struct ring_opt *pfr = ring_sk(sk);
   struct list_head *ptr, *tmp_ptr;
+  void * ring_memory_ptr;
 
   if(!sk)  return 0;
 
 #if defined(RING_DEBUG)
   printk("RING: called ring_release\n");
-#endif
-
-#if defined(RING_DEBUG)
-  printk("RING: ring_release entered\n");
 #endif
 
   /*
@@ -3206,16 +3253,8 @@ static int ring_release(struct socket *sock)
       kfree(rule);
     }
 
-  /* Free the ring buffer */
-  if(pfr->ring_memory) {
-    struct page *page, *page_end;
-
-    page_end = virt_to_page(pfr->ring_memory + (PAGE_SIZE << pfr->order) - 1);
-    for(page = virt_to_page(pfr->ring_memory); page <= page_end; page++)
-      ClearPageReserved(page);
-
-    free_pages(pfr->ring_memory, pfr->order);
-  }
+  /* Free the ring buffer later, vfree needs interrupts enabled */
+  ring_memory_ptr = pfr->ring_memory;
 
   kfree(pfr);
   ring_sk(sk) = NULL;
@@ -3227,8 +3266,19 @@ static int ring_release(struct socket *sock)
   sock_put(sk);
   write_unlock_irq(&ring_mgmt_lock);
 
+  if(ring_memory_ptr != NULL) {
 #if defined(RING_DEBUG)
-  printk("RING: ring_release leaving\n");
+    printk("RING: ring_release: rvfree\n");
+#endif
+    rvfree(pfr->ring_memory, pfr->slots_info->tot_mem);
+  }
+
+#if defined(RING_DEBUG)
+  printk("RING: ring_release: rvfree done\n");
+#endif
+
+#if defined(RING_DEBUG)
+  printk("RING: ring_release: done\n");
 #endif
 
   return 0;
@@ -3243,7 +3293,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   u_int the_slot_len;
   u_int32_t tot_mem;
   struct ring_opt *pfr = ring_sk(sk);
-  struct page *page, *page_end;
+  // struct page *page, *page_end;
 
   if(!dev) return(-1);
 
@@ -3277,37 +3327,19 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     + bucket_len      /* flowSlot.bucket */;
 
   tot_mem = sizeof(FlowSlotInfo) + num_slots*the_slot_len;
+  if (tot_mem % PAGE_SIZE)
+    tot_mem += PAGE_SIZE - (tot_mem % PAGE_SIZE);
 
-  /*
-    Calculate the value of the order parameter used later.
-    See http://www.linuxjournal.com/article.php?sid=1133
-  */
-  for(pfr->order = 0;(PAGE_SIZE << pfr->order) < tot_mem; pfr->order++)  ;
+  pfr->ring_memory = rvmalloc(tot_mem);
 
-  /*
-    We now try to allocate the memory as required. If we fail
-    we try to allocate a smaller amount or memory (hence a
-    smaller ring).
-  */
-  while((pfr->ring_memory = __get_free_pages(GFP_ATOMIC, pfr->order)) == 0)
-    if(pfr->order-- == 0)
-      break;
-
-  if(pfr->order == 0) {
-    printk("RING: ERROR not enough memory for ring\n");
-    return(-1);
+  if (pfr->ring_memory != NULL) {
+    printk("RING: successfully allocated %lu bytes at 0x%08lx\n", (unsigned long) tot_mem, (unsigned long) pfr->ring_memory);
   } else {
-    printk("RING: succesfully allocated %lu KB [tot_mem=%d][order=%ld]\n",
-	   PAGE_SIZE >> (10 - pfr->order), tot_mem, pfr->order);
+    printk("RING: ERROR: not enough memory for ring\n");
+    return(-1);
   }
 
-  tot_mem = PAGE_SIZE << pfr->order;
-  memset((char*)pfr->ring_memory, 0, tot_mem);
-
-  /* Now we need to reserve the pages */
-  page_end = virt_to_page(pfr->ring_memory + (PAGE_SIZE << pfr->order) - 1);
-  for(page = virt_to_page(pfr->ring_memory); page <= page_end; page++)
-    SetPageReserved(page);
+  // memset(pfr->ring_memory, 0, tot_mem); // rvmalloc does the memset already
 
   pfr->slots_info = (FlowSlotInfo*)pfr->ring_memory;
   pfr->ring_slots = (char*)(pfr->ring_memory+sizeof(FlowSlotInfo));
@@ -3396,22 +3428,23 @@ static int ring_mmap(struct file *file,
 {
   struct sock *sk = sock->sk;
   struct ring_opt *pfr = ring_sk(sk);
+
   unsigned long size, start;
-  u_int pagesToMap;
+  unsigned long page;
   char *ptr;
 
+  size = (unsigned long)(vma->vm_end - vma->vm_start);
+
 #if defined(RING_DEBUG)
-  printk("RING: ring_mmap() called\n");
+  printk("RING: ring_mmap() called, size: %ld bytes\n", size);
 #endif
 
-  if(pfr->ring_memory == 0) {
+  if(pfr->ring_memory == NULL) {
 #if defined(RING_DEBUG)
     printk("RING: ring_mmap() failed: mapping area to an unbound socket\n");
 #endif
     return -EINVAL;
   }
-
-  size = (unsigned long)(vma->vm_end-vma->vm_start);
 
   if(size % PAGE_SIZE) {
 #if defined(RING_DEBUG)
@@ -3423,16 +3456,10 @@ static int ring_mmap(struct file *file,
   /* if userspace tries to mmap beyond end of our buffer, fail */
   if(size > pfr->slots_info->tot_mem) {
 #if defined(RING_DEBUG)
-    printk("proc_mmap() failed: area too large [%ld > %d]\n", size, pfr->slots_info->tot_mem);
+    printk("RING: ring_mmap() failed: area too large [%ld > %d]\n", size, pfr->slots_info->tot_mem);
 #endif
     return(-EINVAL);
   }
-
-  pagesToMap = size/PAGE_SIZE;
-
-#if defined(RING_DEBUG)
-  printk("RING: ring_mmap() called. %d pages to map\n", pagesToMap);
-#endif
 
 #if defined(RING_DEBUG)
   printk("RING: mmap [slot_len=%d][tot_slots=%d] for ring on device %s\n",
@@ -3445,23 +3472,27 @@ static int ring_mmap(struct file *file,
   start = vma->vm_start;
 
   /* Ring slots start from page 1 (page 0 is reserved for FlowSlotInfo) */
-  ptr = (char*)(start+PAGE_SIZE);
+  ptr = (char *)(pfr->ring_memory);
 
-  if(remap_page_range(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
-		      vma,
-#endif
-		      start,
-		      __pa(pfr->ring_memory),
-		      PAGE_SIZE*pagesToMap, vma->vm_page_prot)) {
+  while(size > 0) {
+    page = vmalloc_to_pfn(ptr);
+    if (remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED)) {
 #if defined(RING_DEBUG)
-    printk("remap_page_range() failed\n");
+      printk("RING: remap_pfn_range() failed\n");
 #endif
-    return(-EAGAIN);
+      return(-EAGAIN);
+    }
+    start += PAGE_SIZE;
+    ptr   += PAGE_SIZE;
+    if (size > PAGE_SIZE) {
+      size -= PAGE_SIZE;
+    } else {
+      size = 0;
+    }
   }
 
 #if defined(RING_DEBUG)
-  printk("proc_mmap(pagesToMap=%d): success.\n", pagesToMap);
+  printk("RING: ring_mmap succeeded\n");
 #endif
 
   return 0;
@@ -3980,6 +4011,21 @@ static int ring_getsockopt(struct socket *sock,
       }
       break;
 
+    case PACKET_STATISTICS:
+      {
+	struct tpacket_stats st;
+	
+	if (len > sizeof(struct tpacket_stats))
+	  len = sizeof(struct tpacket_stats);
+
+	st.tp_packets = pfr->slots_info->tot_insert;
+	st.tp_drops   = pfr->slots_info->tot_lost;
+	
+	if (copy_to_user(optval, &st, len))
+	  return -EFAULT;
+	break;
+      }
+      
     default:
       return -ENOPROTOOPT;
     }
@@ -4045,7 +4091,6 @@ static struct proto_ops ring_ops = {
   .shutdown	=	sock_no_shutdown,
   .sendpage	=	sock_no_sendpage,
   .sendmsg	=	sock_no_sendmsg,
-  .getsockopt	=	sock_no_getsockopt,
 
   /* Now the operations that really occur. */
   .release	=	ring_release,
@@ -4104,7 +4149,7 @@ static void __exit ring_exit(void)
   set_buffer_ring_handler(NULL);
   sock_unregister(PF_RING);
   ring_proc_term();
-  printk("PF_RING shut down.\n");
+  printk("PF_RING: unloaded\n");
 }
 
 /* ************************************ */
@@ -4135,10 +4180,8 @@ static int __init ring_init(void)
     printk("PF_RING: ring slots       %d\n", num_slots);
     printk("PF_RING: capture TX       %s\n",
 	   enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    printk("PF_RING: transparent mode %s\n",
-	   transparent_mode ? "Yes" : "No");
 
-    printk("PF_RING initialized correctly.\n");
+    printk("PF_RING: initialized correctly\n");
 
     ring_proc_init();
     return 0;

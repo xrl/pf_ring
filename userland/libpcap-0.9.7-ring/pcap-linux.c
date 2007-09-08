@@ -861,8 +861,14 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	/*
 	 * Try to get the packet counts from the kernel.
 	 */
-	if (getsockopt(handle->fd, SOL_PACKET, PACKET_STATISTICS,
-			&kstats, &len) > -1) {
+	if (getsockopt(handle->fd,
+#ifdef HAVE_PF_RING
+		       0,
+#else
+		       SOL_SOCKET, 
+#endif
+		       PACKET_STATISTICS,
+		       &kstats, &len) > -1) {
 		/*
 		 * On systems where the PACKET_STATISTICS "getsockopt()"
 		 * argument is supported on PF_PACKET sockets:

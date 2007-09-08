@@ -411,7 +411,7 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  if(0) {
+  if(1) {
     filtering_rule rule;
     
     pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
@@ -421,9 +421,9 @@ int main(int argc, char* argv[]) {
     if(1) {
       rule.rule_id = 5; 
       rule.pass_action = 1; /* ACCEPT */
-      rule.port_low = 0, rule.port_high = 1024;
-      rule.host_ip = ntohl(inet_addr("10.37.128.0")), rule.host_netmask = 0xFFFF0000;
-      // snprintf(rule.payload_pattern, sizeof(rule.payload_pattern), "hello");
+      rule.port_low = 80, rule.port_high = 80;
+      rule.host_ip = ntohl(inet_addr("192.168.0.160")), rule.host_netmask = 0xFFFFFFFF;
+      snprintf(rule.payload_pattern, sizeof(rule.payload_pattern), "GET");
       pfring_add_filtering_rule(pd, &rule);
     } else {
       rule.rule_id = 10; pfring_add_filtering_rule(pd, &rule);
