@@ -12,6 +12,7 @@
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
  * - Andrew Gallatin <gallatyn@myri.com>
  * - Matthew J. Roth <mroth@imminc.com>
+ * - Vincent Carrier <vicarrier@wanadoo.fr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,6 +52,7 @@
 #include <linux/udp.h>
 #include <linux/list.h>
 #include <linux/proc_fs.h>
+#include <linux/textsearch.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 #include <net/xfrm.h>
 #else
@@ -64,17 +66,217 @@
 
 /* #define RING_DEBUG */
 
+/* ************************************************* */
+
+#define TH_FIN_MULTIPLIER	0x01
+#define TH_SYN_MULTIPLIER	0x02
+#define TH_RST_MULTIPLIER	0x04
+#define TH_PUSH_MULTIPLIER	0x08
+#define TH_ACK_MULTIPLIER	0x10
+#define TH_URG_MULTIPLIER	0x20
+
+/* ************************************************* */
+
+#define CLUSTER_LEN       8
+
+struct ring_cluster {
+  u_short             cluster_id; /* 0 = no cluster */
+  u_short             num_cluster_elements;
+  enum cluster_type   hashing_mode;
+  u_short             hashing_id;
+  struct sock         *sk[CLUSTER_LEN];
+};
+
+typedef struct {
+  struct ring_cluster cluster;
+  struct list_head list;
+} ring_cluster_element;
+
+/* ************************************************* */
+
+struct ring_element {
+  struct list_head  list;
+  struct sock      *sk;
+};
+
+/* ************************************************* */
+
+typedef struct {
+  filtering_rule rule;
+  struct ts_config *pattern;
+  struct list_head list;
+} filtering_rule_element;
+
+/* ************************************************* */
+
+struct ring_opt {
+  struct net_device *ring_netdev;
+  u_short ring_pid;
+
+  /* Cluster */
+  u_short cluster_id; /* 0 = no cluster */
+
+  /* Reflector */
+  struct net_device *reflector_dev;
+
+  /* Packet buffers */
+  unsigned long order;
+
+  /* Ring Slots */
+  void * ring_memory;
+  FlowSlotInfo *slots_info; /* Points to ring_memory */
+  char *ring_slots;         /* Points to ring_memory+sizeof(FlowSlotInfo) */
+
+  /* Packet Sampling */
+  u_int32_t pktToSample, sample_rate;
+
+  /* BPF Filter */
+  struct sk_filter *bpfFilter;
+
+  /* Filtering Rules */
+  u_int16_t num_filtering_rules;
+  u_int8_t rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
+  struct list_head rules;
+
+  /* Locks */
+  atomic_t num_ring_slots_waiters;
+  wait_queue_head_t ring_slots_waitqueue;
+  rwlock_t ring_index_lock;
+
+  /* Indexes (Internal) */
+  u_int insert_page_id, insert_slot_id;
+};
+
+/* ************************************************* */
+
+/* List of all ring sockets. */
+static struct list_head ring_table;
+static u_int ring_table_size;
+
+/* List of all clusters */
+struct list_head ring_cluster_list;
+
+static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
+
+/* ********************************** */
+
+/* /proc entry for ring module */
+struct proc_dir_entry *ring_proc_dir = NULL;
+struct proc_dir_entry *ring_proc = NULL;
+
+static int ring_proc_get_info(char *, char **, off_t, int, int *, void *);
+static void ring_proc_add(struct ring_opt *pfr);
+static void ring_proc_remove(struct ring_opt *pfr);
+static void ring_proc_init(void);
+static void ring_proc_term(void);
+
+/* ********************************** */
+
+/* Forward */
+static struct proto_ops ring_ops;
+
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+static struct proto ring_proto;
+#endif
+
+static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
+			    u_char real_skb);
+static int buffer_ring_handler(struct net_device *dev, char *data, int len);
+static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
+
+/* Extern */
+#ifdef ENABLE_DEFRAGMENTATION
+extern struct sk_buff *ip_defrag(struct sk_buff *skb, u32 user);
+#endif
+
+/* ********************************** */
+
+/* Defaults */
+static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096;
+static unsigned int enable_tx_capture = 1;
+#ifdef ENABLE_DEFRAGMENTATION
+static unsigned int enable_ip_defrag = 0;
+#endif
+#if 0
+static unsigned int transparent_mode = 1;
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
+module_param(bucket_len, uint, 0644);
+module_param(num_slots,  uint, 0644);
+#if 0
+module_param(transparent_mode, uint, 0644);
+#endif
+module_param(enable_tx_capture, uint, 0644);
+#ifdef ENABLE_DEFRAGMENTATION
+module_param(enable_ip_defrag, uint, 0644);
+#endif
+#else
+MODULE_PARM(bucket_len, "i");
+MODULE_PARM(num_slots, "i");
+#if 0
+MODULE_PARM(transparent_mode, "i");
+#endif
+MODULE_PARM(enable_tx_capture, "i");
+#ifdef ENABLE_DEFRAGMENTATION
+MODULE_PARM(enable_ip_defrag, "i");
+#endif
+#endif
+
+MODULE_PARM_DESC(bucket_len, "Size (in bytes) a ring bucket");
+MODULE_PARM_DESC(num_slots,  "Number of ring slots");
+#if 0
+MODULE_PARM_DESC(transparent_mode,
+                 "Set to 1 to set transparent mode "
+                 "(slower but backwards compatible)");
+#endif
+MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
+#ifdef ENABLE_DEFRAGMENTATION
+MODULE_PARM_DESC(enable_ip_defrag, 
+		 "Set to 1 to enable ip defragmentation"
+		 "(only rx traffic is defragmentead)");
+#endif
+/* ********************************** */
+
+#define MIN_QUEUED_PKTS      64
+#define MAX_QUEUE_LOOPS      64
+
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
+#define ring_sk_datatype(__sk) ((struct ring_opt *)__sk)
+#define ring_sk(__sk) ((__sk)->sk_protinfo)
+#else
+#define ring_sk_datatype(a) (a)
+#define ring_sk(__sk) ((__sk)->protinfo.pf_ring)
+#endif
+
+#define _rdtsc() ({ uint64_t x; asm volatile("rdtsc" : "=A" (x)); x; })
+
 /* ***************** Legacy code ************************ */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
-static inline int remap_page_range(struct vm_area_struct *vma,
-				   unsigned long uvaddr,
-				   unsigned long paddr,
-				   unsigned long size,
-				   pgprot_t prot) {
-  return(remap_pfn_range(vma, uvaddr, paddr >> PAGE_SHIFT,
-			 size, prot));
+#ifdef ENABLE_DEFRAGMENTATION
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
+static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
+{
+  return (struct iphdr *)skb->nh.iph;
 }
+
+static inline void skb_set_network_header(struct sk_buff *skb,
+					  const int offset)
+{
+  skb->nh.iph = (struct iphdr*)skb->data + offset;
+}
+
+static inline void skb_reset_network_header(struct sk_buff *skb)
+{
+  ;
+}
+
+static inline void skb_reset_transport_header(struct sk_buff *skb)
+{
+  ;
+}
+#endif
 #endif
 
 /* ***** Code taken from other kernel modules ******** */
@@ -144,2159 +346,25 @@ static void rvfree(void *mem, unsigned long size)
 #endif
 }
 
-/* ************************************************* */
-
-#define TH_FIN_MULTIPLIER	0x01
-#define TH_SYN_MULTIPLIER	0x02
-#define TH_RST_MULTIPLIER	0x04
-#define TH_PUSH_MULTIPLIER	0x08
-#define TH_ACK_MULTIPLIER	0x10
-#define TH_URG_MULTIPLIER	0x20
-
-/* ************************************************* */
-
-#define CLUSTER_LEN       8
-
-struct ring_cluster {
-  u_short             cluster_id; /* 0 = no cluster */
-  u_short             num_cluster_elements;
-  enum cluster_type   hashing_mode;
-  u_short             hashing_id;
-  struct sock         *sk[CLUSTER_LEN];
-};
-
-typedef struct {
-  struct ring_cluster cluster;
-  struct list_head list;
-} ring_cluster_element;
-
-/* ************************************************* */
-
-struct ring_element {
-  struct list_head  list;
-  struct sock      *sk;
-};
-
-/* ************************************************* */
-
-typedef struct {
-  filtering_rule rule;
-  ACSM_STRUCT2 *acsm; /* Aho-Corasick */
-  struct list_head list;
-} filtering_rule_element;
-
-/* ************************************************* */
-
-struct ring_opt {
-  struct net_device *ring_netdev;
-  u_short ring_pid;
-
-  /* Cluster */
-  u_short cluster_id; /* 0 = no cluster */
-
-  /* Reflector */
-  struct net_device *reflector_dev;
-
-  /* Packet buffers */
-  unsigned long order;
-
-  /* Ring Slots */
-  void * ring_memory;
-  FlowSlotInfo *slots_info; /* Basically it points to ring_memory */
-  char *ring_slots;  /* Basically it points to ring_memory
-			+sizeof(FlowSlotInfo) */
-
-  /* Packet Sampling */
-  u_int32_t pktToSample, sample_rate;
-
-  /* BPF Filter */
-  struct sk_filter *bpfFilter;
-
-  /* Filtering Rules */
-  u_int16_t num_filtering_rules;
-  u_int8_t rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
-  struct list_head rules;
-
-  /* Locks */
-  atomic_t num_ring_slots_waiters;
-  wait_queue_head_t ring_slots_waitqueue;
-  rwlock_t ring_index_lock;
-
-  /* Indexes (Internal) */
-  u_int insert_page_id, insert_slot_id;
-};
-
-/* ************************************************* */
-
-/* List of all ring sockets. */
-static struct list_head ring_table;
-static u_int ring_table_size;
-
-/* List of all clusters */
-struct list_head ring_cluster_list;
-
-static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
-
 /* ********************************** */
 
-/* /proc entry for ring module */
-struct proc_dir_entry *ring_proc_dir = NULL;
-struct proc_dir_entry *ring_proc = NULL;
+#ifdef ENABLE_DEFRAGMENTATION
+/* Returns new sk_buff, or NULL */
+static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
+{
+  skb = ip_defrag(skb, IP_DEFRAG_RING);
 
-static int ring_proc_get_info(char *, char **, off_t, int, int *, void *);
-static void ring_proc_add(struct ring_opt *pfr);
-static void ring_proc_remove(struct ring_opt *pfr);
-static void ring_proc_init(void);
-static void ring_proc_term(void);
-
-/* ********************************** */
-
-/* Forward */
-static struct proto_ops ring_ops;
-
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
-static struct proto ring_proto;
+  if(skb)
+    ip_send_check(ip_hdr(skb));
+  
+  return(skb);
+}
 #endif
 
-static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
-			    u_char real_skb);
-static int buffer_ring_handler(struct net_device *dev, char *data, int len);
-static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
-
-/* Extern */
-
 /* ********************************** */
 
-/* Defaults */
-static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096;
-static unsigned int enable_tx_capture = 1;
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
-module_param(bucket_len, uint, 0644);
-module_param(num_slots,  uint, 0644);
-module_param(enable_tx_capture, uint, 0644);
-#else
-MODULE_PARM(bucket_len, "i");
-MODULE_PARM(num_slots, "i");
-MODULE_PARM(enable_tx_capture, "i");
-#endif
-
-MODULE_PARM_DESC(bucket_len, "Size (in bytes) a ring bucket");
-MODULE_PARM_DESC(num_slots,  "Number of ring slots");
-MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
-
-/* ********************************** */
-
-#define MIN_QUEUED_PKTS      64
-#define MAX_QUEUE_LOOPS      64
-
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
-#define ring_sk_datatype(__sk) ((struct ring_opt *)__sk)
-#define ring_sk(__sk) ((__sk)->sk_protinfo)
-#else
-#define ring_sk_datatype(a) (a)
-#define ring_sk(__sk) ((__sk)->protinfo.pf_ring)
-#endif
-
-#define _rdtsc() ({ uint64_t x; asm volatile("rdtsc" : "=A" (x)); x; })
-
-/*
-  int dev_queue_xmit(struct sk_buff *skb)
-  skb->dev;
-  struct net_device *dev_get_by_name(const char *name)
-*/
-
-/* ********************************** */
-
-/*
-**   $Id$
-**
-**   acsmx2.c
-**
-**   Multi-Pattern Search Engine
-**
-**   Aho-Corasick State Machine - version 2.0
-**
-**   Supports both Non-Deterministic and Deterministic Finite Automata
-**
-**
-**   Reference - Efficient String matching: An Aid to Bibliographic Search
-**               Alfred V Aho and Margaret J Corasick
-**               Bell Labratories
-**               Copyright(C) 1975 Association for Computing Machinery,Inc
-**
-**   +++
-**   +++ Version 1.0 notes - Marc Norton:
-**   +++
-**
-**   Original implementation based on the 4 algorithms in the paper by Aho & Corasick,
-**   some implementation ideas from 'Practical Algorithms in C', and some
-**   of my own.
-**
-**   1) Finds all occurrences of all patterns within a text.
-**
-**   +++
-**   +++ Version 2.0 Notes - Marc Norton/Dan Roelker:
-**   +++
-**
-**   New implementation modifies the state table storage and access model to use
-**   compacted sparse vector storage. Dan Roelker and I hammered this strategy out
-**   amongst many others in order to reduce memory usage and improve caching performance.
-**   The memory usage is greatly reduced, we only use 1/4 of what we use to. The caching
-**   performance is better in pure benchmarking tests, but does not show overall improvement
-**   in Snort.  Unfortunately, once a pattern match test has been performed Snort moves on to doing
-**   many other things before we get back to a patteren match test, so the cache is voided.
-**
-**   This versions has better caching performance characteristics, reduced memory,
-**   more state table storage options, and requires no a priori case conversions.
-**   It does maintain the same public interface. (Snort only used banded storage).
-**
-**     1) Supports NFA and DFA state machines, and basic keyword state machines
-**     2) Initial transition table uses Linked Lists
-**     3) Improved state table memory options. NFA and DFA state
-**        transition tables are converted to one of 4 formats during compilation.
-**        a) Full matrix
-**        b) Sparse matrix
-**        c) Banded matrix (Default-this is the only one used in snort)
-**        d) Sparse-Banded matrix
-**     4) Added support for acstate_t in .h file so we can compile states as
-**        16, or 32 bit state values for another reduction in memory consumption,
-**        smaller states allows more of the state table to be cached, and improves
-**        performance on x86-P4.  Your mileage may vary, especially on risc systems.
-**     5) Added a bool to each state transition list to indicate if there is a matching
-**        pattern in the state. This prevents us from accessing another data array
-**        and can improve caching/performance.
-**     6) The search functions are very sensitive, don't change them without extensive testing,
-**        or you'll just spoil the caching and prefetching opportunities.
-**
-**   Extras for fellow pattern matchers:
-**    The table below explains the storage format used at each step.
-**    You can use an NFA or DFA to match with, the NFA is slower but tiny - set the structure directly.
-**    You can use any of the 4 storage modes above -full,sparse,banded,sparse-bands, set the structure directly.
-**    For applications where you have lots of data and a pattern set to search, this version was up to 3x faster
-**    than the previous verion, due to caching performance. This cannot be fully realized in Snort yet,
-**    but other applications may have better caching opportunities.
-**    Snort only needs to use the banded or full storage.
-**
-**  Transition table format at each processing stage.
-**  -------------------------------------------------
-**  Patterns -> Keyword State Table (List)
-**  Keyword State Table -> NFA (List)
-**  NFA -> DFA (List)
-**  DFA (List)-> Sparse Rows  O(m-avg # transitions per state)
-**	      -> Banded Rows  O(1)
-**            -> Sparse-Banded Rows O(nb-# bands)
-**	      -> Full Matrix  O(1)
-**
-** Copyright(C) 2002,2003,2004 Marc Norton
-** Copyright(C) 2003,2004 Daniel Roelker
-** Copyright(C) 2002,2003,2004 Sourcefire,Inc.
-**
-** This program is free software; you can redistribute it and/or modify
-** it under the terms of the GNU General Public License as published by
-** the Free Software Foundation; either version 2 of the License, or
-** (at your option) any later version.
-**
-** This program is distributed in the hope that it will be useful,
-** but WITHOUT ANY WARRANTY; without even the implied warranty of
-** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-** GNU General Public License for more details.
-**
-** You should have received a copy of the GNU General Public License
-** along with this program; if not, write to the Free Software
-** Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
-*
-*/
-
-/*
- *
- */
-#define MEMASSERT(p,s) if(!p){printk("ACSM-No Memory: %s!\n",s);}
-
-/*
- *
- */
-static int max_memory = 0;
-
-/*
- *
- */
-typedef struct acsm_summary_s
+static void ring_sock_destruct(struct sock *sk)
 {
-  unsigned    num_states;
-  unsigned    num_transitions;
-  ACSM_STRUCT2 acsm;
-
-}acsm_summary_t;
-
-/*
- *
- */
-static acsm_summary_t summary={0,0};
-
-/*
-** Case Translation Table
-*/
-static unsigned char xlatcase[256];
-/*
- *
- */
-
-inline int toupper(int ch) {
-  if ( (unsigned int)(ch - 'a') < 26u )
-    ch += 'A' - 'a';
-  return ch;
-}
-
-static void init_xlatcase(void)
-{
-  int i;
-  for (i = 0; i < 256; i++)
-    {
-      xlatcase[i] = toupper(i);
-    }
-}
-
-/*
- *    Case Conversion
- */
-static
-inline
-void
-ConvertCaseEx (unsigned char *d, unsigned char *s, int m)
-{
-  int i;
-#ifdef XXXX
-  int n;
-  n   = m & 3;
-  m >>= 2;
-
-  for (i = 0; i < m; i++ )
-    {
-      d[0] = xlatcase[ s[0] ];
-      d[2] = xlatcase[ s[2] ];
-      d[1] = xlatcase[ s[1] ];
-      d[3] = xlatcase[ s[3] ];
-      d+=4;
-      s+=4;
-    }
-
-  for (i=0; i < n; i++)
-    {
-      d[i] = xlatcase[ s[i] ];
-    }
-#else
-  for (i=0; i < m; i++)
-    {
-      d[i] = xlatcase[ s[i] ];
-    }
-
-#endif
-}
-
-
-/*
- *
- */
-static void *
-AC_MALLOC (int n)
-{
-  void *p;
-  p = kmalloc (n, GFP_KERNEL);
-  if (p)
-    max_memory += n;
-  return p;
-}
-
-
-/*
- *
- */
-static void
-AC_FREE (void *p)
-{
-  if (p)
-    kfree (p);
-}
-
-
-/*
- *    Simple QUEUE NODE
- */
-typedef struct _qnode
-{
-  int state;
-  struct _qnode *next;
-}
-QNODE;
-
-/*
- *    Simple QUEUE Structure
- */
-typedef struct _queue
-{
-  QNODE * head, *tail;
-  int count;
-}
-QUEUE;
-
-/*
- *   Initialize the queue
- */
-static void
-queue_init (QUEUE * s)
-{
-  s->head = s->tail = 0;
-  s->count= 0;
-}
-
-/*
- *  Find a State in the queue
- */
-static int
-queue_find (QUEUE * s, int state)
-{
-  QNODE * q;
-  q = s->head;
-  while( q )
-    {
-      if( q->state == state ) return 1;
-      q = q->next;
-    }
-  return 0;
-}
-
-/*
- *  Add Tail Item to queue (FiFo/LiLo)
- */
-static void
-queue_add (QUEUE * s, int state)
-{
-  QNODE * q;
-
-  if( queue_find( s, state ) ) return;
-
-  if (!s->head)
-    {
-      q = s->tail = s->head = (QNODE *) AC_MALLOC (sizeof (QNODE));
-      MEMASSERT (q, "queue_add");
-      q->state = state;
-      q->next = 0;
-    }
-  else
-    {
-      q = (QNODE *) AC_MALLOC (sizeof (QNODE));
-      q->state = state;
-      q->next = 0;
-      s->tail->next = q;
-      s->tail = q;
-    }
-  s->count++;
-}
-
-
-/*
- *  Remove Head Item from queue
- */
-static int
-queue_remove (QUEUE * s)
-{
-  int state = 0;
-  QNODE * q;
-  if (s->head)
-    {
-      q       = s->head;
-      state   = q->state;
-      s->head = s->head->next;
-      s->count--;
-
-      if( !s->head )
-	{
-	  s->tail = 0;
-	  s->count = 0;
-	}
-      AC_FREE (q);
-    }
-  return state;
-}
-
-
-/*
- *   Return items in the queue
- */
-static int
-queue_count (QUEUE * s)
-{
-  return s->count;
-}
-
-
-/*
- *  Free the queue
- */
-static void
-queue_free (QUEUE * s)
-{
-  while (queue_count (s))
-    {
-      queue_remove (s);
-    }
-}
-
-/*
- *  Get Next State-NFA
- */
-static
-int List_GetNextState( ACSM_STRUCT2 * acsm, int state, int input )
-{
-  trans_node_t * t = acsm->acsmTransTable[state];
-
-  while( t )
-    {
-      if( t->key == input )
-	{
-	  return t->next_state;
-	}
-      t=t->next;
-    }
-
-  if( state == 0 ) return 0;
-
-  return ACSM_FAIL_STATE2; /* Fail state ??? */
-}
-
-/*
- *  Get Next State-DFA
- */
-static
-int List_GetNextState2( ACSM_STRUCT2 * acsm, int state, int input )
-{
-  trans_node_t * t = acsm->acsmTransTable[state];
-
-  while( t )
-    {
-      if( t->key == input )
-	{
-	  return t->next_state;
-	}
-      t = t->next;
-    }
-
-  return 0; /* default state */
-}
-/*
- *  Put Next State - Head insertion, and transition updates
- */
-static
-int List_PutNextState( ACSM_STRUCT2 * acsm, int state, int input, int next_state )
-{
-  trans_node_t * p;
-  trans_node_t * tnew;
-
-  // printk("   List_PutNextState: state=%d, input='%c', next_state=%d\n",state,input,next_state);
-
-
-  /* Check if the transition already exists, if so just update the next_state */
-  p = acsm->acsmTransTable[state];
-  while( p )
-    {
-      if( p->key == input )  /* transition already exists- reset the next state */
-	{
-	  p->next_state = next_state;
-	  return 0;
-	}
-      p=p->next;
-    }
-
-  /* Definitely not an existing transition - add it */
-  tnew = (trans_node_t*)AC_MALLOC(sizeof(trans_node_t));
-  if( !tnew ) return -1;
-
-  tnew->key        = input;
-  tnew->next_state = next_state;
-  tnew->next       = 0;
-
-  tnew->next = acsm->acsmTransTable[state];
-  acsm->acsmTransTable[state] = tnew;
-
-  acsm->acsmNumTrans++;
-
-  return 0;
-}
-/*
- *   Free the entire transition table
- */
-static
-int List_FreeTransTable( ACSM_STRUCT2 * acsm )
-{
-  int i;
-  trans_node_t * t, *p;
-
-  if( !acsm->acsmTransTable ) return 0;
-
-  for(i=0;i< acsm->acsmMaxStates;i++)
-    {
-      t = acsm->acsmTransTable[i];
-
-      while( t )
-	{
-	  p = t->next;
-	  kfree(t);
-	  t = p;
-	  max_memory -= sizeof(trans_node_t);
-	}
-    }
-
-  kfree(acsm->acsmTransTable);
-
-  max_memory -= sizeof(void*) * acsm->acsmMaxStates;
-
-  acsm->acsmTransTable = 0;
-
-  return 0;
-}
-
-/*
- *
- */
-/*
-  static
-  int List_FreeList( trans_node_t * t )
-  {
-  int tcnt=0;
-
-  trans_node_t *p;
-
-  while( t )
-  {
-  p = t->next;
-  kfree(t);
-  t = p;
-  max_memory -= sizeof(trans_node_t);
-  tcnt++;
-  }
-
-  return tcnt;
-  }
-*/
-
-/*
- *   Converts row of states from list to a full vector format
- */
-static
-int List_ConvToFull(ACSM_STRUCT2 * acsm, acstate_t state, acstate_t * full )
-{
-  int tcnt = 0;
-  trans_node_t * t = acsm->acsmTransTable[ state ];
-
-  memset(full,0,sizeof(acstate_t)*acsm->acsmAlphabetSize);
-
-  if( !t ) return 0;
-
-  while(t)
-    {
-      full[ t->key ] = t->next_state;
-      tcnt++;
-      t = t->next;
-    }
-  return tcnt;
-}
-
-/*
- *   Copy a Match List Entry - don't dup the pattern data
- */
-static ACSM_PATTERN2*
-CopyMatchListEntry (ACSM_PATTERN2 * px)
-{
-  ACSM_PATTERN2 * p;
-
-  p = (ACSM_PATTERN2 *) AC_MALLOC (sizeof (ACSM_PATTERN2));
-  MEMASSERT (p, "CopyMatchListEntry");
-
-  memcpy(p, px, sizeof (ACSM_PATTERN2));
-
-  p->next = 0;
-
-  return p;
-}
-
-/*
- *  Check if a pattern is in the list already,
- *  validate it using the 'id' field. This must be unique
- *  for every pattern.
- */
-/*
-  static
-  int FindMatchListEntry (ACSM_STRUCT2 * acsm, int state, ACSM_PATTERN2 * px)
-  {
-  ACSM_PATTERN2 * p;
-
-  p = acsm->acsmMatchList[state];
-  while( p )
-  {
-  if( p->id == px->id ) return 1;
-  p = p->next;
-  }
-
-  return 0;
-  }
-*/
-
-
-/*
- *  Add a pattern to the list of patterns terminated at this state.
- *  Insert at front of list.
- */
-static void
-AddMatchListEntry (ACSM_STRUCT2 * acsm, int state, ACSM_PATTERN2 * px)
-{
-  ACSM_PATTERN2 * p;
-
-  p = (ACSM_PATTERN2 *) AC_MALLOC (sizeof (ACSM_PATTERN2));
-
-  MEMASSERT (p, "AddMatchListEntry");
-
-  memcpy (p, px, sizeof (ACSM_PATTERN2));
-
-  p->next = acsm->acsmMatchList[state];
-
-  acsm->acsmMatchList[state] = p;
-}
-
-
-static void
-AddPatternStates (ACSM_STRUCT2 * acsm, ACSM_PATTERN2 * p)
-{
-  int            state, next, n;
-  unsigned char *pattern;
-
-  n       = p->n;
-  pattern = p->patrn;
-  state   = 0;
-
-  /*
-   *  Match up pattern with existing states
-   */
-  for (; n > 0; pattern++, n--)
-    {
-      next = List_GetNextState(acsm,state,*pattern);
-      if (next == ACSM_FAIL_STATE2 || next == 0)
-	{
-	  break;
-	}
-      state = next;
-    }
-
-  /*
-   *   Add new states for the rest of the pattern bytes, 1 state per byte
-   */
-  for (; n > 0; pattern++, n--)
-    {
-      acsm->acsmNumStates++;
-      List_PutNextState(acsm,state,*pattern,acsm->acsmNumStates);
-      state = acsm->acsmNumStates;
-    }
-
-  AddMatchListEntry (acsm, state, p );
-}
-
-/*
- *   Build A Non-Deterministic Finite Automata
- *   The keyword state table must already be built, via AddPatternStates().
- */
-static void
-Build_NFA (ACSM_STRUCT2 * acsm)
-{
-  int r, s, i;
-  QUEUE q, *queue = &q;
-  acstate_t     * FailState = acsm->acsmFailState;
-  ACSM_PATTERN2 ** MatchList = acsm->acsmMatchList;
-  ACSM_PATTERN2  * mlist,* px;
-
-  /* Init a Queue */
-  queue_init (queue);
-
-
-  /* Add the state 0 transitions 1st, the states at depth 1, fail to state 0 */
-  for (i = 0; i < acsm->acsmAlphabetSize; i++)
-    {
-      s = List_GetNextState2(acsm,0,i);
-      if( s )
-	{
-	  queue_add (queue, s);
-	  FailState[s] = 0;
-	}
-    }
-
-  /* Build the fail state successive layer of transitions */
-  while (queue_count (queue) > 0)
-    {
-      r = queue_remove (queue);
-
-      /* Find Final States for any Failure */
-      for (i = 0; i < acsm->acsmAlphabetSize; i++)
-	{
-	  int fs, next;
-
-	  s = List_GetNextState(acsm,r,i);
-
-	  if( s != ACSM_FAIL_STATE2 )
-	    {
-	      queue_add (queue, s);
-
-	      fs = FailState[r];
-
-	      /*
-	       *  Locate the next valid state for 'i' starting at fs
-	       */
-	      while( (next=List_GetNextState(acsm,fs,i)) == ACSM_FAIL_STATE2 )
-		{
-		  fs = FailState[fs];
-		}
-
-	      /*
-	       *  Update 's' state failure state to point to the next valid state
-	       */
-	      FailState[s] = next;
-
-	      /*
-	       *  Copy 'next'states MatchList to 's' states MatchList,
-	       *  we copy them so each list can be AC_FREE'd later,
-	       *  else we could just manipulate pointers to fake the copy.
-	       */
-	      for( mlist = MatchList[next];
-		   mlist;
-		   mlist = mlist->next)
-		{
-		  px = CopyMatchListEntry (mlist);
-
-		  /* Insert at front of MatchList */
-		  px->next = MatchList[s];
-		  MatchList[s] = px;
-		}
-	    }
-	}
-    }
-
-  /* Clean up the queue */
-  queue_free (queue);
-}
-
-/*
- *   Build Deterministic Finite Automata from the NFA
- */
-static void
-Convert_NFA_To_DFA (ACSM_STRUCT2 * acsm)
-{
-  int i, r, s, cFailState;
-  QUEUE  q, *queue = &q;
-  acstate_t * FailState = acsm->acsmFailState;
-
-  /* Init a Queue */
-  queue_init (queue);
-
-  /* Add the state 0 transitions 1st */
-  for(i=0; i<acsm->acsmAlphabetSize; i++)
-    {
-      s = List_GetNextState(acsm,0,i);
-      if ( s != 0 )
-	{
-	  queue_add (queue, s);
-	}
-    }
-
-  /* Start building the next layer of transitions */
-  while( queue_count(queue) > 0 )
-    {
-      r = queue_remove(queue);
-
-      /* Process this states layer */
-      for (i = 0; i < acsm->acsmAlphabetSize; i++)
-	{
-	  s = List_GetNextState(acsm,r,i);
-
-	  if( s != ACSM_FAIL_STATE2 && s!= 0)
-	    {
-	      queue_add (queue, s);
-	    }
-	  else
-	    {
-	      cFailState = List_GetNextState(acsm,FailState[r],i);
-
-	      if( cFailState != 0 && cFailState != ACSM_FAIL_STATE2 )
-		{
-		  List_PutNextState(acsm,r,i,cFailState);
-		}
-	    }
-	}
-    }
-
-  /* Clean up the queue */
-  queue_free (queue);
-}
-
-/*
- *
- *  Convert a row lists for the state table to a full vector format
- *
- */
-static int
-Conv_List_To_Full(ACSM_STRUCT2 * acsm)
-{
-  int         tcnt, k;
-  acstate_t * p;
-  acstate_t ** NextState = acsm->acsmNextState;
-
-  for(k=0;k<acsm->acsmMaxStates;k++)
-    {
-      p = AC_MALLOC( sizeof(acstate_t) * (acsm->acsmAlphabetSize+2) );
-      if(!p) return -1;
-
-      tcnt = List_ConvToFull( acsm, (acstate_t)k, p+2 );
-
-      p[0] = ACF_FULL;
-      p[1] = 0; /* no matches yet */
-
-      NextState[k] = p; /* now we have a full format row vector  */
-    }
-
-  return 0;
-}
-
-/*
- *   Convert DFA memory usage from list based storage to a sparse-row storage.
- *
- *   The Sparse format allows each row to be either full or sparse formatted.  If the sparse row has
- *   too many transitions, performance or space may dictate that we use the standard full formatting
- *   for the row.  More than 5 or 10 transitions per state ought to really whack performance. So the
- *   user can specify the max state transitions per state allowed in the sparse format.
- *
- *   Standard Full Matrix Format
- *   ---------------------------
- *   acstate_t ** NextState ( 1st index is row/state, 2nd index is column=event/input)
- *
- *   example:
- *
- *        events -> a b c d e f g h i j k l m n o p
- *   states
- *     N            1 7 0 0 0 3 0 0 0 0 0 0 0 0 0 0
- *
- *   Sparse Format, each row : Words     Value
- *                            1-1       fmt(0-full,1-sparse,2-banded,3-sparsebands)
- *			     2-2       bool match flag (indicates this state has pattern matches)
- *                            3-3       sparse state count ( # of input/next-state pairs )
- *                            4-3+2*cnt 'input,next-state' pairs... each sizof(acstate_t)
- *
- *   above example case yields:
- *     Full Format:    0, 1 7 0 0 0 3 0 0 0 0 0 0 0 0 0 0 ...
- *     Sparse format:  1, 3, 'a',1,'b',7,'f',3  - uses 2+2*ntransitions (non-default transitions)
- */
-static int
-Conv_Full_DFA_To_Sparse(ACSM_STRUCT2 * acsm)
-{
-  int          cnt, m, k, i;
-  acstate_t  * p, state, maxstates=0;
-  acstate_t ** NextState = acsm->acsmNextState;
-  acstate_t    full[MAX_ALPHABET_SIZE];
-
-  for(k=0;k<acsm->acsmMaxStates;k++)
-    {
-      cnt=0;
-
-      List_ConvToFull(acsm, (acstate_t)k, full );
-
-      for (i = 0; i < acsm->acsmAlphabetSize; i++)
-	{
-	  state = full[i];
-	  if( state != 0 && state != ACSM_FAIL_STATE2 ) cnt++;
-	}
-
-      if( cnt > 0 ) maxstates++;
-
-      if( k== 0 || cnt > acsm->acsmSparseMaxRowNodes )
-	{
-	  p = AC_MALLOC(sizeof(acstate_t)*(acsm->acsmAlphabetSize+2) );
-	  if(!p) return -1;
-
-	  p[0] = ACF_FULL;
-	  p[1] = 0;
-	  memcpy(&p[2],full,acsm->acsmAlphabetSize*sizeof(acstate_t));
-	}
-      else
-	{
-	  p = AC_MALLOC(sizeof(acstate_t)*(3+2*cnt));
-	  if(!p) return -1;
-
-	  m      = 0;
-	  p[m++] = ACF_SPARSE;
-	  p[m++] = 0;   /* no matches */
-	  p[m++] = cnt;
-
-	  for(i = 0; i < acsm->acsmAlphabetSize ; i++)
-	    {
-	      state = full[i];
-	      if( state != 0 && state != ACSM_FAIL_STATE2 )
-		{
-		  p[m++] = i;
-		  p[m++] = state;
-		}
-	    }
-	}
-
-      NextState[k] = p; /* now we are a sparse formatted state transition array  */
-    }
-
-  return 0;
-}
-/*
-  Convert Full matrix to Banded row format.
-
-  Word     values
-  1        2  -> banded
-  2        n  number of values
-  3        i  index of 1st value (0-256)
-  4 - 3+n  next-state values at each index
-
-*/
-static int
-Conv_Full_DFA_To_Banded(ACSM_STRUCT2 * acsm)
-{
-  int first = -1, last;
-  acstate_t * p, state, full[MAX_ALPHABET_SIZE];
-  acstate_t ** NextState = acsm->acsmNextState;
-  int       cnt,m,k,i;
-
-  for(k=0;k<acsm->acsmMaxStates;k++)
-    {
-      cnt=0;
-
-      List_ConvToFull(acsm, (acstate_t)k, full );
-
-      first=-1;
-      last =-2;
-
-      for (i = 0; i < acsm->acsmAlphabetSize; i++)
-	{
-	  state = full[i];
-
-	  if( state !=0 && state != ACSM_FAIL_STATE2 )
-	    {
-	      if( first < 0 ) first = i;
-	      last = i;
-	    }
-	}
-
-      /* calc band width */
-      cnt= last - first + 1;
-
-      p = AC_MALLOC(sizeof(acstate_t)*(4+cnt));
-
-      if(!p) return -1;
-
-      m      = 0;
-      p[m++] = ACF_BANDED;
-      p[m++] = 0;   /* no matches */
-      p[m++] = cnt;
-      p[m++] = first;
-
-      for(i = first; i <= last; i++)
-	{
-	  p[m++] = full[i];
-	}
-
-      NextState[k] = p; /* now we are a banded formatted state transition array  */
-    }
-
-  return 0;
-}
-
-/*
- *   Convert full matrix to Sparse Band row format.
- *
- *   next  - Full formatted row of next states
- *   asize - size of alphabet
- *   zcnt - max number of zeros in a run of zeros in any given band.
- *
- *  Word Values
- *  1    ACF_SPARSEBANDS
- *  2    number of bands
- *  repeat 3 - 5+ ....once for each band in this row.
- *  3    number of items in this band*  4    start index of this band
- *  5-   next-state values in this band...
- */
-static
-int calcSparseBands( acstate_t * next, int * begin, int * end, int asize, int zmax )
-{
-  int i, nbands,zcnt,last=0;
-  acstate_t state;
-
-  nbands=0;
-  for( i=0; i<asize; i++ )
-    {
-      state = next[i];
-
-      if( state !=0 && state != ACSM_FAIL_STATE2 )
-	{
-	  begin[nbands] = i;
-	  zcnt=0;
-
-	  for( ; i< asize; i++ )
-	    {
-	      state = next[i];
-	      if( state ==0 || state == ACSM_FAIL_STATE2 )
-		{
-		  zcnt++;
-		  if( zcnt > zmax ) break;
-		}
-	      else
-		{
-		  zcnt=0;
-		  last = i;
-		}
-	    }
-
-	  end[nbands++] = last;
-
-	}
-    }
-
-  return nbands;
-}
-
-
-/*
- *   Sparse Bands
- *
- *   Row Format:
- *   Word
- *   1    SPARSEBANDS format indicator
- *   2    bool indicates a pattern match in this state
- *   3    number of sparse bands
- *   4    number of elements in this band
- *   5    start index of this band
- *   6-   list of next states
- *
- *   m    number of elements in this band
- *   m+1  start index of this band
- *   m+2- list of next states
- */
-static int
-Conv_Full_DFA_To_SparseBands(ACSM_STRUCT2 * acsm)
-{
-  acstate_t  * p;
-  acstate_t ** NextState = acsm->acsmNextState;
-  int          cnt,m,k,i,zcnt=acsm->acsmSparseMaxZcnt;
-
-  int       band_begin[MAX_ALPHABET_SIZE];
-  int       band_end[MAX_ALPHABET_SIZE];
-  int       nbands,j;
-  acstate_t full[MAX_ALPHABET_SIZE];
-
-  for(k=0;k<acsm->acsmMaxStates;k++)
-    {
-      cnt=0;
-
-      List_ConvToFull(acsm, (acstate_t)k, full );
-
-      nbands = calcSparseBands( full, band_begin, band_end, acsm->acsmAlphabetSize, zcnt );
-
-      /* calc band width space*/
-      cnt = 3;
-      for(i=0;i<nbands;i++)
-	{
-	  cnt += 2;
-	  cnt += band_end[i] - band_begin[i] + 1;
-
-	  /*printk("state %d: sparseband %d,  first=%d, last=%d, cnt=%d\n",k,i,band_begin[i],band_end[i],band_end[i]-band_begin[i]+1); */
-	}
-
-      p = AC_MALLOC(sizeof(acstate_t)*(cnt));
-
-      if(!p) return -1;
-
-      m      = 0;
-      p[m++] = ACF_SPARSEBANDS;
-      p[m++] = 0; /* no matches */
-      p[m++] = nbands;
-
-      for( i=0;i<nbands;i++ )
-	{
-	  p[m++] = band_end[i] - band_begin[i] + 1;  /* # states in this band */
-	  p[m++] = band_begin[i];   /* start index */
-
-	  for( j=band_begin[i]; j<=band_end[i]; j++ )
-	    {
-	      p[m++] = full[j];  /* some states may be state zero */
-	    }
-	}
-
-      NextState[k] = p; /* now we are a sparse-banded formatted state transition array  */
-    }
-
-  return 0;
-}
-
-/*
- *
- *   Convert an NFA or DFA row from sparse to full format
- *   and store into the 'full'  buffer.
- *
- *   returns:
- *     0 - failed, no state transitions
- *    *p - pointer to 'full' buffer
- *
- */
-/*
-  static
-  acstate_t * acsmConvToFull(ACSM_STRUCT2 * acsm, acstate_t k, acstate_t * full )
-  {
-  int i;
-  acstate_t * p, n, fmt, index, nb, bmatch;
-  acstate_t ** NextState = acsm->acsmNextState;
-
-  p   = NextState[k];
-
-  if( !p ) return 0;
-
-  fmt = *p++;
-
-  bmatch = *p++;
-
-  if( fmt ==ACF_SPARSE )
-  {
-  n = *p++;
-  for( ; n>0; n--, p+=2 )
-  {
-  full[ p[0] ] = p[1];
-  }
-  }
-  else if( fmt ==ACF_BANDED )
-  {
-
-  n = *p++;
-  index = *p++;
-
-  for( ; n>0; n--, p++ )
-  {
-  full[ index++ ] = p[0];
-  }
-  }
-  else if( fmt ==ACF_SPARSEBANDS )
-  {
-  nb    = *p++;
-  for(i=0;i<nb;i++)
-  {
-  n     = *p++;
-  index = *p++;
-  for( ; n>0; n--, p++ )
-  {
-  full[ index++ ] = p[0];
-  }
-  }
-  }
-  else if( fmt == ACF_FULL )
-  {
-  memcpy(full,p,acsm->acsmAlphabetSize*sizeof(acstate_t));
-  }
-
-  return full;
-  }
-*/
-
-/*
- *   Select the desired storage mode
- */
-int acsmSelectFormat2( ACSM_STRUCT2 * acsm, int m )
-{
-  switch( m )
-    {
-    case ACF_FULL:
-    case ACF_SPARSE:
-    case ACF_BANDED:
-    case ACF_SPARSEBANDS:
-      acsm->acsmFormat = m;
-      break;
-    default:
-      return -1;
-    }
-
-  return 0;
-}
-/*
- *
- */
-void acsmSetMaxSparseBandZeros2( ACSM_STRUCT2 * acsm, int n )
-{
-  acsm->acsmSparseMaxZcnt = n;
-}
-/*
- *
- */
-void acsmSetMaxSparseElements2( ACSM_STRUCT2 * acsm, int n )
-{
-  acsm->acsmSparseMaxRowNodes = n;
-}
-/*
- *
- */
-int acsmSelectFSA2( ACSM_STRUCT2 * acsm, int m )
-{
-  switch( m )
-    {
-    case FSA_TRIE:
-    case FSA_NFA:
-    case FSA_DFA:
-      acsm->acsmFSA = m;
-    default:
-      return -1;
-    }
-}
-/*
- *
- */
-int acsmSetAlphabetSize2( ACSM_STRUCT2 * acsm, int n )
-{
-  if( n <= MAX_ALPHABET_SIZE )
-    {
-      acsm->acsmAlphabetSize = n;
-    }
-  else
-    {
-      return -1;
-    }
-  return 0;
-}
-/*
- *  Create a new AC state machine
- */
-static ACSM_STRUCT2 * acsmNew2 (void)
-{
-  ACSM_STRUCT2 * p;
-
-  init_xlatcase ();
-
-  p = (ACSM_STRUCT2 *) AC_MALLOC(sizeof (ACSM_STRUCT2));
-  MEMASSERT (p, "acsmNew");
-
-  if (p)
-    {
-      memset (p, 0, sizeof (ACSM_STRUCT2));
-
-      /* Some defaults */
-      p->acsmFSA               = FSA_DFA;
-      p->acsmFormat            = ACF_BANDED;
-      p->acsmAlphabetSize      = 256;
-      p->acsmSparseMaxRowNodes = 256;
-      p->acsmSparseMaxZcnt     = 10;
-    }
-
-  return p;
-}
-/*
- *   Add a pattern to the list of patterns for this state machine
- *
- */
-int
-acsmAddPattern2 (ACSM_STRUCT2 * p, unsigned char *pat, int n, int nocase,
-		 int offset, int depth, void * id, int iid)
-{
-  ACSM_PATTERN2 * plist;
-
-  plist = (ACSM_PATTERN2 *) AC_MALLOC (sizeof (ACSM_PATTERN2));
-  MEMASSERT (plist, "acsmAddPattern");
-
-  plist->patrn = (unsigned char *) AC_MALLOC ( n );
-  MEMASSERT (plist->patrn, "acsmAddPattern");
-
-  ConvertCaseEx(plist->patrn, pat, n);
-
-  plist->casepatrn = (unsigned char *) AC_MALLOC ( n );
-  MEMASSERT (plist->casepatrn, "acsmAddPattern");
-
-  memcpy (plist->casepatrn, pat, n);
-
-  plist->n      = n;
-  plist->nocase = nocase;
-  plist->offset = offset;
-  plist->depth  = depth;
-  plist->id     = id;
-  plist->iid    = iid;
-
-  plist->next     = p->acsmPatterns;
-  p->acsmPatterns = plist;
-
-  return 0;
-}
-/*
- *   Add a Key to the list of key+data pairs
- */
-int acsmAddKey2(ACSM_STRUCT2 * p, unsigned char *key, int klen, int nocase, void * data)
-{
-  ACSM_PATTERN2 * plist;
-
-  plist = (ACSM_PATTERN2 *) AC_MALLOC (sizeof (ACSM_PATTERN2));
-  MEMASSERT (plist, "acsmAddPattern");
-
-  plist->patrn = (unsigned char *) AC_MALLOC (klen);
-  memcpy (plist->patrn, key, klen);
-
-  plist->casepatrn = (unsigned char *) AC_MALLOC (klen);
-  memcpy (plist->casepatrn, key, klen);
-
-  plist->n      = klen;
-  plist->nocase = nocase;
-  plist->offset = 0;
-  plist->depth  = 0;
-  plist->id     = 0;
-  plist->iid = 0;
-
-  plist->next = p->acsmPatterns;
-  p->acsmPatterns = plist;
-
-  return 0;
-}
-
-/*
- *  Copy a boolean match flag int NextState table, for caching purposes.
- */
-static
-void acsmUpdateMatchStates( ACSM_STRUCT2 * acsm )
-{
-  acstate_t        state;
-  acstate_t     ** NextState = acsm->acsmNextState;
-  ACSM_PATTERN2 ** MatchList = acsm->acsmMatchList;
-
-  for( state=0; state<acsm->acsmNumStates; state++ )
-    {
-      if( MatchList[state] )
-	{
-	  NextState[state][1] = 1;
-	}
-      else
-	{
-	  NextState[state][1] = 0;
-	}
-    }
-}
-
-/*
- *   Compile State Machine - NFA or DFA and Full or Banded or Sparse or SparseBands
- */
-int
-acsmCompile2 (ACSM_STRUCT2 * acsm)
-{
-  int               k;
-  ACSM_PATTERN2    * plist;
-
-  /* Count number of states */
-  for (plist = acsm->acsmPatterns; plist != NULL; plist = plist->next)
-    {
-      acsm->acsmMaxStates += plist->n;
-      /* acsm->acsmMaxStates += plist->n*2; if we handle case in the table */
-    }
-  acsm->acsmMaxStates++; /* one extra */
-
-  /* Alloc a List based State Transition table */
-  acsm->acsmTransTable =(trans_node_t**) AC_MALLOC(sizeof(trans_node_t*) * acsm->acsmMaxStates );
-  MEMASSERT (acsm->acsmTransTable, "acsmCompile");
-
-  memset (acsm->acsmTransTable, 0, sizeof(trans_node_t*) * acsm->acsmMaxStates);
-
-  /* Alloc a failure table - this has a failure state, and a match list for each state */
-  acsm->acsmFailState =(acstate_t*) AC_MALLOC(sizeof(acstate_t) * acsm->acsmMaxStates );
-  MEMASSERT (acsm->acsmFailState, "acsmCompile");
-
-  memset (acsm->acsmFailState, 0, sizeof(acstate_t) * acsm->acsmMaxStates );
-
-  /* Alloc a MatchList table - this has a lis tof pattern matches for each state, if any */
-  acsm->acsmMatchList=(ACSM_PATTERN2**) AC_MALLOC(sizeof(ACSM_PATTERN2*) * acsm->acsmMaxStates );
-  MEMASSERT (acsm->acsmMatchList, "acsmCompile");
-
-  memset (acsm->acsmMatchList, 0, sizeof(ACSM_PATTERN2*) * acsm->acsmMaxStates );
-
-  /* Alloc a separate state transition table == in state 's' due to event 'k', transition to 'next' state */
-  acsm->acsmNextState=(acstate_t**)AC_MALLOC( acsm->acsmMaxStates * sizeof(acstate_t*) );
-  MEMASSERT(acsm->acsmNextState, "acsmCompile-NextState");
-
-  for (k = 0; k < acsm->acsmMaxStates; k++)
-    {
-      acsm->acsmNextState[k]=(acstate_t*)0;
-    }
-
-  /* Initialize state zero as a branch */
-  acsm->acsmNumStates = 0;
-
-  /* Add the 0'th state,  */
-  //acsm->acsmNumStates++;
-
-  /* Add each Pattern to the State Table - This forms a keywords state table  */
-  for (plist = acsm->acsmPatterns; plist != NULL; plist = plist->next)
-    {
-      AddPatternStates (acsm, plist);
-    }
-
-  acsm->acsmNumStates++;
-
-  if( acsm->acsmFSA == FSA_DFA || acsm->acsmFSA == FSA_NFA )
-    {
-      /* Build the NFA */
-      Build_NFA (acsm);
-    }
-
-  if( acsm->acsmFSA == FSA_DFA )
-    {
-      /* Convert the NFA to a DFA */
-      Convert_NFA_To_DFA (acsm);
-    }
-
-  /*
-   *
-   *  Select Final Transition Table Storage Mode
-   *
-   */
-  if( acsm->acsmFormat == ACF_SPARSE )
-    {
-      /* Convert DFA Full matrix to a Sparse matrix */
-      if( Conv_Full_DFA_To_Sparse(acsm) )
-	return -1;
-    }
-
-  else if( acsm->acsmFormat == ACF_BANDED )
-    {
-      /* Convert DFA Full matrix to a Sparse matrix */
-      if( Conv_Full_DFA_To_Banded(acsm) )
-	return -1;
-    }
-
-  else if( acsm->acsmFormat == ACF_SPARSEBANDS )
-    {
-      /* Convert DFA Full matrix to a Sparse matrix */
-      if( Conv_Full_DFA_To_SparseBands(acsm) )
-	return -1;
-    }
-  else if( acsm->acsmFormat == ACF_FULL )
-    {
-      if( Conv_List_To_Full( acsm ) )
-	return -1;
-    }
-
-  acsmUpdateMatchStates( acsm ); /* load boolean match flags into state table */
-
-  /* Free up the Table Of Transition Lists */
-  List_FreeTransTable( acsm );
-
-  /* For now -- show this info */
-  /*
-   *  acsmPrintInfo( acsm );
-   */
-
-
-  /* Accrue Summary State Stats */
-  summary.num_states      += acsm->acsmNumStates;
-  summary.num_transitions += acsm->acsmNumTrans;
-
-  memcpy( &summary.acsm, acsm, sizeof(ACSM_STRUCT2));
-
-  return 0;
-}
-
-/*
- *   Get the NextState from the NFA, all NFA storage formats use this
- */
-inline
-acstate_t SparseGetNextStateNFA(acstate_t * ps, acstate_t state, unsigned  input)
-{
-  acstate_t fmt;
-  acstate_t n;
-  int       index;
-  int       nb;
-
-  fmt = *ps++;
-
-  ps++;  /* skip bMatchState */
-
-  switch( fmt )
-    {
-    case  ACF_BANDED:
-      {
-	n     = ps[0];
-	index = ps[1];
-
-	if( input <  index     )
-	  {
-	    if(state==0)
-	      {
-		return 0;
-	      }
-	    else
-	      {
-		return (acstate_t)ACSM_FAIL_STATE2;
-	      }
-	  }
-	if( input >= index + n )
-	  {
-	    if(state==0)
-	      {
-		return 0;
-	      }
-	    else
-	      {
-		return (acstate_t)ACSM_FAIL_STATE2;
-	      }
-	  }
-	if( ps[input-index] == 0  )
-	  {
-	    if( state != 0 )
-	      {
-		return ACSM_FAIL_STATE2;
-	      }
-	  }
-
-	return (acstate_t) ps[input-index];
-      }
-
-    case ACF_SPARSE:
-      {
-	n = *ps++; /* number of sparse index-value entries */
-
-	for( ; n>0 ; n-- )
-	  {
-	    if( ps[0] > input ) /* cannot match the input, already a higher value than the input  */
-	      {
-		return (acstate_t)ACSM_FAIL_STATE2; /* default state */
-	      }
-	    else if( ps[0] == input )
-	      {
-		return ps[1]; /* next state */
-	      }
-	    ps+=2;
-	  }
-	if( state == 0 )
-	  {
-	    return 0;
-	  }
-	return ACSM_FAIL_STATE2;
-      }
-
-    case ACF_SPARSEBANDS:
-      {
-	nb  = *ps++;   /* number of bands */
-
-	while( nb > 0 )  /* for each band */
-	  {
-	    n     = *ps++;  /* number of elements */
-	    index = *ps++;  /* 1st element value */
-
-	    if( input <  index )
-	      {
-		if( state != 0 )
-		  {
-		    return (acstate_t)ACSM_FAIL_STATE2;
-		  }
-		return (acstate_t)0;
-	      }
-	    if( (input >=  index) && (input < (index + n)) )
-	      {
-		if( ps[input-index] == 0 )
-		  {
-		    if( state != 0 )
-		      {
-			return ACSM_FAIL_STATE2;
-		      }
-		  }
-		return (acstate_t) ps[input-index];
-	      }
-	    nb--;
-	    ps += n;
-	  }
-	if( state != 0 )
-	  {
-	    return (acstate_t)ACSM_FAIL_STATE2;
-	  }
-	return (acstate_t)0;
-      }
-
-    case ACF_FULL:
-      {
-	if( ps[input] == 0 )
-	  {
-	    if( state != 0 )
-	      {
-		return ACSM_FAIL_STATE2;
-	      }
-	  }
-	return ps[input];
-      }
-    }
-
-  return 0;
-}
-
-
-
-/*
- *   Get the NextState from the DFA Next State Transition table
- *   Full and banded are supported separately, this is for
- *   sparse and sparse-bands
- */
-inline
-acstate_t SparseGetNextStateDFA(acstate_t * ps, acstate_t state, unsigned  input)
-{
-  acstate_t  n, nb;
-  int        index;
-
-  switch( ps[0] )
-    {
-      /*   BANDED   */
-    case  ACF_BANDED:
-      {
-	/* n=ps[2] : number of entries in the band */
-	/* index=ps[3] : index of the 1st entry, sequential thereafter */
-
-	if( input  <  ps[3]        )  return 0;
-	if( input >= (ps[3]+ps[2]) )  return 0;
-
-	return  ps[4+input-ps[3]];
-      }
-
-      /*   FULL   */
-    case ACF_FULL:
-      {
-	return ps[2+input];
-      }
-
-      /*   SPARSE   */
-    case ACF_SPARSE:
-      {
-	n = ps[2]; /* number of entries/ key+next pairs */
-
-	ps += 3;
-
-	for( ; n>0 ; n-- )
-	  {
-	    if( input < ps[0]  ) /* cannot match the input, already a higher value than the input  */
-	      {
-		return (acstate_t)0; /* default state */
-	      }
-	    else if( ps[0] == input )
-	      {
-		return ps[1]; /* next state */
-	      }
-	    ps += 2;
-	  }
-	return (acstate_t)0;
-      }
-
-
-      /*   SPARSEBANDS   */
-    case ACF_SPARSEBANDS:
-      {
-	nb  =  ps[2]; /* number of bands */
-
-	ps += 3;
-
-	while( nb > 0 )  /* for each band */
-	  {
-	    n     = ps[0];  /* number of elements in this band */
-	    index = ps[1];  /* start index/char of this band */
-	    if( input <  index )
-	      {
-		return (acstate_t)0;
-	      }
-	    if( (input < (index + n)) )
-	      {
-		return (acstate_t) ps[2+input-index];
-	      }
-	    nb--;
-	    ps += n;
-	  }
-	return (acstate_t)0;
-      }
-    }
-
-  return 0;
-}
-/*
- *   Search Text or Binary Data for Pattern matches
- *
- *   Sparse & Sparse-Banded Matrix search
- */
-static
-inline
-int
-acsmSearchSparseDFA(ACSM_STRUCT2 * acsm, unsigned char *Tx, int n,
-		    int (*Match) (void * id, int index, void *data),
-		    void *data)
-{
-  acstate_t state;
-  ACSM_PATTERN2   * mlist;
-  unsigned char   * Tend;
-  int               nfound = 0;
-  unsigned char   * T, * Tc;
-  int               index;
-  acstate_t      ** NextState = acsm->acsmNextState;
-  ACSM_PATTERN2  ** MatchList = acsm->acsmMatchList;
-
-  Tc   = Tx;
-  T    = Tx;
-  Tend = T + n;
-
-  for( state = 0; T < Tend; T++ )
-    {
-      state = SparseGetNextStateDFA ( NextState[state], state, xlatcase[*T] );
-
-      /* test if this state has any matching patterns */
-      if( NextState[state][1] )
-	{
-	  for( mlist = MatchList[state];
-	       mlist!= NULL;
-	       mlist = mlist->next )
-	    {
-	      index = T - mlist->n - Tc;
-	      if( mlist->nocase )
-		{
-		  nfound++;
-		  if (Match (mlist->id, index, data))
-		    return nfound;
-		}
-	      else
-		{
-		  if( memcmp (mlist->casepatrn, Tx + index, mlist->n) == 0 )
-		    {
-		      nfound++;
-		      if (Match (mlist->id, index, data))
-			return nfound;
-		    }
-		}
-	    }
-	}
-    }
-  return nfound;
-}
-/*
- *   Full format DFA search
- *   Do not change anything here without testing, caching and prefetching
- *   performance is very sensitive to any changes.
- *
- *   Perf-Notes:
- *    1) replaced ConvertCaseEx with inline xlatcase - this improves performance 5-10%
- *    2) using 'nocase' improves performance again by 10-15%, since memcmp is not needed
- *    3)
- */
-static
-inline
-int
-acsmSearchSparseDFA_Full(ACSM_STRUCT2 * acsm, unsigned char *Tx, int n,
-			 int (*Match) (void * id, int index, void *data),
-			 void *data)
-{
-  ACSM_PATTERN2   * mlist;
-  unsigned char   * Tend;
-  unsigned char   * T;
-  int               index;
-  acstate_t         state;
-  acstate_t       * ps;
-  acstate_t         sindex;
-  acstate_t      ** NextState = acsm->acsmNextState;
-  ACSM_PATTERN2  ** MatchList = acsm->acsmMatchList;
-  int               nfound    = 0;
-
-  T    = Tx;
-  Tend = Tx + n;
-
-  for( state = 0; T < Tend; T++ )
-    {
-      ps     = NextState[ state ];
-
-      sindex = xlatcase[ T[0] ];
-
-      /* check the current state for a pattern match */
-      if( ps[1] )
-	{
-	  for( mlist = MatchList[state];
-	       mlist!= NULL;
-	       mlist = mlist->next )
-	    {
-	      index = T - mlist->n - Tx;
-
-
-	      if( mlist->nocase )
-		{
-		  nfound++;
-		  if (Match (mlist->id, index, data))
-		    return nfound;
-		}
-	      else
-		{
-		  if( memcmp (mlist->casepatrn, Tx + index, mlist->n ) == 0 )
-		    {
-		      nfound++;
-		      if (Match (mlist->id, index, data))
-			return nfound;
-		    }
-		}
-
-	    }
-	}
-
-      state = ps[ 2u + sindex ];
-    }
-
-  /* Check the last state for a pattern match */
-  for( mlist = MatchList[state];
-       mlist!= NULL;
-       mlist = mlist->next )
-    {
-      index = T - mlist->n - Tx;
-
-      if( mlist->nocase )
-	{
-	  nfound++;
-	  if (Match (mlist->id, index, data))
-	    return nfound;
-	}
-      else
-	{
-	  if( memcmp (mlist->casepatrn, Tx + index, mlist->n) == 0 )
-	    {
-	      nfound++;
-	      if (Match (mlist->id, index, data))
-		return nfound;
-	    }
-	}
-    }
-
-  return nfound;
-}
-/*
- *   Banded-Row format DFA search
- *   Do not change anything here, caching and prefetching
- *   performance is very sensitive to any changes.
- *
- *   ps[0] = storage fmt
- *   ps[1] = bool match flag
- *   ps[2] = # elements in band
- *   ps[3] = index of 1st element
- */
-static
-inline
-int
-acsmSearchSparseDFA_Banded(ACSM_STRUCT2 * acsm, unsigned char *Tx, int n,
-			   int (*Match) (void * id, int index, void *data),
-			   void *data)
-{
-  acstate_t         state;
-  unsigned char   * Tend;
-  unsigned char   * T;
-  int               sindex;
-  int               index;
-  acstate_t      ** NextState = acsm->acsmNextState;
-  ACSM_PATTERN2  ** MatchList = acsm->acsmMatchList;
-  ACSM_PATTERN2   * mlist;
-  acstate_t       * ps;
-  int               nfound = 0;
-
-  T    = Tx;
-  Tend = T + n;
-
-  for( state = 0; T < Tend; T++ )
-    {
-      ps     = NextState[state];
-
-      sindex = xlatcase[ T[0] ];
-
-      /* test if this state has any matching patterns */
-      if( ps[1] )
-	{
-	  for( mlist = MatchList[state];
-	       mlist!= NULL;
-	       mlist = mlist->next )
-	    {
-	      index = T - mlist->n - Tx;
-
-	      if( mlist->nocase )
-		{
-		  nfound++;
-		  if (Match (mlist->id, index, data))
-		    return nfound;
-		}
-	      else
-		{
-		  if( memcmp (mlist->casepatrn, Tx + index, mlist->n) == 0 )
-		    {
-		      nfound++;
-		      if (Match (mlist->id, index, data))
-			return nfound;
-		    }
-		}
-	    }
-	}
-
-      if(      sindex <   ps[3]          )  state = 0;
-      else if( sindex >= (ps[3] + ps[2]) )  state = 0;
-      else                                  state = ps[ 4u + sindex - ps[3] ];
-    }
-
-  /* Check the last state for a pattern match */
-  for( mlist = MatchList[state];
-       mlist!= NULL;
-       mlist = mlist->next )
-    {
-      index = T - mlist->n - Tx;
-
-      if( mlist->nocase )
-	{
-	  nfound++;
-	  if (Match (mlist->id, index, data))
-	    return nfound;
-	}
-      else
-	{
-	  if( memcmp (mlist->casepatrn, Tx + index, mlist->n) == 0 )
-	    {
-	      nfound++;
-	      if (Match (mlist->id, index, data))
-		return nfound;
-	    }
-	}
-    }
-
-  return nfound;
-}
-
-
-
-/*
- *   Search Text or Binary Data for Pattern matches
- *
- *   Sparse Storage Version
- */
-static
-inline
-int
-acsmSearchSparseNFA(ACSM_STRUCT2 * acsm, unsigned char *Tx, int n,
-		    int (*Match) (void * id, int index, void *data),
-		    void *data)
-{
-  acstate_t         state;
-  ACSM_PATTERN2   * mlist;
-  unsigned char   * Tend;
-  int               nfound = 0;
-  unsigned char   * T, *Tc;
-  int               index;
-  acstate_t      ** NextState= acsm->acsmNextState;
-  acstate_t       * FailState= acsm->acsmFailState;
-  ACSM_PATTERN2  ** MatchList = acsm->acsmMatchList;
-  unsigned char     Tchar;
-
-  Tc   = Tx;
-  T    = Tx;
-  Tend = T + n;
-
-  for( state = 0; T < Tend; T++ )
-    {
-      acstate_t nstate;
-
-      Tchar = xlatcase[ *T ];
-
-      while( (nstate=SparseGetNextStateNFA(NextState[state],state,Tchar))==ACSM_FAIL_STATE2 )
-	state = FailState[state];
-
-      state = nstate;
-
-      for( mlist = MatchList[state];
-	   mlist!= NULL;
-	   mlist = mlist->next )
-	{
-	  index = T - mlist->n - Tx;
-	  if( mlist->nocase )
-	    {
-	      nfound++;
-	      if (Match (mlist->id, index, data))
-		return nfound;
-	    }
-	  else
-	    {
-	      if( memcmp (mlist->casepatrn, Tx + index, mlist->n) == 0 )
-		{
-		  nfound++;
-		  if (Match (mlist->id, index, data))
-		    return nfound;
-		}
-	    }
-	}
-    }
-
-  return nfound;
-}
-
-/*
- *   Search Function
- */
-int
-acsmSearch2(ACSM_STRUCT2 * acsm, unsigned char *Tx, int n,
-	    int (*Match) (void * id, int index, void *data),
-	    void *data)
-{
-
-  switch( acsm->acsmFSA )
-    {
-    case FSA_DFA:
-
-      if( acsm->acsmFormat == ACF_FULL )
-	{
-	  return acsmSearchSparseDFA_Full( acsm, Tx, n, Match,data );
-	}
-      else if( acsm->acsmFormat == ACF_BANDED )
-	{
-	  return acsmSearchSparseDFA_Banded( acsm, Tx, n, Match,data );
-	}
-      else
-	{
-	  return acsmSearchSparseDFA( acsm, Tx, n, Match,data );
-	}
-
-    case FSA_NFA:
-
-      return acsmSearchSparseNFA( acsm, Tx, n, Match,data );
-
-    case FSA_TRIE:
-
-      return 0;
-    }
-  return 0;
-}
-
-
-/*
- *   Free all memory
- */
-void
-acsmFree2 (ACSM_STRUCT2 * acsm)
-{
-  int i;
-  ACSM_PATTERN2 * mlist, *ilist;
-  for (i = 0; i < acsm->acsmMaxStates; i++)
-    {
-      mlist = acsm->acsmMatchList[i];
-
-      while (mlist)
-	{
-	  ilist = mlist;
-	  mlist = mlist->next;
-	  AC_FREE (ilist);
-	}
-      AC_FREE(acsm->acsmNextState[i]);
-    }
-  AC_FREE(acsm->acsmFailState);
-  AC_FREE(acsm->acsmMatchList);
-}
-
-/* ********************************** */
-
-static void ring_sock_destruct(struct sock *sk) {
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
   skb_queue_purge(&sk->sk_receive_queue);
 
@@ -2310,7 +378,6 @@ static void ring_sock_destruct(struct sock *sk) {
   BUG_TRAP(!atomic_read(&sk->sk_rmem_alloc));
   BUG_TRAP(!atomic_read(&sk->sk_wmem_alloc));
 #else
-
   BUG_TRAP(atomic_read(&sk->rmem_alloc)==0);
   BUG_TRAP(atomic_read(&sk->wmem_alloc)==0);
 
@@ -2372,6 +439,10 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen += sprintf(buf + rlen,"Ring slots          : %d\n", num_slots);
     rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
+#if 0
+    rlen += sprintf(buf + rlen,"Transparent mode    : %s\n",
+                    transparent_mode ? "Yes" : "No");
+#endif
     rlen += sprintf(buf + rlen,"Total rings         : %d\n", ring_table_size);
   } else {
     /* detailed statistics about a PF_RING */
@@ -2383,19 +454,22 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
       if(fsi) {
 	rlen = sprintf(buf,        "Bound Device  : %s\n",
 		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
-	rlen += sprintf(buf + rlen,"Version       : %d\n",  fsi->version);
-	rlen += sprintf(buf + rlen,"Sampling Rate : %d\n",  pfr->sample_rate);
-	rlen += sprintf(buf + rlen,"BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
-	rlen += sprintf(buf + rlen,"# Filt. Rules : %d\n",  pfr->num_filtering_rules);
-	rlen += sprintf(buf + rlen,"Cluster Id    : %d\n",  pfr->cluster_id);
-	rlen += sprintf(buf + rlen,"Tot Slots     : %d\n",  fsi->tot_slots);
-	rlen += sprintf(buf + rlen,"Slot Len      : %d\n",  fsi->slot_len);
-	rlen += sprintf(buf + rlen,"Data Len      : %d\n",  fsi->data_len);
-	rlen += sprintf(buf + rlen,"Tot Memory    : %d\n",  fsi->tot_mem);
-	rlen += sprintf(buf + rlen,"Tot Packets   : %lu\n", (unsigned long)fsi->tot_pkts);
-	rlen += sprintf(buf + rlen,"Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
-	rlen += sprintf(buf + rlen,"Tot Insert    : %lu\n", (unsigned long)fsi->tot_insert);
-	rlen += sprintf(buf + rlen,"Tot Read      : %lu\n", (unsigned long)fsi->tot_read);
+	rlen += sprintf(buf + rlen, "Version       : %d\n",  fsi->version);
+	rlen += sprintf(buf + rlen, "Sampling Rate : %d\n",  pfr->sample_rate);
+#ifdef ENABLE_DEFRAGMENTATION
+	rlen += sprintf(buf + rlen, "IP Defragment : %s\n",  enable_ip_defrag ? "Yes" : "No");
+#endif
+	rlen += sprintf(buf + rlen, "BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
+	rlen += sprintf(buf + rlen, "# Filt. Rules : %d\n",  pfr->num_filtering_rules);
+	rlen += sprintf(buf + rlen, "Cluster Id    : %d\n",  pfr->cluster_id);
+	rlen += sprintf(buf + rlen, "Tot Slots     : %d\n",  fsi->tot_slots);
+	rlen += sprintf(buf + rlen, "Slot Len      : %d\n",  fsi->slot_len);
+	rlen += sprintf(buf + rlen, "Data Len      : %d\n",  fsi->data_len);
+	rlen += sprintf(buf + rlen, "Tot Memory    : %d\n",  fsi->tot_mem);
+	rlen += sprintf(buf + rlen, "Tot Packets   : %lu\n", (unsigned long)fsi->tot_pkts);
+	rlen += sprintf(buf + rlen, "Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
+	rlen += sprintf(buf + rlen, "Tot Insert    : %lu\n", (unsigned long)fsi->tot_insert);
+	rlen += sprintf(buf + rlen, "Tot Read      : %lu\n", (unsigned long)fsi->tot_read);
       } else
 	rlen = sprintf(buf, "WARNING fsi == NULL\n");
     } else
@@ -2666,17 +740,23 @@ static int match_filtering_rule(filtering_rule_element *rule,
     if(balance_hash != rule->rule.balance_id) return(0);
   }
 
-  if(rule->acsm != NULL) {
-    if((hdr->payload_offset > 0) && ((skb->len+skb->mac_len) > hdr->payload_offset)) {
-      char *payload = (skb->data-displ+hdr->payload_offset);
-      int rc, payload_len = skb->len /* + skb->mac_len */ - hdr->payload_offset;
+  if(rule->pattern != NULL) {
+    if((hdr->payload_offset > 0) && (hdr->caplen > hdr->payload_offset)) {
+      struct ts_state state;
+      char *payload = (char*)&(skb->data[hdr->payload_offset-displ]);
+      int i, rc, payload_len = hdr->caplen - hdr->payload_offset;
+      
+      printk("Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][", 
+	     hdr->caplen, payload_len, displ, hdr->payload_offset);
 
-      /* printk("Tring to match pattern [len=%d][%s]\n", payload_len, payload); */
-      rc = acsmSearch2(rule->acsm, payload, payload_len, MatchFound, (void *)0) ? 1 : 0;
+      for(i=0; i<payload_len; i++) printk("%c", payload[i]);
+      printk("]\n");
 
+      rc = (textsearch_find_continuous(rule->pattern, &state, payload, payload_len) != UINT_MAX) ? 1 : 0;
+      
       if(rc == 0)
 	return(0); /* No match */
-    } else
+    } else    
       return(0); /* No payload data */
   }
 
@@ -2854,8 +934,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
       /* No reflector device: the packet needs to be queued */	
       if(hdr->caplen > 0) {
 	/* Copy the packet into the bucket */
-	int len = min(hdr->caplen, bucket_len);
-	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], len);
+	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
       }
 
 #if defined(RING_DEBUG)
@@ -3002,6 +1081,62 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   is_ip_pkt = parse_pkt(skb, displ, &hdr);
 
+#ifdef ENABLE_DEFRAGMENTATION
+  /* (de)Fragmentation <fusco@ntop.org> */
+  if (enable_ip_defrag 
+      && is_ip_pkt 
+      && recv_packet
+      && (ring_table_size > 0))
+    {
+      struct sk_buff *cloned = NULL; 
+      struct iphdr* iphdr = NULL;
+
+      skb_reset_network_header(skb);
+      skb_reset_transport_header(skb);
+      skb_set_network_header(skb, hdr.l3_offset-displ);
+
+      if(((iphdr = ip_hdr(skb)) != NULL)
+	  && (iphdr->frag_off & htons(IP_MF | IP_OFFSET)))
+	{
+	  if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL)
+	    {
+	      struct sk_buff *skk = NULL;
+#if defined (RING_DEBUG)
+	      int offset = ntohs(iphdr->frag_off);
+	      offset &= IP_OFFSET;
+	      offset <<= 3;
+
+	      printk("There is a fragment to handle [proto=%d][frag_off=%u] [ip_id=%u]\n", 
+		     iphdr->protocol, offset, ntohs(iphdr->id));
+#endif
+	      skk = ring_gather_frags(cloned);
+
+	      if(skk != NULL)
+		{
+#if defined (RING_DEBUG)
+		  printk("IP reasm on new skb [skb_len=%d][head_len=%d][nr_frags=%d][frag_list=%p]\n", 
+			 (int)skk->len, skb_headlen(skk),
+			 skb_shinfo(skk)->nr_frags, skb_shinfo(skk)->frag_list);
+#endif
+		  skb = skk; 
+		  parse_pkt(skb, displ, &hdr);
+		  hdr.len = hdr.caplen = skb->len+displ;
+		} else {
+		  //printk("Fragment queued \n");
+		  //read_unlock(&ring_mgmt_lock);
+		  return(transparent_mode == 1 ? 0 : 1); /* mask rcvd fragments */
+		}
+	    }
+	}
+      else
+	{
+#if defined (RING_DEBUG)
+	  printk("Do not seems to be a fragmented ip_pkt[iphdr=%p]\n", iphdr);
+#endif
+	}
+    }
+#endif
+
   /* BD - API changed for time keeping */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14))
   if(skb->stamp.tv_sec == 0) do_gettimeofday(&skb->stamp);
@@ -3015,6 +1150,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
   hdr.len = hdr.caplen = skb->len+displ;
+  hdr.caplen = min(hdr.caplen, bucket_len);
 
   read_lock(&ring_mgmt_lock);
 
@@ -3078,8 +1214,16 @@ static int skb_ring_handler(struct sk_buff *skb,
   rdt2 = _rdtsc();
 #endif
 
-  if((rc != 0) && real_skb)
+#if 0
+  if(transparent_mode) 
+#endif
+    rc = 0;
+
+  if((rc != 0) && real_skb) {
+#if 0
     dev_kfree_skb(skb); /* Free the skb */
+#endif
+  }
 
 #ifdef PROFILING
   rdt2 = _rdtsc()-rdt2;
@@ -3248,7 +1392,7 @@ static int ring_release(struct socket *sock)
       printk("RING: Deleting rule_id %d\n", rule->rule.rule_id);
 #endif
 
-      if(rule->acsm) acsmFree2(rule->acsm);
+      if(rule->pattern) textsearch_destroy(rule->pattern);
       list_del(ptr);
       kfree(rule);
     }
@@ -3474,22 +1618,31 @@ static int ring_mmap(struct file *file,
   /* Ring slots start from page 1 (page 0 is reserved for FlowSlotInfo) */
   ptr = (char *)(pfr->ring_memory);
 
-  while(size > 0) {
-    page = vmalloc_to_pfn(ptr);
-    if (remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED)) {
-#if defined(RING_DEBUG)
-      printk("RING: remap_pfn_range() failed\n");
+  while(size > 0) 
+    {
+      int rc;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
+      page = vmalloc_to_pfn(ptr);
+      rc =remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
+#else
+      page = vmalloc_to_page(ptr);
+      rc = remap_page_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
 #endif
-      return(-EAGAIN);
+      if(rc) {
+#if defined(RING_DEBUG)
+	printk("RING: remap_pfn_range() failed\n");
+#endif
+	return(-EAGAIN);
+      }
+      start += PAGE_SIZE;
+      ptr   += PAGE_SIZE;
+      if (size > PAGE_SIZE) {
+	size -= PAGE_SIZE;
+      } else {
+	size = 0;
+      }
     }
-    start += PAGE_SIZE;
-    ptr   += PAGE_SIZE;
-    if (size > PAGE_SIZE) {
-      size -= PAGE_SIZE;
-    } else {
-      size = 0;
-    }
-  }
 
 #if defined(RING_DEBUG)
   printk("RING: ring_mmap succeeded\n");
@@ -3852,18 +2005,17 @@ static int ring_setsockopt(struct socket *sock,
 	  /* Compile pattern if present */
 	  if(strlen(rule->rule.payload_pattern) > 0)
 	    {
-	      if((rule->acsm = acsmNew2()) != NULL)
-		{
-		  int nc=1 /* case sensitive */, i = 0;
-		  unsigned char *aho_pattern = rule->rule.payload_pattern;
+	      rule->pattern = textsearch_prepare("kmp", rule->rule.payload_pattern, 
+						 strlen(rule->rule.payload_pattern),
+						 GFP_KERNEL, TS_AUTOLOAD);
 
-		  rule->acsm->acsmFormat = ACF_BANDED;
-		  acsmAddPattern2(rule->acsm, aho_pattern,
-				  (int)strlen(aho_pattern), nc, 0, 0,(void*)aho_pattern, i);
-		  acsmCompile2(rule->acsm);
-		}
+	      if(IS_ERR(rule->pattern)) {
+		printk("RING: Unable to compile pattern '%s'\n",
+		       rule->rule.payload_pattern);
+		rule->pattern = NULL;
+	      }
 	    } else
-	      rule->acsm = NULL;
+	      rule->pattern = NULL;
 
 	  write_lock(&ring_mgmt_lock);
 
@@ -3880,8 +2032,8 @@ static int ring_setsockopt(struct socket *sock,
 	      if(entry->rule.rule_id == rule->rule.rule_id)
 		{
 		  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
-		  if(entry->acsm != NULL) acsmFree2(entry->acsm);
-		  entry->acsm = rule->acsm;
+		  if(entry->pattern != NULL) textsearch_destroy(entry->pattern);
+		  entry->pattern = rule->pattern;
 		  kfree(rule);
 		  rule = NULL;
 		  if(debug) printk("SO_ADD_FILTERING_RULE: overwritten rule_id %d\n", entry->rule.rule_id);
@@ -3944,7 +2096,7 @@ static int ring_setsockopt(struct socket *sock,
 
 	      if(entry->rule.rule_id == rule_id)
 		{
-		  if(entry->acsm) acsmFree2(entry->acsm);
+		  if(entry->pattern) textsearch_destroy(entry->pattern);
 		  list_del(ptr);
 		  pfr->num_filtering_rules--;
 		  kfree(ptr);
