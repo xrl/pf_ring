@@ -7,12 +7,13 @@
  * - Helmut Manck <helmut.manck@secunet.com>
  * - Brad Doctor <brad@stillsecure.com>
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
- * - Francesco Fusco <fusco@ntop.org>
+ * - Francesco Fusco <fusco@ntop.org> (IP defrag implementation)
  * - Michael Stiller <ms@2scale.net> (author of the VM memory support)
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
  * - Andrew Gallatin <gallatyn@myri.com>
  * - Matthew J. Roth <mroth@imminc.com>
  * - Vincent Carrier <vicarrier@wanadoo.fr>
+ * - Marketakis Yannis <marketak@ics.forth.gr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -63,6 +64,7 @@
 #ifdef CONFIG_INET
 #include <net/inet_common.h>
 #endif
+#include <net/ip.h> 
 
 /* #define RING_DEBUG */
 
@@ -185,18 +187,14 @@ static int buffer_ring_handler(struct net_device *dev, char *data, int len);
 static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 
 /* Extern */
-#ifdef ENABLE_DEFRAGMENTATION
 extern struct sk_buff *ip_defrag(struct sk_buff *skb, u32 user);
-#endif
 
 /* ********************************** */
 
 /* Defaults */
 static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096;
 static unsigned int enable_tx_capture = 1;
-#ifdef ENABLE_DEFRAGMENTATION
 static unsigned int enable_ip_defrag = 0;
-#endif
 #if 0
 static unsigned int transparent_mode = 1;
 #endif
@@ -208,9 +206,7 @@ module_param(num_slots,  uint, 0644);
 module_param(transparent_mode, uint, 0644);
 #endif
 module_param(enable_tx_capture, uint, 0644);
-#ifdef ENABLE_DEFRAGMENTATION
 module_param(enable_ip_defrag, uint, 0644);
-#endif
 #else
 MODULE_PARM(bucket_len, "i");
 MODULE_PARM(num_slots, "i");
@@ -218,9 +214,7 @@ MODULE_PARM(num_slots, "i");
 MODULE_PARM(transparent_mode, "i");
 #endif
 MODULE_PARM(enable_tx_capture, "i");
-#ifdef ENABLE_DEFRAGMENTATION
 MODULE_PARM(enable_ip_defrag, "i");
-#endif
 #endif
 
 MODULE_PARM_DESC(bucket_len, "Size (in bytes) a ring bucket");
@@ -231,11 +225,10 @@ MODULE_PARM_DESC(transparent_mode,
                  "(slower but backwards compatible)");
 #endif
 MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
-#ifdef ENABLE_DEFRAGMENTATION
 MODULE_PARM_DESC(enable_ip_defrag, 
-		 "Set to 1 to enable ip defragmentation"
+		 "Set to 1 to enable IP defragmentation"
 		 "(only rx traffic is defragmentead)");
-#endif
+
 /* ********************************** */
 
 #define MIN_QUEUED_PKTS      64
@@ -254,7 +247,6 @@ MODULE_PARM_DESC(enable_ip_defrag,
 
 /* ***************** Legacy code ************************ */
 
-#ifdef ENABLE_DEFRAGMENTATION
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
@@ -276,7 +268,6 @@ static inline void skb_reset_transport_header(struct sk_buff *skb)
 {
   ;
 }
-#endif
 #endif
 
 /* ***** Code taken from other kernel modules ******** */
@@ -348,7 +339,8 @@ static void rvfree(void *mem, unsigned long size)
 
 /* ********************************** */
 
-#ifdef ENABLE_DEFRAGMENTATION
+#define IP_DEFRAG_RING 1234
+
 /* Returns new sk_buff, or NULL */
 static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
 {
@@ -359,7 +351,6 @@ static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
   
   return(skb);
 }
-#endif
 
 /* ********************************** */
 
@@ -456,9 +447,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
 	rlen += sprintf(buf + rlen, "Version       : %d\n",  fsi->version);
 	rlen += sprintf(buf + rlen, "Sampling Rate : %d\n",  pfr->sample_rate);
-#ifdef ENABLE_DEFRAGMENTATION
-	rlen += sprintf(buf + rlen, "IP Defragment : %s\n",  enable_ip_defrag ? "Yes" : "No");
-#endif
+	rlen += sprintf(buf + rlen, "IP Defragment : %s\n",  enable_ip_defrag ? "Yes" : "No");	
 	rlen += sprintf(buf + rlen, "BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
 	rlen += sprintf(buf + rlen, "# Filt. Rules : %d\n",  pfr->num_filtering_rules);
 	rlen += sprintf(buf + rlen, "Cluster Id    : %d\n",  pfr->cluster_id);
@@ -1081,7 +1070,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   is_ip_pkt = parse_pkt(skb, displ, &hdr);
 
-#ifdef ENABLE_DEFRAGMENTATION
   /* (de)Fragmentation <fusco@ntop.org> */
   if (enable_ip_defrag 
       && is_ip_pkt 
@@ -1096,7 +1084,7 @@ static int skb_ring_handler(struct sk_buff *skb,
       skb_set_network_header(skb, hdr.l3_offset-displ);
 
       if(((iphdr = ip_hdr(skb)) != NULL)
-	  && (iphdr->frag_off & htons(IP_MF | IP_OFFSET)))
+	 && (iphdr->frag_off & htons(IP_MF | IP_OFFSET)))
 	{
 	  if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL)
 	    {
@@ -1123,8 +1111,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 		  hdr.len = hdr.caplen = skb->len+displ;
 		} else {
 		  //printk("Fragment queued \n");
-		  //read_unlock(&ring_mgmt_lock);
-		  return(transparent_mode == 1 ? 0 : 1); /* mask rcvd fragments */
+		  return(0); /* mask rcvd fragments */
 		}
 	    }
 	}
@@ -1135,7 +1122,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 	}
     }
-#endif
 
   /* BD - API changed for time keeping */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14))
@@ -2332,6 +2318,7 @@ static int __init ring_init(void)
     printk("PF_RING: ring slots       %d\n", num_slots);
     printk("PF_RING: capture TX       %s\n",
 	   enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
+    printk("PF_RING: IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
 
     printk("PF_RING: initialized correctly\n");
 
