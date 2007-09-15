@@ -64,7 +64,7 @@
 #ifdef CONFIG_INET
 #include <net/inet_common.h>
 #endif
-#include <net/ip.h> 
+#include <net/ip.h>
 
 /* #define RING_DEBUG */
 
@@ -225,7 +225,7 @@ MODULE_PARM_DESC(transparent_mode,
                  "(slower but backwards compatible)");
 #endif
 MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
-MODULE_PARM_DESC(enable_ip_defrag, 
+MODULE_PARM_DESC(enable_ip_defrag,
 		 "Set to 1 to enable IP defragmentation"
 		 "(only rx traffic is defragmentead)");
 
@@ -272,7 +272,7 @@ static inline void skb_reset_transport_header(struct sk_buff *skb)
 
 /* ***** Code taken from other kernel modules ******** */
 
-/* 
+/*
  * rvmalloc / rvfree copied from usbvideo.c
  */
 static void *rvmalloc(unsigned long size)
@@ -348,7 +348,7 @@ static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
 
   if(skb)
     ip_send_check(ip_hdr(skb));
-  
+
   return(skb);
 }
 
@@ -447,7 +447,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
 	rlen += sprintf(buf + rlen, "Version       : %d\n",  fsi->version);
 	rlen += sprintf(buf + rlen, "Sampling Rate : %d\n",  pfr->sample_rate);
-	rlen += sprintf(buf + rlen, "IP Defragment : %s\n",  enable_ip_defrag ? "Yes" : "No");	
+	rlen += sprintf(buf + rlen, "IP Defragment : %s\n",  enable_ip_defrag ? "Yes" : "No");
 	rlen += sprintf(buf + rlen, "BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
 	rlen += sprintf(buf + rlen, "# Filt. Rules : %d\n",  pfr->num_filtering_rules);
 	rlen += sprintf(buf + rlen, "Cluster Id    : %d\n",  pfr->cluster_id);
@@ -628,7 +628,7 @@ static inline FlowSlot* get_remove_slot(struct ring_opt *pfr) {
 
 /* ******************************************************* */
 
-static int parse_pkt(struct sk_buff *skb, 
+static int parse_pkt(struct sk_buff *skb,
 		     u_int16_t skb_displ,
 		     struct pcap_pkthdr *hdr)
 {
@@ -639,13 +639,13 @@ static int parse_pkt(struct sk_buff *skb,
   hdr->l3_offset = hdr->l4_offset = hdr->l3_proto = hdr->payload_offset = hdr->tcp_flags = 0;
   hdr->eth_type = ntohs(eh->h_proto);
 
-  if(hdr->eth_type == 0x8100 /* 802.1q (VLAN) */) 
+  if(hdr->eth_type == 0x8100 /* 802.1q (VLAN) */)
     {
       hdr->vlan_id = (skb->data[14] & 15) * 256 + skb->data[15];
       hdr->eth_type = (skb->data[16]) * 256 + skb->data[17];
       displ = 4;
-    } 
-  else 
+    }
+  else
     {
       displ = 0;
       hdr->vlan_id = (u_int16_t)-1;
@@ -657,7 +657,7 @@ static int parse_pkt(struct sk_buff *skb,
 
     hdr->ipv4_src = ntohl(ip->saddr), hdr->ipv4_dst = ntohl(ip->daddr), hdr->l3_proto = ip->protocol;
 
-    if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP)) 
+    if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP))
       {
 	hdr->l4_offset = hdr->l3_offset+ip->ihl*4;
 
@@ -666,7 +666,7 @@ static int parse_pkt(struct sk_buff *skb,
 	    struct tcphdr *tcp = (struct tcphdr*)(skb->data-skb_displ+hdr->l4_offset);
 	    hdr->l4_src_port = ntohs(tcp->source), hdr->l4_dst_port = ntohs(tcp->dest);
 	    hdr->payload_offset = hdr->l4_offset+(tcp->doff * 4);
-	    hdr->tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) + 
+	    hdr->tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
 	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
 	  } else if(ip->protocol == IPPROTO_UDP)
 	    {
@@ -734,18 +734,18 @@ static int match_filtering_rule(filtering_rule_element *rule,
       struct ts_state state;
       char *payload = (char*)&(skb->data[hdr->payload_offset-displ]);
       int i, rc, payload_len = hdr->caplen - hdr->payload_offset;
-      
-      printk("Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][", 
+
+      printk("Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][",
 	     hdr->caplen, payload_len, displ, hdr->payload_offset);
 
       for(i=0; i<payload_len; i++) printk("%c", payload[i]);
       printk("]\n");
 
       rc = (textsearch_find_continuous(rule->pattern, &state, payload, payload_len) != UINT_MAX) ? 1 : 0;
-      
+
       if(rc == 0)
 	return(0); /* No match */
-    } else    
+    } else
       return(0); /* No payload data */
   }
 
@@ -765,7 +765,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
   struct list_head *ptr, *tmp_ptr;
 
 #if defined(RING_DEBUG)
-  printk("add_skb_to_ring: [displ=%d][is_ip_pkt=%d][%d -> %d]\n", 
+  printk("add_skb_to_ring: [displ=%d][is_ip_pkt=%d][%d -> %d]\n",
 	 displ, is_ip_pkt, hdr->l4_src_port, hdr->l4_dst_port);
 #endif
 
@@ -831,9 +831,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
     list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
       {
 	filtering_rule_element *entry;
-	
+
 	entry = list_entry(ptr, filtering_rule_element, list);
-	
+
 	if(match_filtering_rule(entry, hdr, skb, displ))
 	  {
 	    fwd_pkt = entry->rule.pass_action;
@@ -920,7 +920,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	  return; /* -ENETDOWN */
 	}
 
-      /* No reflector device: the packet needs to be queued */	
+      /* No reflector device: the packet needs to be queued */
       if(hdr->caplen > 0) {
 	/* Copy the packet into the bucket */
 	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
@@ -957,7 +957,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
     }
   } else {
     pfr->slots_info->tot_lost++;
-    
+
 #if defined(RING_DEBUG)
     printk("add_skb_to_ring(skb): packet lost [loss=%lu]"
 	   "[removeIdx=%u][insertIdx=%u]\n",
@@ -978,20 +978,20 @@ static void add_skb_to_ring(struct sk_buff *skb,
 /* ********************************** */
 
 static u_int hash_skb(ring_cluster_element *cluster_ptr,
-		      struct sk_buff *skb, 
-		      int displ) 
+		      struct sk_buff *skb,
+		      int displ)
 {
   u_int idx;
   struct iphdr *ip;
 
-  if(cluster_ptr->cluster.hashing_mode == cluster_round_robin) 
+  if(cluster_ptr->cluster.hashing_mode == cluster_round_robin)
     {
       idx = cluster_ptr->cluster.hashing_id++;
-    } 
-  else 
+    }
+  else
     {
       /* Per-flow clustering */
-      if(skb->len > sizeof(struct iphdr)+sizeof(struct tcphdr)) 
+      if(skb->len > sizeof(struct iphdr)+sizeof(struct tcphdr))
 	{
 	  /*
 	    skb->data+displ
@@ -1001,19 +1001,19 @@ static u_int hash_skb(ring_cluster_element *cluster_ptr,
 	  ip = (struct iphdr*)(skb->data+displ);
 	  idx = ip->saddr+ip->daddr+ip->protocol;
 
-	  if(ip->protocol == IPPROTO_TCP) 
+	  if(ip->protocol == IPPROTO_TCP)
 	    {
 	      struct tcphdr *tcp = (struct tcphdr*)(skb->data+displ
 						    +sizeof(struct iphdr));
 	      idx += tcp->source+tcp->dest;
-	    } 
+	    }
 	  else if(ip->protocol == IPPROTO_UDP)
 	    {
 	      struct udphdr *udp = (struct udphdr*)(skb->data+displ
 						    +sizeof(struct iphdr));
 	      idx += udp->source+udp->dest;
 	    }
-	} 
+	}
       else
 	idx = skb->len;
     }
@@ -1025,20 +1025,37 @@ static u_int hash_skb(ring_cluster_element *cluster_ptr,
 
 static int skb_ring_handler(struct sk_buff *skb,
 			    u_char recv_packet,
-			    u_char real_skb /* 1=real skb, 0=faked skb */) 
+			    u_char real_skb /* 1=real skb, 0=faked skb */)
 {
   struct sock *skElement;
   int rc = 0, is_ip_pkt;
   struct list_head *ptr;
   struct pcap_pkthdr hdr;
   int displ;
+  static struct sk_buff *prev_skb = NULL;
+  static unsigned int prev_len = 0, prev_csum = 0;
+  static struct net_device *prev_dev = NULL;
+
+  /* The code below is used to discard duplicated
+     packets that sometimes are returned when using
+     non-NAPI device drivers
+  */
+  if((skb == prev_skb)
+     && (skb->len == prev_len)
+     && (skb->csum == prev_csum)
+     && (skb->dev == prev_dev)) {
+    prev_skb = NULL, prev_len = 0, prev_csum = 0, prev_dev = NULL;
+
+    return(0);
+  } else
+    prev_skb = skb, prev_len = skb->len, prev_csum = skb->csum, prev_dev = skb->dev;
 
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
 #endif
 
   if((!skb) /* Invalid skb */
-     || ((!enable_tx_capture) && (!recv_packet))) 
+     || ((!enable_tx_capture) && (!recv_packet)))
     {
       /*
 	An outgoing packet is about to be sent out
@@ -1049,9 +1066,13 @@ static int skb_ring_handler(struct sk_buff *skb,
     }
 
 #if defined(RING_DEBUG)
-  if(0) {
-    printk("skb_ring_handler() [len=%d][dev=%s]\n", skb->len,
-	   skb->dev->name == NULL ? "<NULL>" : skb->dev->name);
+  if(1) {
+    struct timeval tv;
+
+    skb_get_timestamp(skb, &tv);
+    printk("skb_ring_handler() [skb=%p][%u.%u][len=%d][dev=%s][csum=%u]\n",
+	   skb, (unsigned int)tv.tv_sec, (unsigned int)tv.tv_usec, skb->len,
+	   skb->dev->name == NULL ? "<NULL>" : skb->dev->name, skb->csum);
   }
 #endif
 
@@ -1071,12 +1092,12 @@ static int skb_ring_handler(struct sk_buff *skb,
   is_ip_pkt = parse_pkt(skb, displ, &hdr);
 
   /* (de)Fragmentation <fusco@ntop.org> */
-  if (enable_ip_defrag 
-      && is_ip_pkt 
+  if (enable_ip_defrag
+      && is_ip_pkt
       && recv_packet
       && (ring_table_size > 0))
     {
-      struct sk_buff *cloned = NULL; 
+      struct sk_buff *cloned = NULL;
       struct iphdr* iphdr = NULL;
 
       skb_reset_network_header(skb);
@@ -1094,7 +1115,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	      offset &= IP_OFFSET;
 	      offset <<= 3;
 
-	      printk("There is a fragment to handle [proto=%d][frag_off=%u] [ip_id=%u]\n", 
+	      printk("There is a fragment to handle [proto=%d][frag_off=%u] [ip_id=%u]\n",
 		     iphdr->protocol, offset, ntohs(iphdr->id));
 #endif
 	      skk = ring_gather_frags(cloned);
@@ -1102,11 +1123,11 @@ static int skb_ring_handler(struct sk_buff *skb,
 	      if(skk != NULL)
 		{
 #if defined (RING_DEBUG)
-		  printk("IP reasm on new skb [skb_len=%d][head_len=%d][nr_frags=%d][frag_list=%p]\n", 
+		  printk("IP reasm on new skb [skb_len=%d][head_len=%d][nr_frags=%d][frag_list=%p]\n",
 			 (int)skk->len, skb_headlen(skk),
 			 skb_shinfo(skk)->nr_frags, skb_shinfo(skk)->frag_list);
 #endif
-		  skb = skk; 
+		  skb = skk;
 		  parse_pkt(skb, displ, &hdr);
 		  hdr.len = hdr.caplen = skb->len+displ;
 		} else {
@@ -1154,7 +1175,7 @@ static int skb_ring_handler(struct sk_buff *skb,
        && (pfr->cluster_id == 0 /* No cluster */)
        && (pfr->ring_slots != NULL)
        && ((pfr->ring_netdev == skb->dev)
-	   || ((skb->dev->flags & IFF_SLAVE) 
+	   || ((skb->dev->flags & IFF_SLAVE)
 	       && (pfr->ring_netdev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
       add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ);
@@ -1180,7 +1201,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	if((pfr != NULL)
 	   && (pfr->ring_slots != NULL)
 	   && ((pfr->ring_netdev == skb->dev)
-	       || ((skb->dev->flags & IFF_SLAVE) 
+	       || ((skb->dev->flags & IFF_SLAVE)
 		   && (pfr->ring_netdev == skb->dev->master)))) {
 	  /* We've found the ring where the packet can be stored */
 	  add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ);
@@ -1201,7 +1222,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
 #if 0
-  if(transparent_mode) 
+  if(transparent_mode)
 #endif
     rc = 0;
 
@@ -1604,7 +1625,7 @@ static int ring_mmap(struct file *file,
   /* Ring slots start from page 1 (page 0 is reserved for FlowSlotInfo) */
   ptr = (char *)(pfr->ring_memory);
 
-  while(size > 0) 
+  while(size > 0)
     {
       int rc;
 
@@ -1768,7 +1789,7 @@ static int remove_from_cluster(struct sock *sock,
     cluster_ptr = list_entry(ptr, ring_cluster_element, list);
 
     if(cluster_ptr->cluster.cluster_id == pfr->cluster_id) {
-      return(remove_from_cluster_list(&cluster_ptr->cluster, sock));      
+      return(remove_from_cluster_list(&cluster_ptr->cluster, sock));
     }
   }
 
@@ -1991,7 +2012,7 @@ static int ring_setsockopt(struct socket *sock,
 	  /* Compile pattern if present */
 	  if(strlen(rule->rule.payload_pattern) > 0)
 	    {
-	      rule->pattern = textsearch_prepare("kmp", rule->rule.payload_pattern, 
+	      rule->pattern = textsearch_prepare("kmp", rule->rule.payload_pattern,
 						 strlen(rule->rule.payload_pattern),
 						 GFP_KERNEL, TS_AUTOLOAD);
 
@@ -2103,7 +2124,7 @@ static int ring_setsockopt(struct socket *sock,
     case SO_SET_SAMPLING_RATE:
       if(optlen != sizeof(pfr->sample_rate))
 	return -EINVAL;
-      
+
       if(copy_from_user(&pfr->sample_rate, optval, sizeof(pfr->sample_rate)))
 	return -EFAULT;
       break;
@@ -2123,13 +2144,13 @@ static int ring_setsockopt(struct socket *sock,
 
 static int ring_getsockopt(struct socket *sock,
 			   int level, int optname,
-			   char __user *optval, 
+			   char __user *optval,
 			   int __user *optlen)
 {
   int len;
   struct ring_opt *pfr = ring_sk(sock->sk);
 
-  if(pfr == NULL) 
+  if(pfr == NULL)
     return(-EINVAL);
 
   if(get_user(len, optlen))
@@ -2143,7 +2164,7 @@ static int ring_getsockopt(struct socket *sock,
     case SO_GET_RING_VERSION:
       {
 	u_int32_t version = RING_VERSION_NUM;
-	
+
 	if(copy_to_user(optval, &version, sizeof(version)))
 	  return -EFAULT;
       }
@@ -2152,18 +2173,18 @@ static int ring_getsockopt(struct socket *sock,
     case PACKET_STATISTICS:
       {
 	struct tpacket_stats st;
-	
+
 	if (len > sizeof(struct tpacket_stats))
 	  len = sizeof(struct tpacket_stats);
 
 	st.tp_packets = pfr->slots_info->tot_insert;
 	st.tp_drops   = pfr->slots_info->tot_lost;
-	
+
 	if (copy_to_user(optval, &st, len))
 	  return -EFAULT;
 	break;
       }
-      
+
     default:
       return -ENOPROTOOPT;
     }
