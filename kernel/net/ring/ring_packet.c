@@ -1573,6 +1573,22 @@ static int ring_bind(struct socket *sock,
 
 /* ************************************* */
 
+/*
+ * rvmalloc / rvfree / kvirt_to_pa copied from usbvideo.c
+ */
+unsigned long kvirt_to_pa(unsigned long adr)
+{
+  unsigned long kva, ret;
+  
+  kva = (unsigned long) page_address(vmalloc_to_page((void *)adr));
+  kva |= adr & (PAGE_SIZE-1); /* restore the offset */
+  ret = __pa(kva);
+  return ret;
+}
+
+/* ************************************* */
+
+
 static int ring_mmap(struct file *file,
 		     struct socket *sock,
 		     struct vm_area_struct *vma)
@@ -1634,6 +1650,7 @@ static int ring_mmap(struct file *file,
       rc =remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
 #else
       page = vmalloc_to_page(ptr);
+      page = kvirt_to_pa(ptr);
       rc = remap_page_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
 #endif
       if(rc) {
