@@ -1037,6 +1037,7 @@ static int skb_ring_handler(struct sk_buff *skb,
   static unsigned int prev_len = 0, prev_csum = 0;
   static struct net_device *prev_dev = NULL;
 
+#if 0
   /* The code below is used to discard duplicated
      packets that sometimes are returned when using
      non-NAPI device drivers
@@ -1050,6 +1051,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     return(0);
   } else
     prev_skb = skb, prev_len = skb->len, prev_csum = skb->csum, prev_dev = skb->dev;
+#endif
 
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
