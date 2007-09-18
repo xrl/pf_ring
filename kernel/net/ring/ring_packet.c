@@ -428,6 +428,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen = sprintf(buf,        "Version             : %s\n", RING_VERSION);
     rlen += sprintf(buf + rlen,"Bucket length       : %d bytes\n", bucket_len);
     rlen += sprintf(buf + rlen,"Ring slots          : %d\n", num_slots);
+    rlen += sprintf(buf + rlen,"Slot Version        : %d\n", RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
 #if 0
