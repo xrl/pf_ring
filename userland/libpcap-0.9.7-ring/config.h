@@ -121,7 +121,7 @@
 #define HAVE_SYS_TYPES_H 1
 
 /* if if_packet.h has tpacket_stats defined */
-#define HAVE_TPACKET_STATS 1
+/* #undef HAVE_TPACKET_STATS */
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #define HAVE_UNISTD_H 1

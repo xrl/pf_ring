@@ -31,14 +31,14 @@ function break_link ()
   done
 }
 
-PATCH=ring3
+PATCH=PF_RING
 PREFIX=linux
 # or
 #PREFIX=kernel-source
 # kernel identifiers.
 VERSION=${VERSION:-2}
 PATCHLEVEL=${PATCHLEVEL:-6}
-SUBLEVEL=${SUBLEVEL:-22.6}
+SUBLEVEL=${SUBLEVEL:-18.4}
 KERNEL_VERSION=$VERSION.$PATCHLEVEL.$SUBLEVEL
 EXTRAVERSION=${EXTRAVERSION:--1-686-smp-$PATCH}
 
@@ -218,7 +218,8 @@ if ! grep -q "#include <linux/ring.h>" $MYKERNEL/net/core/dev.c; then
 EOF
     errors=`expr $errors + 1`
   fi
-  echo "     Patch #2 (modify function netif_rx and netif_receive_skb)"
+
+  echo "     Patch #2 (modify function netif_rx [non-NAPI])"
   # The first patch must be applied to the function "netif_rx" in order
   # to immediately return in case the packet has been copied into a ring.
   # It is defined in the source file net/core/PATCH-2-to-dev.c.
@@ -230,45 +231,63 @@ EOF
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
     cat $MYKERNEL/net/core/dev.c.tmp | sed "$line r $PATCH/kernel/net/core/PATCH-2-to-dev.c" > $MYKERNEL/net/core/dev.c
     rm -f $MYKERNEL/net/core/dev.c.tmp
+  else
+    cat <<EOF
+
+     WARNING: Patch 2, $PATCH/kernel/net/core/PATCH-2-to-dev.c not found
+     Could not patch netif_rx function
+
+EOF
+    errors=`expr $errors + 1`
+  fi
+
+
+
+
+
+
+  echo "     Patch #3 (modify netif_receive_skb [NAPI])"
+  if test -f $PATCH/kernel/net/core/PATCH-3-to-dev.c; then
     #
     # This patch must be applied to the function "netif_receive_skb" in order
     # to immediately return in case the packet has been copied into a ring.
-    # It is defined in the source file net/core/PATCH-2-to-dev.c.
+    # It is defined in the source file net/core/PATCH-3-to-dev.c.
   
     line=`grep -n "int netif_receive_skb" $MYKERNEL/net/core/dev.c | tail -n 1 | cut -d":" -f 1`
     line=`expr $line + 5`
   
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
-    cat $MYKERNEL/net/core/dev.c.tmp | sed "$line r $PATCH/kernel/net/core/PATCH-2-to-dev.c" > $MYKERNEL/net/core/dev.c
+    cat $MYKERNEL/net/core/dev.c.tmp | sed "$line r $PATCH/kernel/net/core/PATCH-3-to-dev.c" > $MYKERNEL/net/core/dev.c
     rm -f $MYKERNEL/net/core/dev.c.tmp
   else
     cat <<EOF
 
-     WARNING: Patch 2, $PATCH/kernel/net/core/PATCH-2-to-dev.c not found
-     Could not patch netif_rx and netif_receive_skb functions
+     WARNING: Patch 3, $PATCH/kernel/net/core/PATCH-3-to-dev.c not found
+     Could not patch netif_receive_skb function
 
 EOF
     errors=`expr $errors + 1`
   fi
-  echo "     Patch #3 (modify dev_queue_xmit, found in PATCH-3-to-dev.c)"
+
+  echo "     Patch #4 (modify dev_queue_xmit, found in PATCH-4-to-dev.c)"
     #
     # This patch must be applied to the function "dev_queue_xmit" in order
     # to handle the packet into a ring.
-    # It is defined in the source file net/core/PATCH-3-to-dev.c.
+    # It is defined in the source file net/core/PATCH-4-to-dev.c.
   
-  if test -f $PATCH/kernel/net/core/PATCH-3-to-dev.c; then
+  if test -f $PATCH/kernel/net/core/PATCH-4-to-dev.c; then
     line=`grep -n "Grab device queue" $MYKERNEL/net/core/dev.c | tail -n 1 | cut -d":" -f 1`
     line=`expr $line - 1`
   
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
-    cat $MYKERNEL/net/core/dev.c.tmp | sed "$line r $PATCH/kernel/net/core/PATCH-3-to-dev.c" > $MYKERNEL/net/core/dev.c
+    cat $MYKERNEL/net/core/dev.c.tmp | sed "$line r $PATCH/kernel/net/core/PATCH-4-to-dev.c" > $MYKERNEL/net/core/dev.c
     rm -f $MYKERNEL/net/core/dev.c.tmp
   
     echo "     ... done"
 else
     cat <<EOF
 
-     WARNING: Patch 3, $PATCH/kernel/net/core/PATCH-3-to-dev.c not found
+     WARNING: Patch 3, $PATCH/kernel/net/core/PATCH-4-to-dev.c not found
      Could not patch netif_rx and netif_receive_skb functions
 
 EOF
