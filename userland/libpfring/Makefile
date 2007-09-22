@@ -23,5 +23,8 @@ pfring.o: pfring.c pfring.h
 pfcount.o: pfcount.c
 	$(CC) -c $(INCLUDE) $<
 
+install: $(LIBPFRING)
+	cp $(LIBPFRING) /usr/local/lib
+	cp pfring.h /usr/local/include
 clean:
 	/bin/rm -f $(TARGET) *.o *~ $(LIBPFRING)
