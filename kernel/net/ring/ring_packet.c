@@ -428,9 +428,11 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen = sprintf(buf,        "Version             : %s\n", RING_VERSION);
     rlen += sprintf(buf + rlen,"Bucket length       : %d bytes\n", bucket_len);
     rlen += sprintf(buf + rlen,"Ring slots          : %d\n", num_slots);
-    rlen += sprintf(buf + rlen,"Slot Version        : %d\n", RING_FLOWSLOT_VERSION);
+    rlen += sprintf(buf + rlen,"Slot version        : %d\n", RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
+    rlen += sprintf(buf + rlen,"IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
+
 #if 0
     rlen += sprintf(buf + rlen,"Transparent mode    : %s\n",
                     transparent_mode ? "Yes" : "No");
@@ -637,7 +639,8 @@ static int parse_pkt(struct sk_buff *skb,
   struct ethhdr *eh = (struct ethhdr*)(skb->data-skb_displ);
   u_int16_t displ;
 
-  hdr->l3_offset = hdr->l4_offset = hdr->l3_proto = hdr->payload_offset = hdr->tcp_flags = 0;
+  hdr->l3_offset = hdr->l4_offset = hdr->l3_proto = 0;
+  hdr->payload_offset = hdr->tcp_flags = hdr->ipv4_tos = 0;
   hdr->eth_type = ntohs(eh->h_proto);
 
   if(hdr->eth_type == 0x8100 /* 802.1q (VLAN) */)
@@ -657,6 +660,7 @@ static int parse_pkt(struct sk_buff *skb,
     ip = (struct iphdr*)(skb->data-skb_displ+hdr->l3_offset);
 
     hdr->ipv4_src = ntohl(ip->saddr), hdr->ipv4_dst = ntohl(ip->daddr), hdr->l3_proto = ip->protocol;
+    hdr->ipv4_tos = ip->tos;
 
     if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP))
       {
@@ -1033,25 +1037,6 @@ static int skb_ring_handler(struct sk_buff *skb,
   struct list_head *ptr;
   struct pcap_pkthdr hdr;
   int displ;
-  static struct sk_buff *prev_skb = NULL;
-  static unsigned int prev_len = 0, prev_csum = 0;
-  static struct net_device *prev_dev = NULL;
-
-#if 0
-  /* The code below is used to discard duplicated
-     packets that sometimes are returned when using
-     non-NAPI device drivers
-  */
-  if((skb == prev_skb)
-     && (skb->len == prev_len)
-     && (skb->csum == prev_csum)
-     && (skb->dev == prev_dev)) {
-    prev_skb = NULL, prev_len = 0, prev_csum = 0, prev_dev = NULL;
-
-    return(0);
-  } else
-    prev_skb = skb, prev_len = skb->len, prev_csum = skb->csum, prev_dev = skb->dev;
-#endif
 
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
@@ -2355,9 +2340,10 @@ static int __init ring_init(void)
     sock_unregister(PF_RING);
     return -1;
   } else {
-    printk("PF_RING: bucket length    %d bytes\n", bucket_len);
-    printk("PF_RING: ring slots       %d\n", num_slots);
-    printk("PF_RING: capture TX       %s\n",
+    printk("PF_RING: Bucket length    %d bytes\n", bucket_len);
+    printk("PF_RING: Ring slots       %d\n", num_slots);
+    printk("PF_RING: Slot version     %d\n", RING_FLOWSLOT_VERSION);
+    printk("PF_RING: Capture TX       %s\n",
 	   enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
     printk("PF_RING: IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
 

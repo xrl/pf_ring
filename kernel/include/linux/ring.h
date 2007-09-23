@@ -16,11 +16,11 @@
 
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
-#define RING_FLOWSLOT_VERSION           7
+#define RING_FLOWSLOT_VERSION           8
 
 /* Versioning */
-#define RING_VERSION              "3.6.2"
-#define RING_VERSION_NUM         0x030602
+#define RING_VERSION              "3.6.3"
+#define RING_VERSION_NUM         0x030603
 
 /* Set */
 #define SO_ADD_TO_CLUSTER         99
@@ -37,111 +37,6 @@
 
 /* *********************************** */
 
-/*
-  Aho-Corasick code taken from Snort
-  under GPL license
-*/
-/*
- *   DEFINES and Typedef's
- */
-#define MAX_ALPHABET_SIZE 256     
-
-/*
-  FAIL STATE for 1,2,or 4 bytes for state transitions
-
-  Uncomment this define to use 32 bit state values
-  #define AC32
-*/
-
-typedef    unsigned short acstate_t;
-#define ACSM_FAIL_STATE2 0xffff
-
-/*
- *
- */
-typedef 
-struct _acsm_pattern2
-{      
-  struct  _acsm_pattern2 *next;
-
-  unsigned char         *patrn;
-  unsigned char         *casepatrn;
-  int      n;
-  int      nocase;
-  int      offset;
-  int      depth;
-  void *   id;
-  int      iid;
-
-} ACSM_PATTERN2;
-
-/*
- *    transition nodes  - either 8 or 12 bytes
- */
-typedef 
-struct trans_node_s {
-
-  acstate_t    key;           /* The character that got us here - sized to keep structure aligned on 4 bytes */
-                              /* to better the caching opportunities. A value that crosses the cache line */
-                              /* forces an expensive reconstruction, typing this as acstate_t stops that. */
-  acstate_t    next_state;    /*  */
-  struct trans_node_s * next; /* next transition for this state */
-
-} trans_node_t;
-
-
-/*
- *  User specified final storage type for the state transitions
- */
-enum {
-  ACF_FULL,
-  ACF_SPARSE,
-  ACF_BANDED,
-  ACF_SPARSEBANDS,
-};
-
-/*
- *   User specified machine types
- *
- *   TRIE : Keyword trie
- *   NFA  : 
- *   DFA  : 
- */
-enum {
-  FSA_TRIE,
-  FSA_NFA,
-  FSA_DFA,
-};
-
-/*
- *   Aho-Corasick State Machine Struct - one per group of pattterns
- */
-typedef struct {  
-  int acsmMaxStates;  
-  int acsmNumStates;  
-
-  ACSM_PATTERN2    * acsmPatterns;
-  acstate_t        * acsmFailState;
-  ACSM_PATTERN2   ** acsmMatchList;
-
-  /* list of transitions in each state, this is used to build the nfa & dfa */
-  /* after construction we convert to sparse or full format matrix and free */
-  /* the transition lists */
-  trans_node_t ** acsmTransTable;
-
-  acstate_t ** acsmNextState;
-  int          acsmFormat;
-  int          acsmSparseMaxRowNodes;
-  int          acsmSparseMaxZcnt;
-        
-  int          acsmNumTrans;
-  int          acsmAlphabetSize;
-  int          acsmFSA;
-
-} ACSM_STRUCT2;
-
-/* *********************************** */
-
 #ifndef HAVE_PCAP
 
 struct pcap_pkthdr {
@@ -151,7 +46,7 @@ struct pcap_pkthdr {
   /* packet parsing info */
   u_int16_t eth_type;   /* Ethernet type */
   u_int16_t vlan_id;    /* VLAN Id or -1 for no vlan */
-  u_int8_t  l3_proto;   /* Layer 3 protocol */
+  u_int8_t  l3_proto, ipv4_tos;   /* Layer 3 protocol/TOS */
   u_int16_t l3_offset, l4_offset, payload_offset; /* Offsets of L3/L4/payload elements */
   u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */

@@ -257,14 +257,15 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     }
     if(eth_type == 0x0800) {
       memcpy(&ip, p+sizeof(ehdr), sizeof(struct ip));
-      printf("[%s ", intoa(ntohl(ip.ip_src.s_addr)));
-      printf("-> %s] ", intoa(ntohl(ip.ip_dst.s_addr)));
+      printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->l4_src_port);
+      printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->l4_dst_port);
     } else if(eth_type == 0x0806)
       printf("[ARP]");
     else
       printf("[eth_type=0x%04X]", eth_type);
     
-    printf("[tcp_flags=%d][caplen=%d][len=%d]\n", h->tcp_flags, h->caplen, h->len);
+    printf("[tos=%d][tcp_flags=%d][caplen=%d][len=%d]\n", 
+	   h->ipv4_tos, h->tcp_flags, h->caplen, h->len);
   }
 
   if(numPkts == 0) gettimeofday(&startTime, NULL);
