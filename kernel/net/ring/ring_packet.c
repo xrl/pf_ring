@@ -112,6 +112,7 @@ typedef struct {
 /* ************************************************* */
 
 struct ring_opt {
+  u_int8_t ring_active;
   struct net_device *ring_netdev;
   u_short ring_pid;
 
@@ -431,7 +432,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen += sprintf(buf + rlen,"Slot version        : %d\n", RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    rlen += sprintf(buf + rlen,"IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
+    rlen += sprintf(buf + rlen,"IP Defragment       : %s\n",  enable_ip_defrag ? "Yes" : "No");
 
 #if 0
     rlen += sprintf(buf + rlen,"Transparent mode    : %s\n",
@@ -768,6 +769,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
   FlowSlot *theSlot;
   int idx, fwd_pkt = 0;
   struct list_head *ptr, *tmp_ptr;
+
+  if(!pfr->ring_active) return;
 
 #if defined(RING_DEBUG)
   printk("add_skb_to_ring: [displ=%d][is_ip_pkt=%d][%d -> %d]\n",
@@ -1323,11 +1326,12 @@ static int ring_create(struct socket *sock, int protocol) {
     goto out;
   }
   memset(pfr, 0, sizeof(*pfr));
+  pfr->ring_active = 0; /* We activate as soon as somebody waits for packets */
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
   atomic_set(&pfr->num_ring_slots_waiters, 0);
   INIT_LIST_HEAD(&pfr->rules);
-
+  
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
   sk->sk_family       = PF_RING;
   sk->sk_destruct     = ring_sock_destruct;
@@ -1681,6 +1685,7 @@ static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
   printk("ring_recvmsg called\n");
 #endif
 
+  pfr->ring_active = 1;
   slot = get_remove_slot(pfr);
 
   while((queued_pkts = num_queued_pkts(pfr)) < MIN_QUEUED_PKTS) {
@@ -1718,6 +1723,7 @@ unsigned int ring_poll(struct file * file,
   printk("poll called\n");
 #endif
 
+  pfr->ring_active = 1;
   slot = get_remove_slot(pfr);
 
   if((slot != NULL) && (slot->slot_state == 0))

@@ -19,8 +19,8 @@
 #define RING_FLOWSLOT_VERSION           8
 
 /* Versioning */
-#define RING_VERSION              "3.6.3"
-#define RING_VERSION_NUM         0x030603
+#define RING_VERSION              "3.6.4"
+#define RING_VERSION_NUM         0x030604
 
 /* Set */
 #define SO_ADD_TO_CLUSTER         99
