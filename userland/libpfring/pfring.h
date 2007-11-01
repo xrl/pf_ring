@@ -18,6 +18,9 @@
  * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#ifndef _PFRING_H_
+#define _PFRING_H_
+
 #ifndef HAVE_PCAP
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +44,10 @@
 #define POLL_SLEEP_MAX        1000 /* ns */
 #define POLL_QUEUE_MIN_LEN     500 /* # packets */
 
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
 #ifdef SAFE_RING_MODE
 static char staticBucket[2048];
 #endif
@@ -58,7 +65,7 @@ typedef struct {
 } pfring;
 
 typedef struct {
-  u_long recv, drop;
+  u_int64_t recv, drop;
 } pfring_stat;
 
 /* NOTE: keep 'struct pfring_pkthdr' in sync with 'struct pcap_pkthdr' (ring.h) */
@@ -91,3 +98,9 @@ int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id);
 int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy);
 int pfring_version(pfring *ring, u_int32_t *version);
 int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */);
+
+#ifdef  __cplusplus
+}
+#endif
+
+#endif /* _PFRING_H_ */
