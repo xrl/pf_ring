@@ -74,14 +74,14 @@ struct pfring_pkthdr {
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
   /* packet parsing info */
-  u_int16_t eth_type; /* Ethernet type */
-  u_int16_t vlan_id;  /* VLAN Id or -1 for no vlan */
-  u_int8_t  l3_proto, ipv4_tos;  /* Layer 3 protocol/TOS */
-  u_int16_t l3_offset, l4_offset; /* Offsets of L3 and L4 elements */
-  u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
+  u_int16_t eth_type;   /* Ethernet type */
+  u_int16_t vlan_id;    /* VLAN Id or -1 for no vlan */
+  u_int8_t  l3_proto, ipv4_tos;       /* Layer 3 protocol/TOS */
+  u_int16_t l3_offset, l4_offset;     /* Offsets of L3 and L4 elements */
+  u_int32_t ipv4_src, ipv4_dst;       /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */ 
-  u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
-};
+  u_int8_t tcp_flags;                 /* TCP flags (0 if not available) */
+}; 
 
 /* ********************************* */
 

@@ -9,6 +9,8 @@ LIBPFRING=libpfring.a
 TARGET=pfcount
 RANLIB=ranlib
 
+all: $(TARGET)
+
 $(TARGET): pfcount.o pfring.o $(LIBPFRING)
 	$(CC) pfcount.o pfring.o -o $(TARGET)
 
