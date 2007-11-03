@@ -19,21 +19,22 @@
 #define RING_FLOWSLOT_VERSION           8
 
 /* Versioning */
-#define RING_VERSION              "3.6.4"
-#define RING_VERSION_NUM         0x030604
+#define RING_VERSION              "3.7.0"
+#define RING_VERSION_NUM         0x030700
 
 /* Set */
-#define SO_ADD_TO_CLUSTER         99
-#define SO_REMOVE_FROM_CLUSTER   100
-#define SO_SET_REFLECTOR         101
-#define SO_SET_STRING            102
-#define SO_ADD_FILTERING_RULE    103
-#define SO_REMOVE_FILTERING_RULE 104
-#define SO_TOGGLE_FILTER_POLICY  105
-#define SO_SET_SAMPLING_RATE     106
-
+#define SO_ADD_TO_CLUSTER                99
+#define SO_REMOVE_FROM_CLUSTER          100
+#define SO_SET_REFLECTOR                101
+#define SO_SET_STRING                   102
+#define SO_ADD_FILTERING_RULE           103
+#define SO_REMOVE_FILTERING_RULE        104
+#define SO_TOGGLE_FILTER_POLICY         105
+#define SO_SET_SAMPLING_RATE            106
+#define SO_SET_FILTERING_RULE_PLUGIN_ID 107
 /* Get */
-#define SO_GET_RING_VERSION      110
+#define SO_GET_RING_VERSION             110
+#define SO_GET_FILTERING_RULE_STATS     111
 
 /* *********************************** */
 
@@ -52,6 +53,79 @@ struct pcap_pkthdr {
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
   u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
 };
+#endif
+
+/* *********************************** */
+
+#define MAX_PLUGIN_ID   128
+
+/* *********************************** */
+
+struct rule_plugin_id {
+  u_int16_t rule_id;
+  u_int16_t plugin_id;
+};
+
+typedef struct {
+  u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
+  u_int8_t pass_action;              /* 0=drop packet if match rule, pass packet otherwise */
+  u_int8_t balance_id, balance_pool; /* If balance_pool > 0, then pass the packet
+					above only if the
+					(hash(proto, sip, sport, dip, dport) % balance_pool) = balance_id
+				     */
+  u_int8_t proto;                    /* Use 0 for 'any' protocol */
+  u_int16_t vlan_id;                 /* Use '0' for any vlan */
+  u_int32_t host_ip, host_netmask;   /* Netmask 0 means 'any' host. This is applied to both source
+				        and destination.
+				     */
+  u_int16_t port_low, port_high;     /* All ports between port_low...port_high
+					0 means 'any' port. This is applied to both source
+				        and destination. This means that
+					(proto, sip, sport, dip, dport) matches the rule if
+					one in "sip & sport", "sip & dport" "dip & sport"
+					match.
+				     */
+  char payload_pattern[32];          /* If strlen(payload_pattern) > 0, the packet payload
+					must match the specified pattern
+				     */
+} filtering_rule;
+
+/* ************************************************* */
+
+#ifdef __KERNEL__
+
+typedef struct {
+  filtering_rule rule;
+  struct ts_config *pattern;
+  struct list_head list;
+  /* plugin */
+  u_int16_t plugin_id;   /* if of the plugin associated with this rule */
+  void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */
+} filtering_rule_element;
+
+typedef int (*plugin_handle_skb)(filtering_rule_element *rule, 
+				 struct pcap_pkthdr *hdr,
+				 struct sk_buff *skb, int displ);
+typedef int (*plugin_get_stats)(filtering_rule_element *element,
+				u_char* stats_buffer, u_int stats_buffer_len);
+
+struct pfring_plugin_registration {
+  u_int16_t plugin_id;
+  plugin_handle_skb pfring_plugin_handle_skb;
+  plugin_get_stats  pfring_plugin_get_stats;
+};
+
+typedef int (*register_pfring_plugin)(struct pfring_plugin_registration *reg);
+typedef int (*unregister_pfring_plugin)(u_int16_t pfring_plugin_id);
+
+extern register_pfring_plugin get_register_pfring_plugin(void);
+extern unregister_pfring_plugin get_unregister_pfring_plugin(void);
+extern void set_register_pfring_plugin(register_pfring_plugin the_handler);
+extern void set_unregister_pfring_plugin(unregister_pfring_plugin the_handler);
+
+extern int do_register_pfring_plugin(struct pfring_plugin_registration *reg);
+extern int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id);
+
 #endif
 
 /* *********************************** */
@@ -75,9 +149,9 @@ enum cluster_type {
 typedef struct flowSlotInfo {
   u_int16_t version, sample_rate;
   u_int32_t tot_slots, slot_len, data_len, tot_mem;
-  
+
   u_int64_t tot_pkts, tot_lost;
-  u_int64_t tot_insert, tot_read;  
+  u_int64_t tot_insert, tot_read;
   u_int32_t insert_idx, remove_idx;
 } FlowSlotInfo;
 
@@ -93,33 +167,7 @@ typedef struct flowSlot {
 
 /* *********************************** */
 
-typedef struct {
-  u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
-  u_int8_t pass_action;              /* 0=drop packet if match rule, pass packet otherwise */
-  u_int8_t balance_id, balance_pool; /* If balance_pool > 0, then pass the packet
-					above only if the 
-					(hash(proto, sip, sport, dip, dport) % balance_pool) = balance_id
-				     */
-  u_int8_t proto;                    /* Use 0 for 'any' protocol */
-  u_int16_t vlan_id;                 /* Use '0' for any vlan */
-  u_int32_t host_ip, host_netmask;   /* Netmask 0 means 'any' host. This is applied to both source
-				        and destination.
-				     */
-  u_int16_t port_low, port_high;     /* All ports between port_low...port_high 
-					0 means 'any' port. This is applied to both source
-				        and destination. This means that 
-					(proto, sip, sport, dip, dport) matches the rule if
-					one in "sip & sport", "sip & dport" "dip & sport"
-					match.
-				     */
-  char payload_pattern[32];          /* If strlen(payload_pattern) > 0, the packet payload
-					must match the specified pattern
-				     */
-} filtering_rule;
-
-/* *********************************** */
-
-#ifdef __KERNEL__ 
+#ifdef __KERNEL__
 
 FlowSlotInfo* getRingPtr(void);
 int allocateRing(char *deviceName, u_int numSlots,
@@ -129,19 +177,19 @@ void deallocateRing(void);
 
 /* ************************* */
 
-typedef int (*handle_ring_skb)(struct sk_buff *skb,
-			       u_char recv_packet, u_char real_skb);
+typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet, u_char real_skb);
 extern handle_ring_skb get_skb_ring_handler(void);
 extern void set_skb_ring_handler(handle_ring_skb the_handler);
 extern void do_skb_ring_handler(struct sk_buff *skb,
 				u_char recv_packet, u_char real_skb);
 
-typedef int (*handle_ring_buffer)(struct net_device *dev, 
+typedef int (*handle_ring_buffer)(struct net_device *dev,
 				  char *data, int len);
 extern handle_ring_buffer get_buffer_ring_handler(void);
 extern void set_buffer_ring_handler(handle_ring_buffer the_handler);
 extern int do_buffer_ring_handler(struct net_device *dev,
 				  char *data, int len);
+
 #endif /* __KERNEL__  */
 
 /* *********************************** */

@@ -93,6 +93,11 @@ void pfring_close(pfring *ring);
 int pfring_stats(pfring *ring, pfring_stat *stats);
 int pfring_recv(pfring *ring, char* buffer, int buffer_len, 
 		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet);
+int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
+				    char* stats, u_int *stats_len);
+int pfring_set_filtering_rule_plugin_id(pfring *ring,
+					u_int16_t rule_id,
+					u_int16_t plugin_id);
 int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add);
 int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id);
 int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy);

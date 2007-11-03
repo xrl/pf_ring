@@ -103,14 +103,6 @@ struct ring_element {
 
 /* ************************************************* */
 
-typedef struct {
-  filtering_rule rule;
-  struct ts_config *pattern;
-  struct list_head list;
-} filtering_rule_element;
-
-/* ************************************************* */
-
 struct ring_opt {
   u_int8_t ring_active;
   struct net_device *ring_netdev;
@@ -159,6 +151,9 @@ static u_int ring_table_size;
 /* List of all clusters */
 struct list_head ring_cluster_list;
 
+/* List of all plugins */
+struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
+
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
 
 /* ********************************** */
@@ -182,8 +177,7 @@ static struct proto_ops ring_ops;
 static struct proto ring_proto;
 #endif
 
-static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
-			    u_char real_skb);
+static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet, u_char real_skb);
 static int buffer_ring_handler(struct net_device *dev, char *data, int len);
 static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 
@@ -755,6 +749,14 @@ static int match_filtering_rule(filtering_rule_element *rule,
       return(0); /* No payload data */
   }
 
+  printk("rule->plugin_id [rule_id=%d][plugin_id=%d]\n", rule->rule.rule_id, rule->plugin_id);
+
+  if((rule->plugin_id != 0)
+     && (rule->plugin_id < MAX_PLUGIN_ID)      
+     && (plugin_registration[rule->plugin_id] != NULL)) {
+    plugin_registration[rule->plugin_id]->pfring_plugin_handle_skb(rule, hdr, skb, displ);
+  }
+
   return(1); /* match */
 }
 
@@ -931,7 +933,10 @@ static void add_skb_to_ring(struct sk_buff *skb,
       /* No reflector device: the packet needs to be queued */
       if(hdr->caplen > 0) {
 	/* Copy the packet into the bucket */
-	skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
+	int copy_len = min(bucket_len, hdr->caplen);
+	
+	if(copy_len > 0)
+	  skb_copy_bits(skb, -displ, &bucket[sizeof(struct pcap_pkthdr)], hdr->caplen);
       }
 
 #if defined(RING_DEBUG)
@@ -1027,6 +1032,70 @@ static u_int hash_skb(ring_cluster_element *cluster_ptr,
     }
 
   return(idx % cluster_ptr->cluster.num_cluster_elements);
+}
+
+/* ********************************** */
+
+static int register_plugin(struct pfring_plugin_registration *reg) 
+{
+  if(reg == NULL) return(-1);
+
+#ifndef RING_DEBUG
+  printk("--> register_plugin(%d)\n", reg->plugin_id);
+#endif
+
+  if((reg->plugin_id >= MAX_PLUGIN_ID) || (reg->plugin_id == 0))
+    return(-EINVAL);
+
+  if(plugin_registration[reg->plugin_id] != NULL) 
+    return(-EINVAL); /* plugin already registered */
+  else {
+    plugin_registration[reg->plugin_id] = reg;
+    try_module_get(THIS_MODULE); /* Increment usage count */
+    return(0);
+  }
+}
+
+/* ********************************** */
+
+int unregister_plugin(u_int16_t pfring_plugin_id)
+{
+  if(pfring_plugin_id >= MAX_PLUGIN_ID)
+    return(-EINVAL);
+
+  if(plugin_registration[pfring_plugin_id] == NULL) 
+    return(-EINVAL); /* plugin not registered */
+  else {
+    struct list_head *ptr, *tmp_ptr, *ring_ptr, *ring_tmp_ptr;
+
+    plugin_registration[pfring_plugin_id] = NULL;
+
+    read_lock(&ring_mgmt_lock);
+    list_for_each_safe(ring_ptr, ring_tmp_ptr, &ring_table) {
+      struct ring_element *entry = list_entry(ring_ptr, struct ring_element, list);
+      struct ring_opt *pfr = ring_sk(entry->sk);
+
+      list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
+	{
+	  filtering_rule_element *rule;
+	
+	  rule = list_entry(ptr, filtering_rule_element, list);
+	
+	  if(rule->plugin_id == pfring_plugin_id) {
+	    if(rule->plugin_data_ptr != NULL) {
+	      kfree(rule->plugin_data_ptr);
+	      rule->plugin_data_ptr = NULL;
+	    }
+
+	    rule->plugin_id = 0;
+	  }
+	}
+    }
+    read_unlock(&ring_mgmt_lock);
+
+    module_put(THIS_MODULE); /* Decrement usage count */
+    return(0);
+  }
 }
 
 /* ********************************** */
@@ -2015,7 +2084,12 @@ static int ring_setsockopt(struct socket *sock,
 
 	  rule = (filtering_rule_element*)kmalloc(sizeof(filtering_rule_element), GFP_KERNEL);
 
-	  if((rule == NULL) || copy_from_user(&rule->rule, optval, optlen))
+	  if(rule == NULL)
+	    return -EFAULT;
+	  else
+	    memset(rule, 0, sizeof(filtering_rule_element));
+
+	  if(copy_from_user(&rule->rule, optval, optlen))
 	    return -EFAULT;
 
 	  INIT_LIST_HEAD(&rule->list);
@@ -2140,6 +2214,55 @@ static int ring_setsockopt(struct socket *sock,
 	return -EFAULT;
       break;
 
+    case SO_SET_FILTERING_RULE_PLUGIN_ID:
+      {
+	struct rule_plugin_id info;
+	struct list_head *ptr, *tmp_ptr;
+
+	if(optlen != sizeof(info))
+	  return -EINVAL;
+	
+	if(copy_from_user(&info, optval, sizeof(info)))
+	  return -EFAULT;
+
+	if(info.plugin_id >= MAX_PLUGIN_ID) 
+	  {
+	    printk("plugin_id=%d is out of range\n", info.plugin_id);
+	    return -EINVAL;
+	  }
+
+	/* Unknown plugin */
+	if(plugin_registration[info.plugin_id] == NULL) {
+	  printk("plugin_id=%d is not registered\n", info.plugin_id);
+	  return -EINVAL;
+	}
+
+	write_lock(&ring_mgmt_lock);
+	list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
+	  {
+	    filtering_rule_element *rule;
+	    
+	    rule = list_entry(ptr, filtering_rule_element, list);
+	    if(rule->rule.rule_id == info.rule_id) 
+	      {
+		if((rule->plugin_id != 0) 
+		   && (rule->plugin_id != info.plugin_id))
+		  {
+		    if(rule->plugin_data_ptr != NULL) 		      
+		      kfree(rule->plugin_data_ptr);
+		  }
+
+		    
+		rule->plugin_id = info.plugin_id;
+		rule->plugin_data_ptr = NULL;
+		printk("Succesfully associated plugin_id=%d with rule_id=%d\n", 
+		       info.plugin_id, info.rule_id);	
+	      }
+	  }
+	write_unlock(&ring_mgmt_lock);
+      }
+      break;
+
     default:
       found = 0;
       break;
@@ -2193,6 +2316,52 @@ static int ring_getsockopt(struct socket *sock,
 
 	if (copy_to_user(optval, &st, len))
 	  return -EFAULT;
+	break;
+      }
+
+    case SO_GET_FILTERING_RULE_STATS:
+      {
+	u_int16_t rule_id;
+	char *buffer = NULL;
+	int rc = -EFAULT;
+	struct list_head *ptr, *tmp_ptr;
+
+	if(len < sizeof(rule_id))
+	  return -EINVAL;
+	
+	if(copy_from_user(&rule_id, optval, sizeof(rule_id)))
+	  return -EFAULT;
+
+	printk("SO_GET_FILTERING_RULE_STATS: rule_id=%d\n", rule_id);
+
+	write_lock(&ring_mgmt_lock);
+	list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
+	  {
+	    filtering_rule_element *rule;
+	    
+	    rule = list_entry(ptr, filtering_rule_element, list);
+	    if(rule->rule.rule_id == rule_id) 
+	      {
+		buffer = kmalloc(len, GFP_ATOMIC);
+
+		if(buffer == NULL)
+		  rc = -EFAULT;
+		else {
+		  rc = plugin_registration[rule->plugin_id]->pfring_plugin_get_stats(rule, buffer, len);
+
+		  if(rc > 0) {
+		    if(copy_to_user(optval, buffer, rc))
+		      rc = -EFAULT;
+		  }
+		}
+		break;
+	      }
+	  }
+	write_unlock(&ring_mgmt_lock);
+
+	if(buffer != NULL) kfree(buffer);
+
+	return(rc);
 	break;
       }
 
@@ -2315,6 +2484,8 @@ static void __exit ring_exit(void)
     kfree(cluster_ptr);
   }
 
+  set_register_pfring_plugin(NULL);
+  set_unregister_pfring_plugin(NULL);
   set_skb_ring_handler(NULL);
   set_buffer_ring_handler(NULL);
   sock_unregister(PF_RING);
@@ -2337,6 +2508,8 @@ static int __init ring_init(void)
 
   set_skb_ring_handler(skb_ring_handler);
   set_buffer_ring_handler(buffer_ring_handler);
+  set_register_pfring_plugin(register_plugin);
+  set_unregister_pfring_plugin(unregister_plugin);
 
   if(get_buffer_ring_handler() != buffer_ring_handler) {
     printk("PF_RING: set_buffer_ring_handler FAILED\n");
@@ -2362,7 +2535,10 @@ static int __init ring_init(void)
 
 module_init(ring_init);
 module_exit(ring_exit);
+
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Luca Deri <deri@ntop.org>");
+MODULE_DESCRIPTION("Packet capture acceleration by means of a ring buffer");
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 MODULE_ALIAS_NETPROTO(PF_RING);

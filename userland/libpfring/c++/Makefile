@@ -19,7 +19,7 @@ $(LIBPFRING_CPP): $(OBJ)
 	ar rc $@ $(OBJ) $(LIBPFRING_CPP)
 	$(RANLIB) $@
 
-PFring.o: PFring.cpp
+PFring.o: PFring.cpp PFring.h
 	$(CPP) -c $(INCLUDE) $<
 
 clean:

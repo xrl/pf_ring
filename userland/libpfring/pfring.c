@@ -222,6 +222,41 @@ int pfring_version(pfring *ring, u_int32_t *version) {
 
 /* **************************************************** */
 
+int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
+				    char* stats, u_int *stats_len) {
+  if((ring == NULL) || (*stats_len < sizeof(u_int16_t)))
+    return(-1);
+  else {
+    memcpy(stats, &rule_id, sizeof(u_int16_t));
+    return(getsockopt(ring->fd, 0,
+		      SO_GET_FILTERING_RULE_STATS,
+		      stats, stats_len));
+  }
+}
+
+/* **************************************************** */
+
+int pfring_set_filtering_rule_plugin_id(pfring *ring, 
+					u_int16_t rule_id,
+					u_int16_t plugin_id) {
+  if(ring == NULL)
+    return(-1);
+  else {
+    struct rule_plugin_id info;
+    int rc;
+
+    info.plugin_id = plugin_id;
+    info.rule_id   = rule_id;
+
+    rc = setsockopt(ring->fd, 0, 
+		    SO_SET_FILTERING_RULE_PLUGIN_ID,
+		    &info, sizeof(info));
+    return(rc);
+  }
+}
+
+/* **************************************************** */
+
 int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   int rc;
 

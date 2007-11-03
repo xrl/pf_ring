@@ -60,19 +60,26 @@ class PFring {
     { return((pcapPtr && pcapPtr->ring) ? pfring_remove_filtering_rule(pcapPtr->ring, rule_id) : -1); };
   inline int toggle_filtering_policy(bool rules_default_accept_policy)
     { return((pcapPtr && pcapPtr->ring) ? pfring_toggle_filtering_policy(pcapPtr->ring, rules_default_accept_policy ? 1 : 0) : -1); };
+  inline int set_filtering_rule_plugin_id(u_int16_t rule_id, u_int16_t plugin_id)
+    { return((pcapPtr && pcapPtr->ring) ? pfring_set_filtering_rule_plugin_id(pcapPtr->ring, rule_id, plugin_id) : -1); };
+
+  /* Stats */
+  inline int get_stats(pfring_stat *stats)
+    { return((pcapPtr && pcapPtr->ring) ? pfring_stats(pcapPtr->ring, stats) : -1); };
+  inline int get_filtering_rule_stats(u_int16_t rule_id, char *stats, u_int *stats_len)
+    { return((pcapPtr && pcapPtr->ring) ? pfring_get_filtering_rule_stats(pcapPtr->ring, rule_id, stats, stats_len) : -1); };
 
   /* Utils */
   inline char* get_device_name() { return(device_name); };
   inline int set_sampling_rate(u_int32_t rate /* 1 = no sampling */)
     { return((pcapPtr && pcapPtr->ring) ? pfring_set_sampling_rate(pcapPtr->ring, rate) : -1); };
-  inline int get_stats(pfring_stat *stats)
-    { return((pcapPtr && pcapPtr->ring) ? pfring_stats(pcapPtr->ring, stats) : -1); };
   inline int get_version(u_int32_t *version) 
     { return((pcapPtr && pcapPtr->ring) ? pfring_version(pcapPtr->ring, version) : -1); };
   inline int get_socket_id() 
     { return((pcapPtr && pcapPtr->ring) ? pcapPtr->ring->fd : pcap_get_selectable_fd(pcapPtr)); };
   inline struct pcap* get_pcap() { return(pcapPtr); };
   inline const char* get_last_error() { return(pcapPtr ? pcap_geterr(pcapPtr) : "Device open has failed"); };
+  
 };
 
 #endif /* _PFRING_CLASS_ */
