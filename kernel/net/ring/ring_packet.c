@@ -14,6 +14,7 @@
  * - Matthew J. Roth <mroth@imminc.com>
  * - Vincent Carrier <vicarrier@wanadoo.fr>
  * - Marketakis Yannis <marketak@ics.forth.gr>
+ * - Noam Dev <noamdev@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1969,7 +1970,8 @@ static int ring_setsockopt(struct socket *sock,
 	  if(copy_from_user(&fprog, optval, sizeof(fprog)))
 	    break;
 
-	  fsize = sizeof(struct sock_filter) * fprog.len;
+	  /* Fix below courtesy of Noam Dev <noamdev@gmail.com> */
+	  fsize = (sizeof(struct sock_filter) * fprog.len) + sizeof(struct sk_filter);
 	  filter = kmalloc(fsize, GFP_KERNEL);
 
 	  if(filter == NULL)
