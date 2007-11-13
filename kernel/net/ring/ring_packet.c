@@ -1971,8 +1971,8 @@ static int ring_setsockopt(struct socket *sock,
 	    break;
 
 	  /* Fix below courtesy of Noam Dev <noamdev@gmail.com> */
-	  fsize = (sizeof(struct sock_filter) * fprog.len) + sizeof(struct sk_filter);
-	  filter = kmalloc(fsize, GFP_KERNEL);
+	  fsize  = sizeof(struct sock_filter) * fprog.len;
+	  filter = kmalloc(fsize + sizeof(struct sk_filter), GFP_KERNEL);
 
 	  if(filter == NULL)
 	    {
