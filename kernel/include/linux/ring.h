@@ -40,18 +40,25 @@
 
 #ifndef HAVE_PCAP
 
+#define NO_VLAN ((u_int16_t)-1)
+
+struct pkt_parsing_info {
+  /* core fields (also used by NetFlow) */
+  u_int16_t eth_type;   /* Ethernet type */
+  u_int16_t vlan_id;    /* VLAN Id or NO_VLAN */
+  u_int8_t  l3_proto, ipv4_tos;   /* Layer 3 protocol/TOS */
+  u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
+  u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
+  u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
+  /* Offsets of L3/L4/payload elements */
+  u_int16_t eth_offset, vlan_offset, l3_offset, l4_offset, payload_offset; 
+};
+
 struct pcap_pkthdr {
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
-  /* packet parsing info */
-  u_int16_t eth_type;   /* Ethernet type */
-  u_int16_t vlan_id;    /* VLAN Id or -1 for no vlan */
-  u_int8_t  l3_proto, ipv4_tos;   /* Layer 3 protocol/TOS */
-  u_int16_t l3_offset, l4_offset, payload_offset; /* Offsets of L3/L4/payload elements */
-  u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
-  u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
-  u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
+  struct pkt_parsing_info parsed_pkt; /* packet parsing info */
 };
 #endif
 
@@ -105,7 +112,7 @@ typedef struct {
 
 typedef int (*plugin_handle_skb)(filtering_rule_element *rule, 
 				 struct pcap_pkthdr *hdr,
-				 struct sk_buff *skb, int displ);
+				 struct sk_buff *skb);
 typedef int (*plugin_get_stats)(filtering_rule_element *element,
 				u_char* stats_buffer, u_int stats_buffer_len);
 

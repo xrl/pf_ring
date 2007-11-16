@@ -635,49 +635,51 @@ static int parse_pkt(struct sk_buff *skb,
   struct ethhdr *eh = (struct ethhdr*)(skb->data-skb_displ);
   u_int16_t displ;
 
-  hdr->l3_offset = hdr->l4_offset = hdr->l3_proto = 0;
-  hdr->payload_offset = hdr->tcp_flags = hdr->ipv4_tos = 0;
-  hdr->eth_type = ntohs(eh->h_proto);
+  memset(&hdr->parsed_pkt, 0, sizeof(struct pkt_parsing_info));
 
-  if(hdr->eth_type == 0x8100 /* 802.1q (VLAN) */)
+  hdr->parsed_pkt.eth_type = ntohs(eh->h_proto);
+  hdr->parsed_pkt.eth_offset = -skb_displ;
+
+  if(hdr->parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */)
     {
-      hdr->vlan_id = (skb->data[14] & 15) * 256 + skb->data[15];
-      hdr->eth_type = (skb->data[16]) * 256 + skb->data[17];
+      hdr->parsed_pkt.vlan_offset = hdr->parsed_pkt.eth_offset + sizeof(struct ethhdr);
+      hdr->parsed_pkt.vlan_id = (skb->data[14] & 15) * 256 + skb->data[15];
+      hdr->parsed_pkt.eth_type = (skb->data[16]) * 256 + skb->data[17];
       displ = 4;
     }
   else
     {
       displ = 0;
-      hdr->vlan_id = (u_int16_t)-1;
+      hdr->parsed_pkt.vlan_id = (u_int16_t)-1;
     }
 
-  if(hdr->eth_type == 0x0800 /* IP */) {
-    hdr->l3_offset = displ+sizeof(struct ethhdr);
-    ip = (struct iphdr*)(skb->data-skb_displ+hdr->l3_offset);
+  if(hdr->parsed_pkt.eth_type == 0x0800 /* IP */) {
+    hdr->parsed_pkt.l3_offset = displ+sizeof(struct ethhdr);
+    ip = (struct iphdr*)(skb->data-skb_displ+hdr->parsed_pkt.l3_offset);
 
-    hdr->ipv4_src = ntohl(ip->saddr), hdr->ipv4_dst = ntohl(ip->daddr), hdr->l3_proto = ip->protocol;
-    hdr->ipv4_tos = ip->tos;
+    hdr->parsed_pkt.ipv4_src = ntohl(ip->saddr), hdr->parsed_pkt.ipv4_dst = ntohl(ip->daddr), hdr->parsed_pkt.l3_proto = ip->protocol;
+    hdr->parsed_pkt.ipv4_tos = ip->tos;
 
     if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP))
       {
-	hdr->l4_offset = hdr->l3_offset+ip->ihl*4;
+	hdr->parsed_pkt.l4_offset = hdr->parsed_pkt.l3_offset+ip->ihl*4;
 
 	if(ip->protocol == IPPROTO_TCP)
 	  {
-	    struct tcphdr *tcp = (struct tcphdr*)(skb->data-skb_displ+hdr->l4_offset);
-	    hdr->l4_src_port = ntohs(tcp->source), hdr->l4_dst_port = ntohs(tcp->dest);
-	    hdr->payload_offset = hdr->l4_offset+(tcp->doff * 4);
-	    hdr->tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
+	    struct tcphdr *tcp = (struct tcphdr*)(skb->data-skb_displ+hdr->parsed_pkt.l4_offset);
+	    hdr->parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->parsed_pkt.l4_dst_port = ntohs(tcp->dest);
+	    hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset+(tcp->doff * 4);
+	    hdr->parsed_pkt.tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
 	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
 	  } else if(ip->protocol == IPPROTO_UDP)
 	    {
-	      struct udphdr *udp = (struct udphdr*)(skb->data-skb_displ+hdr->l4_offset);
-	      hdr->l4_src_port = ntohs(udp->source), hdr->l4_dst_port = ntohs(udp->dest);
-	      hdr->payload_offset = hdr->l4_offset+sizeof(struct udphdr);
+	      struct udphdr *udp = (struct udphdr*)(skb->data-skb_displ+hdr->parsed_pkt.l4_offset);
+	      hdr->parsed_pkt.l4_src_port = ntohs(udp->source), hdr->parsed_pkt.l4_dst_port = ntohs(udp->dest);
+	      hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset+sizeof(struct udphdr);
 	    } else
-	      hdr->payload_offset = hdr->l4_offset;
+	      hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset;
       } else
-	hdr->l4_src_port = hdr->l4_dst_port = 0;
+	hdr->parsed_pkt.l4_src_port = hdr->parsed_pkt.l4_dst_port = 0;
 
     return(1); /* IP */
   } /* TODO: handle IPv6 */
@@ -701,43 +703,43 @@ static int match_filtering_rule(filtering_rule_element *rule,
 
   if(debug) {
     printk("match_filtering_rule(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u) ",
-	   hdr->vlan_id, hdr->l3_proto, hdr->ipv4_src, hdr->l4_src_port,
-	   hdr->ipv4_dst, hdr->l4_dst_port);
+	   hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto, hdr->parsed_pkt.ipv4_src, hdr->parsed_pkt.l4_src_port,
+	   hdr->parsed_pkt.ipv4_dst, hdr->parsed_pkt.l4_dst_port);
     printk("[rule(vlan=%u, proto=%u, ip=%u, port=%u-%u)]\n",
 	   rule->rule.vlan_id, rule->rule.proto, rule->rule.host_ip, rule->rule.port_low,
 	   rule->rule.port_high);
   }
 
-  if((rule->rule.vlan_id > 0) && (hdr->vlan_id  != rule->rule.vlan_id)) return(0);
-  if((rule->rule.proto > 0)   && (hdr->l3_proto != rule->rule.proto))   return(0);
+  if((rule->rule.vlan_id > 0) && (hdr->parsed_pkt.vlan_id  != rule->rule.vlan_id)) return(0);
+  if((rule->rule.proto > 0)   && (hdr->parsed_pkt.l3_proto != rule->rule.proto))   return(0);
 
   if(((rule->rule.host_netmask > 0)
-      && ((hdr->ipv4_src & rule->rule.host_netmask) != rule->rule.host_ip))
-     && ((hdr->ipv4_dst & rule->rule.host_netmask) != rule->rule.host_ip))
+      && ((hdr->parsed_pkt.ipv4_src & rule->rule.host_netmask) != rule->rule.host_ip))
+     && ((hdr->parsed_pkt.ipv4_dst & rule->rule.host_netmask) != rule->rule.host_ip))
     return(0);
 
   if((rule->rule.port_high > 0)
-     && (!((hdr->l4_src_port >= rule->rule.port_low) && (hdr->l4_src_port <= rule->rule.port_high)))
-     && (!((hdr->l4_dst_port >= rule->rule.port_low) && (hdr->l4_dst_port <= rule->rule.port_high))))
+     && (!((hdr->parsed_pkt.l4_src_port >= rule->rule.port_low) && (hdr->parsed_pkt.l4_src_port <= rule->rule.port_high)))
+     && (!((hdr->parsed_pkt.l4_dst_port >= rule->rule.port_low) && (hdr->parsed_pkt.l4_dst_port <= rule->rule.port_high))))
     return(0);
 
   if(rule->rule.balance_pool > 0) {
-    u_int32_t balance_hash = (hdr->vlan_id
-			      + hdr->l3_proto
-			      + hdr->ipv4_src + hdr->l4_src_port
-			      + hdr->ipv4_dst + hdr->l4_dst_port) % rule->rule.balance_pool;
+    u_int32_t balance_hash = (hdr->parsed_pkt.vlan_id
+			      + hdr->parsed_pkt.l3_proto
+			      + hdr->parsed_pkt.ipv4_src + hdr->parsed_pkt.l4_src_port
+			      + hdr->parsed_pkt.ipv4_dst + hdr->parsed_pkt.l4_dst_port) % rule->rule.balance_pool;
 
     if(balance_hash != rule->rule.balance_id) return(0);
   }
 
   if(rule->pattern != NULL) {
-    if((hdr->payload_offset > 0) && (hdr->caplen > hdr->payload_offset)) {
+    if((hdr->parsed_pkt.payload_offset > 0) && (hdr->caplen > hdr->parsed_pkt.payload_offset)) {
       struct ts_state state;
-      char *payload = (char*)&(skb->data[hdr->payload_offset-displ]);
-      int i, rc, payload_len = hdr->caplen - hdr->payload_offset;
+      char *payload = (char*)&(skb->data[hdr->parsed_pkt.payload_offset-displ]);
+      int i, rc, payload_len = hdr->caplen - hdr->parsed_pkt.payload_offset;
 
       printk("Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][",
-	     hdr->caplen, payload_len, displ, hdr->payload_offset);
+	     hdr->caplen, payload_len, displ, hdr->parsed_pkt.payload_offset);
 
       for(i=0; i<payload_len; i++) printk("%c", payload[i]);
       printk("]\n");
@@ -755,7 +757,7 @@ static int match_filtering_rule(filtering_rule_element *rule,
   if((rule->plugin_id != 0)
      && (rule->plugin_id < MAX_PLUGIN_ID)      
      && (plugin_registration[rule->plugin_id] != NULL)) {
-    plugin_registration[rule->plugin_id]->pfring_plugin_handle_skb(rule, hdr, skb, displ);
+    plugin_registration[rule->plugin_id]->pfring_plugin_handle_skb(rule, hdr, skb);
   }
 
   return(1); /* match */
@@ -777,7 +779,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 #if defined(RING_DEBUG)
   printk("add_skb_to_ring: [displ=%d][is_ip_pkt=%d][%d -> %d]\n",
-	 displ, is_ip_pkt, hdr->l4_src_port, hdr->l4_dst_port);
+	 displ, is_ip_pkt, hdr->parsed_pkt.l4_src_port, hdr->parsed_pkt.l4_dst_port);
 #endif
 
   write_lock_irq(&pfr->ring_index_lock);
@@ -1163,7 +1165,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 
       skb_reset_network_header(skb);
       skb_reset_transport_header(skb);
-      skb_set_network_header(skb, hdr.l3_offset-displ);
+      skb_set_network_header(skb, hdr.parsed_pkt.l3_offset-displ);
 
       if(((iphdr = ip_hdr(skb)) != NULL)
 	 && (iphdr->frag_off & htons(IP_MF | IP_OFFSET)))
