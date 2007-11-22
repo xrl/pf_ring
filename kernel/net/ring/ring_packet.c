@@ -15,6 +15,7 @@
  * - Vincent Carrier <vicarrier@wanadoo.fr>
  * - Marketakis Yannis <marketak@ics.forth.gr>
  * - Noam Dev <noamdev@gmail.com>
+ * - Siva Kollipara <siva@cs.arizona.edu>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1471,7 +1472,6 @@ static int ring_release(struct socket *sock)
   /* Free the ring buffer later, vfree needs interrupts enabled */
   ring_memory_ptr = pfr->ring_memory;
 
-  kfree(pfr);
   ring_sk(sk) = NULL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
@@ -1487,6 +1487,8 @@ static int ring_release(struct socket *sock)
 #endif
     rvfree(pfr->ring_memory, pfr->slots_info->tot_mem);
   }
+
+  kfree(pfr);
 
 #if defined(RING_DEBUG)
   printk("RING: ring_release: rvfree done\n");
