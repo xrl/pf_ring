@@ -92,9 +92,11 @@ typedef struct {
 					one in "sip & sport", "sip & dport" "dip & sport"
 					match.
 				     */
+#ifdef CONFIG_TEXTSEARCH
   char payload_pattern[32];          /* If strlen(payload_pattern) > 0, the packet payload
 					must match the specified pattern
 				     */
+#endif
 } filtering_rule;
 
 /* ************************************************* */

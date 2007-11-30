@@ -16,6 +16,7 @@
  * - Marketakis Yannis <marketak@ics.forth.gr>
  * - Noam Dev <noamdev@gmail.com>
  * - Siva Kollipara <siva@cs.arizona.edu>
+ * - Kevin Wormington <kworm@sofnet.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,7 +56,9 @@
 #include <linux/udp.h>
 #include <linux/list.h>
 #include <linux/proc_fs.h>
+#ifdef CONFIG_TEXTSEARCH
 #include <linux/textsearch.h>
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 #include <net/xfrm.h>
 #else
@@ -733,6 +736,7 @@ static int match_filtering_rule(filtering_rule_element *rule,
     if(balance_hash != rule->rule.balance_id) return(0);
   }
 
+#ifdef CONFIG_TEXTSEARCH
   if(rule->pattern != NULL) {
     if((hdr->parsed_pkt.payload_offset > 0) && (hdr->caplen > hdr->parsed_pkt.payload_offset)) {
       struct ts_state state;
@@ -752,6 +756,7 @@ static int match_filtering_rule(filtering_rule_element *rule,
     } else
       return(0); /* No payload data */
   }
+#endif
 
   printk("rule->plugin_id [rule_id=%d][plugin_id=%d]\n", rule->rule.rule_id, rule->plugin_id);
 
@@ -1464,7 +1469,9 @@ static int ring_release(struct socket *sock)
       printk("RING: Deleting rule_id %d\n", rule->rule.rule_id);
 #endif
 
+#ifdef CONFIG_TEXTSEARCH
       if(rule->pattern) textsearch_destroy(rule->pattern);
+#endif
       list_del(ptr);
       kfree(rule);
     }
@@ -2100,6 +2107,7 @@ static int ring_setsockopt(struct socket *sock,
 
 	  INIT_LIST_HEAD(&rule->list);
 
+#ifdef CONFIG_TEXTSEARCH
 	  /* Compile pattern if present */
 	  if(strlen(rule->rule.payload_pattern) > 0)
 	    {
@@ -2114,6 +2122,7 @@ static int ring_setsockopt(struct socket *sock,
 	      }
 	    } else
 	      rule->pattern = NULL;
+#endif
 
 	  write_lock(&ring_mgmt_lock);
 
@@ -2130,8 +2139,10 @@ static int ring_setsockopt(struct socket *sock,
 	      if(entry->rule.rule_id == rule->rule.rule_id)
 		{
 		  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
+#ifdef CONFIG_TEXTSEARCH
 		  if(entry->pattern != NULL) textsearch_destroy(entry->pattern);
 		  entry->pattern = rule->pattern;
+#endif
 		  kfree(rule);
 		  rule = NULL;
 		  if(debug) printk("SO_ADD_FILTERING_RULE: overwritten rule_id %d\n", entry->rule.rule_id);
@@ -2194,7 +2205,9 @@ static int ring_setsockopt(struct socket *sock,
 
 	      if(entry->rule.rule_id == rule_id)
 		{
+#ifdef CONFIG_TEXTSEARCH
 		  if(entry->pattern) textsearch_destroy(entry->pattern);
+#endif
 		  list_del(ptr);
 		  pfr->num_filtering_rules--;
 		  kfree(ptr);
