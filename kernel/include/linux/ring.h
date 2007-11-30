@@ -105,7 +105,9 @@ typedef struct {
 
 typedef struct {
   filtering_rule rule;
+#ifdef CONFIG_TEXTSEARCH
   struct ts_config *pattern;
+#endif
   struct list_head list;
   /* plugin */
   u_int16_t plugin_id;   /* if of the plugin associated with this rule */
