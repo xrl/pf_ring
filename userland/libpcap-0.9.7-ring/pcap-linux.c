@@ -1770,6 +1770,8 @@ static void	pcap_close_linux( pcap_t *handle )
 #ifdef HAVE_PF_RING
 	if(handle->ring) {
 	  pfring_close(handle->ring);
+	  /* Fix below courtesy of Siva Kollipara <siva@cs.arizona.edu> */
+	  if(handle->buffer) free(handle->buffer);
 	  return;
 	}
 #endif
