@@ -703,28 +703,33 @@ static int match_filtering_rule(filtering_rule_element *rule,
 				struct sk_buff *skb,
 				int displ)
 {
-  int debug = 0;
+  int debug = 1;
 
   if(debug) {
     printk("match_filtering_rule(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u) ",
 	   hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto, hdr->parsed_pkt.ipv4_src, hdr->parsed_pkt.l4_src_port,
 	   hdr->parsed_pkt.ipv4_dst, hdr->parsed_pkt.l4_dst_port);
-    printk("[rule(vlan=%u, proto=%u, ip=%u, port=%u-%u)]\n",
-	   rule->rule.vlan_id, rule->rule.proto, rule->rule.host_ip, rule->rule.port_low,
-	   rule->rule.port_high);
+    printk("[rule(vlan=%u, proto=%u, ip=%u-%u, port=%u-%u)]\n",
+	   rule->rule.core_fields.vlan_id, rule->rule.core_fields.proto, 
+	   rule->rule.core_fields.host_low, rule->rule.core_fields.host_high, 
+	   rule->rule.core_fields.port_low,
+	   rule->rule.core_fields.port_high);
   }
 
-  if((rule->rule.vlan_id > 0) && (hdr->parsed_pkt.vlan_id  != rule->rule.vlan_id)) return(0);
-  if((rule->rule.proto > 0)   && (hdr->parsed_pkt.l3_proto != rule->rule.proto))   return(0);
+  if((rule->rule.core_fields.vlan_id > 0) && (hdr->parsed_pkt.vlan_id  != rule->rule.core_fields.vlan_id)) return(0);
+  if((rule->rule.core_fields.proto > 0)   && (hdr->parsed_pkt.l3_proto != rule->rule.core_fields.proto))   return(0);
 
-  if(((rule->rule.host_netmask > 0)
-      && ((hdr->parsed_pkt.ipv4_src & rule->rule.host_netmask) != rule->rule.host_ip))
-     && ((hdr->parsed_pkt.ipv4_dst & rule->rule.host_netmask) != rule->rule.host_ip))
-    return(0);
+  if(rule->rule.core_fields.host_low > 0) {
+    if((hdr->parsed_pkt.ipv4_src < rule->rule.core_fields.host_low) 
+       || (hdr->parsed_pkt.ipv4_src > rule->rule.core_fields.host_high)
+       || (hdr->parsed_pkt.ipv4_dst < rule->rule.core_fields.host_low) 
+       || (hdr->parsed_pkt.ipv4_dst > rule->rule.core_fields.host_high))
+      return(0);
+  }
 
-  if((rule->rule.port_high > 0)
-     && (!((hdr->parsed_pkt.l4_src_port >= rule->rule.port_low) && (hdr->parsed_pkt.l4_src_port <= rule->rule.port_high)))
-     && (!((hdr->parsed_pkt.l4_dst_port >= rule->rule.port_low) && (hdr->parsed_pkt.l4_dst_port <= rule->rule.port_high))))
+  if((rule->rule.core_fields.port_high > 0)
+     && (!((hdr->parsed_pkt.l4_src_port >= rule->rule.core_fields.port_low) && (hdr->parsed_pkt.l4_src_port <= rule->rule.core_fields.port_high)))
+     && (!((hdr->parsed_pkt.l4_dst_port >= rule->rule.core_fields.port_low) && (hdr->parsed_pkt.l4_dst_port <= rule->rule.core_fields.port_high))))
     return(0);
 
   if(rule->rule.balance_pool > 0) {
@@ -758,12 +763,30 @@ static int match_filtering_rule(filtering_rule_element *rule,
   }
 #endif
 
-  printk("rule->plugin_id [rule_id=%d][plugin_id=%d]\n", rule->rule.rule_id, rule->plugin_id);
+  printk("rule->plugin_id [rule_id=%d][filter_plugin_id=%d][plugin_action=%d][ptr=%p]\n", 
+	 rule->rule.rule_id, 
+	 rule->rule.extended_fields.filter_plugin_id,
+	 rule->rule.plugin_action.plugin_id,
+	 plugin_registration[rule->rule.plugin_action.plugin_id]);
 
-  if((rule->plugin_id != 0)
-     && (rule->plugin_id < MAX_PLUGIN_ID)      
-     && (plugin_registration[rule->plugin_id] != NULL)) {
-    plugin_registration[rule->plugin_id]->pfring_plugin_handle_skb(rule, hdr, skb);
+  if((rule->rule.extended_fields.filter_plugin_id > 0) 
+     && (rule->rule.extended_fields.filter_plugin_id < MAX_PLUGIN_ID)
+     && (plugin_registration[rule->rule.extended_fields.filter_plugin_id] != NULL)
+     && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb != NULL)
+     ) {
+      int rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb(rule, hdr, skb);
+      
+      if(rc == 0)
+	return(0); /* No match */    
+  }
+
+  /* Action to be performed in case of match */
+  if((rule->rule.plugin_action.plugin_id != 0)
+     && (rule->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)      
+     && (plugin_registration[rule->rule.plugin_action.plugin_id] != NULL)
+     && (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
+     ) {
+      plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb(rule, hdr, skb);
   }
 
   return(1); /* match */
@@ -844,6 +867,13 @@ static void add_skb_to_ring(struct sk_buff *skb,
     fwd_pkt = pfr->rules_default_accept_policy;
 
     /* ************************** */
+    
+    if(0)
+    printk("About to evaluate packet [len=%d][tot=%llu][insertIdx=%d]"
+	   "[pkt_type=%d][cloned=%d]\n",
+	   (int)skb->len, pfr->slots_info->tot_pkts,
+	   pfr->slots_info->insert_idx,
+	   skb->pkt_type, skb->cloned);
 
     /* [2] Filter packet according to rules */
     read_lock(&ring_mgmt_lock);
@@ -855,8 +885,17 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 	if(match_filtering_rule(entry, hdr, skb, displ))
 	  {
-	    fwd_pkt = entry->rule.pass_action;
-	    break;
+	    if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+	      fwd_pkt = 1;
+	      break;
+	    } else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+	      fwd_pkt = 0;
+              break;
+	    } else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
+	      /* The action has already been performed inside match_filtering_rule()
+		 hence instead of stopping rule evaluation, the next rule
+		 will be evaluated */
+	    }
 	  }
       } /* for */
     read_unlock(&ring_mgmt_lock);
@@ -1090,13 +1129,13 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
 	
 	  rule = list_entry(ptr, filtering_rule_element, list);
 	
-	  if(rule->plugin_id == pfring_plugin_id) {
+	  if(rule->rule.plugin_action.plugin_id == pfring_plugin_id) {
 	    if(rule->plugin_data_ptr != NULL) {
 	      kfree(rule->plugin_data_ptr);
 	      rule->plugin_data_ptr = NULL;
 	    }
 
-	    rule->plugin_id = 0;
+	    rule->rule.plugin_action.plugin_id = 0;
 	  }
 	}
     }
@@ -1466,7 +1505,7 @@ static int ring_release(struct socket *sock)
       rule = list_entry(ptr, filtering_rule_element, list);
 
 #if defined(RING_DEBUG)
-      printk("RING: Deleting rule_id %d\n", rule->rule.rule_id);
+      printk("RING: Deleting rule_id %d\n", rule->rule.core_fields.rule_id);
 #endif
 
 #ifdef CONFIG_TEXTSEARCH
@@ -2089,11 +2128,18 @@ static int ring_setsockopt(struct socket *sock,
       break;
 
     case SO_ADD_FILTERING_RULE:
-      if(optlen != sizeof(filtering_rule))
-	return -EINVAL;
+      if(debug) printk("+++ SO_ADD_FILTERING_RULE(len=%d)\n", optlen);
+
+      if(optlen != sizeof(filtering_rule)) 
+	{
+	  if(debug) printk("bad len (expected %d)\n", sizeof(filtering_rule));
+	  return -EINVAL;
+	}
       else
 	{
 	  struct list_head *ptr, *tmp_ptr;
+
+	  if(debug) printk("Allocating memory\n");
 
 	  rule = (filtering_rule_element*)kmalloc(sizeof(filtering_rule_element), GFP_KERNEL);
 
@@ -2109,21 +2155,20 @@ static int ring_setsockopt(struct socket *sock,
 
 #ifdef CONFIG_TEXTSEARCH
 	  /* Compile pattern if present */
-	  if(strlen(rule->rule.payload_pattern) > 0)
+	  if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
 	    {
-	      rule->pattern = textsearch_prepare("kmp", rule->rule.payload_pattern,
-						 strlen(rule->rule.payload_pattern),
+	      rule->pattern = textsearch_prepare("kmp", rule->rule.extended_fields.payload_pattern,
+						 strlen(rule->rule.extended_fields.payload_pattern),
 						 GFP_KERNEL, TS_AUTOLOAD);
 
 	      if(IS_ERR(rule->pattern)) {
 		printk("RING: Unable to compile pattern '%s'\n",
-		       rule->rule.payload_pattern);
+		       rule->rule.extended_fields.payload_pattern);
 		rule->pattern = NULL;
 	      }
 	    } else
 	      rule->pattern = NULL;
 #endif
-
 	  write_lock(&ring_mgmt_lock);
 
 	  if(debug) printk("SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
@@ -2210,6 +2255,7 @@ static int ring_setsockopt(struct socket *sock,
 #endif
 		  list_del(ptr);
 		  pfr->num_filtering_rules--;
+		  if(entry->plugin_data_ptr != NULL) kfree(entry->plugin_data_ptr);
 		  kfree(ptr);
 		  if(debug) printk("SO_REMOVE_FILTERING_RULE: rule %d has been removed\n", rule_id);
 		  rule_found = 1;
@@ -2236,7 +2282,6 @@ static int ring_setsockopt(struct socket *sock,
     case SO_SET_FILTERING_RULE_PLUGIN_ID:
       {
 	struct rule_plugin_id info;
-	struct list_head *ptr, *tmp_ptr;
 
 	if(optlen != sizeof(info))
 	  return -EINVAL;
@@ -2255,33 +2300,9 @@ static int ring_setsockopt(struct socket *sock,
 	  printk("plugin_id=%d is not registered\n", info.plugin_id);
 	  return -EINVAL;
 	}
-
-	write_lock(&ring_mgmt_lock);
-	list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
-	  {
-	    filtering_rule_element *rule;
-	    
-	    rule = list_entry(ptr, filtering_rule_element, list);
-	    if(rule->rule.rule_id == info.rule_id) 
-	      {
-		if((rule->plugin_id != 0) 
-		   && (rule->plugin_id != info.plugin_id))
-		  {
-		    if(rule->plugin_data_ptr != NULL) 		      
-		      kfree(rule->plugin_data_ptr);
-		  }
-
-		    
-		rule->plugin_id = info.plugin_id;
-		rule->plugin_data_ptr = NULL;
-		printk("Succesfully associated plugin_id=%d with rule_id=%d\n", 
-		       info.plugin_id, info.rule_id);	
-	      }
-	  }
-	write_unlock(&ring_mgmt_lock);
       }
       break;
-
+      
     default:
       found = 0;
       break;
@@ -2366,7 +2387,10 @@ static int ring_getsockopt(struct socket *sock,
 		if(buffer == NULL)
 		  rc = -EFAULT;
 		else {
-		  rc = plugin_registration[rule->plugin_id]->pfring_plugin_get_stats(rule, buffer, len);
+		  if(plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)
+		    rc = -EFAULT;
+		  else
+		    rc = plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats(rule, buffer, len);
 
 		  if(rc > 0) {
 		    if(copy_to_user(optval, buffer, rc))

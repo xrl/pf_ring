@@ -1,6 +1,6 @@
 /*
  *
- * gcc pcount.c -o pcount -lpfring
+ * (C) 2005-07 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -237,8 +237,8 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
 
     printf("[eth_type=0x%04X]", h->eth_type);
     printf("[l3_proto=%u]", (unsigned int)h->l3_proto);
-    printf("[%s -> ", intoa(h->ipv4_src));
-    printf("%s] ", intoa(h->ipv4_dst));
+    printf("[%s:%d -> ", intoa(h->ipv4_src), h->l4_src_port);
+    printf("%s:%d] ", intoa(h->ipv4_dst), h->l4_dst_port);
     printf("%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
@@ -412,7 +412,7 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  if(0) {
+  if(1) {
     filtering_rule rule;
     
     pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
@@ -422,23 +422,26 @@ int main(int argc, char* argv[]) {
     if(1) {
 #if 1
       rule.rule_id = 5; 
-      rule.pass_action = 1; /* ACCEPT */
-      rule.proto = 1;
-      rule.host_ip = 0, rule.host_netmask = 0;
+      rule.rule_action = forward_packet_and_stop_rule_evaluation;
+      rule.core_fields.proto = 1;
+      rule.core_fields.host_low = 0, rule.core_fields.host_high = 0;
+      rule.plugin_action.plugin_id = 1; /* Dummy plugin */
 #else
       rule.rule_id = 5; 
-      rule.pass_action = 1; /* ACCEPT */
-      rule.port_low = 80, rule.port_high = 80;
-      rule.host_ip = ntohl(inet_addr("192.168.0.160")), rule.host_netmask = 0xFFFFFFFF;
-      snprintf(rule.payload_pattern, sizeof(rule.payload_pattern), "GET");
+      rule.rule_action = forward_packet_and_stop_rule_evaluation;
+      rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
+      rule.core_fields.host_low = rule.core_fields.host_high = ntohl(inet_addr("192.168.0.160"));
+      snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
 #endif
-      pfring_add_filtering_rule(pd, &rule);
+      if(pfring_add_filtering_rule(pd, &rule) < 0)
+	printf("pfring_add_filtering_rule() failed\n");
     } else {
-      rule.rule_id = 10; pfring_add_filtering_zrule(pd, &rule);
-      rule.rule_id = 5; pfring_add_filtering_rule(pd, &rule);
+      rule.rule_id = 10; pfring_add_filtering_rule(pd, &rule);
+      rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
       rule.rule_id = 15; pfring_add_filtering_rule(pd, &rule);
-      rule.rule_id = 5; pfring_add_filtering_rule(pd, &rule);
-      pfring_remove_filtering_rule(pd, 15);
+      rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
+      if(pfring_remove_filtering_rule(pd, 15) < 0)
+	printf("pfring_remove_filtering_rule() failed\n");
     }
   }
 

@@ -263,15 +263,14 @@ int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   if((!rule_to_add) || (!ring)) return(-1);
 
   /* Sanitize entry */
-  if(rule_to_add->port_low > rule_to_add->port_high)
-    rule_to_add->port_low = rule_to_add->port_high;
+  if(rule_to_add->core_fields.port_low > rule_to_add->core_fields.port_high)
+    rule_to_add->core_fields.port_low = rule_to_add->core_fields.port_high;
+  if(rule_to_add->core_fields.host_low > rule_to_add->core_fields.host_high)
+    rule_to_add->core_fields.host_low = rule_to_add->core_fields.host_high;
   
   if(rule_to_add->balance_id > rule_to_add->balance_pool)
     rule_to_add->balance_id = 0;
   
-  if(rule_to_add->host_netmask > 0)
-    rule_to_add->host_ip = (rule_to_add->host_ip & rule_to_add->host_netmask);
-
   rc = setsockopt(ring->fd, 0, SO_ADD_FILTERING_RULE,
 		  rule_to_add, sizeof(filtering_rule));
 

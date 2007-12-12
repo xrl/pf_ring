@@ -19,8 +19,8 @@
 #define RING_FLOWSLOT_VERSION           8
 
 /* Versioning */
-#define RING_VERSION              "3.7.0"
-#define RING_VERSION_NUM         0x030700
+#define RING_VERSION              "3.7.1"
+#define RING_VERSION_NUM         0x030701
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -73,30 +73,57 @@ struct rule_plugin_id {
   u_int16_t plugin_id;
 };
 
+/* ************************************************* */
+
 typedef struct {
-  u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
-  u_int8_t pass_action;              /* 0=drop packet if match rule, pass packet otherwise */
-  u_int8_t balance_id, balance_pool; /* If balance_pool > 0, then pass the packet
-					above only if the
-					(hash(proto, sip, sport, dip, dport) % balance_pool) = balance_id
-				     */
-  u_int8_t proto;                    /* Use 0 for 'any' protocol */
+  u_int8_t  proto;                   /* Use 0 for 'any' protocol */
   u_int16_t vlan_id;                 /* Use '0' for any vlan */
-  u_int32_t host_ip, host_netmask;   /* Netmask 0 means 'any' host. This is applied to both source
-				        and destination.
-				     */
+  u_int32_t host_low, host_high;     /* User '0' for any host. This is applied to both source
+				        and destination. */
   u_int16_t port_low, port_high;     /* All ports between port_low...port_high
 					0 means 'any' port. This is applied to both source
 				        and destination. This means that
 					(proto, sip, sport, dip, dport) matches the rule if
 					one in "sip & sport", "sip & dport" "dip & sport"
-					match.
-				     */
-#ifdef CONFIG_TEXTSEARCH
-  char payload_pattern[32];          /* If strlen(payload_pattern) > 0, the packet payload
-					must match the specified pattern
-				     */
-#endif
+					match. */  
+} filtering_rule_core_fields;
+
+/* ************************************************* */
+
+typedef struct {
+  char payload_pattern[32];         /* If strlen(payload_pattern) > 0, the packet payload
+				       must match the specified pattern */
+  u_int16_t filter_plugin_id;       /* If > 0 identifies a plugin to which the datastructure
+				       below will be passed for matching */
+  char      filter_plugin_data[64]; /* Opaque datastructure that is interpreted by the
+				       specified plugin and that specifies a filtering
+				       criteria to be checked for match. Usually this data
+				       is re-casted to a more meaningful datastructure
+				    */
+} filtering_rule_extended_fields;
+
+/* ************************************************* */
+
+typedef struct {
+  /* Plugin Action */
+  u_int16_t plugin_id;   /* ('0'=no plugin) id of the plugin associated with this rule */
+} filtering_rule_plugin_action;
+
+typedef enum {
+  forward_packet_and_stop_rule_evaluation = 0,
+  dont_forward_packet_and_stop_rule_evaluation,
+  execute_action_and_continue_rule_evaluation
+} rule_action_behaviour;
+
+typedef struct {
+  u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
+  rule_action_behaviour rule_action; /* What to do in case of match */
+  u_int8_t balance_id, balance_pool; /* If balance_pool > 0, then pass the packet above only if the
+					(hash(proto, sip, sport, dip, dport) % balance_pool) 
+					= balance_id */
+  filtering_rule_core_fields     core_fields;
+  filtering_rule_extended_fields extended_fields;
+  filtering_rule_plugin_action   plugin_action;
 } filtering_rule;
 
 /* ************************************************* */
@@ -109,19 +136,27 @@ typedef struct {
   struct ts_config *pattern;
 #endif
   struct list_head list;
-  /* plugin */
-  u_int16_t plugin_id;   /* if of the plugin associated with this rule */
-  void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */
+  
+  /* Plugin action */
+  void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */  
 } filtering_rule_element;
 
+/* Plugins */
+/* Execute an action (e.g. update rule stats) */
 typedef int (*plugin_handle_skb)(filtering_rule_element *rule, 
 				 struct pcap_pkthdr *hdr,
 				 struct sk_buff *skb);
+/* Return 1/0 in case of match/no match for the given skb */
+typedef int (*plugin_filter_skb)(filtering_rule_element *rule, 
+				 struct pcap_pkthdr *hdr,
+				 struct sk_buff *skb);
+/* Get stats about the rule */
 typedef int (*plugin_get_stats)(filtering_rule_element *element,
 				u_char* stats_buffer, u_int stats_buffer_len);
 
 struct pfring_plugin_registration {
   u_int16_t plugin_id;
+  plugin_filter_skb pfring_plugin_filter_skb; /* Filter skb: 1=match, 0=no match */
   plugin_handle_skb pfring_plugin_handle_skb;
   plugin_get_stats  pfring_plugin_get_stats;
 };
