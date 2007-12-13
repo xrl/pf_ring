@@ -75,12 +75,43 @@ static int dummy_plugin_plugin_handle_skb(filtering_rule_element *rule,
     struct simple_stats *stats = (struct simple_stats*)rule->plugin_data_ptr;
     stats->num_pkts++, stats->num_bytes += hdr->len;
     
+#ifdef DEBUG
     printk("-> dummy_plugin_plugin_handle_skb [pkts=%u][bytes=%u]\n",
 	   (unsigned int)stats->num_pkts,
 	   (unsigned int)stats->num_bytes);
+#endif
   }  
 
   return(0);
+}
+
+/* ************************************ */
+
+struct dummy_filter {
+  u_int32_t src_host;
+};
+
+static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
+					  struct pcap_pkthdr *hdr,
+					  struct sk_buff *skb,
+					  void **parse_memory)
+{
+  struct dummy_filter *filter = (struct dummy_filter*)rule->rule.extended_fields.filter_plugin_data;
+  
+#ifdef DEBUG
+  printk("-> dummy_plugin_plugin_filter_skb(host=0x%08X)\n", filter->src_host);
+#endif
+
+  /* Test allocation in order to show how memory placeholder works */
+  if((*parse_memory) == NULL) {
+    (*parse_memory) = kmalloc(4, GFP_KERNEL);
+    printk("-> dummy_plugin_plugin_filter_skb allocated memory\n");
+  }
+
+  if(hdr->parsed_pkt.ipv4_src == filter->src_host)
+    return(1); /* match */
+  else
+    return(0);
 }
 
 /* ************************************ */
@@ -89,7 +120,9 @@ static int dummy_plugin_plugin_get_stats(filtering_rule_element *rule,
 					 u_char* stats_buffer, 
 					 u_int stats_buffer_len)
 {
+#ifdef DEBUG
   printk("-> dummy_plugin_plugin_get_stats(len=%d)\n", stats_buffer_len);
+#endif
 
   if(stats_buffer_len >= sizeof(struct simple_stats)) {
     if(rule->plugin_data_ptr == NULL)
@@ -112,7 +145,7 @@ static int __init dummy_plugin_init(void)
   printk("Welcome to dummy plugin for PF_RING\n");
   
   reg.plugin_id                = plugin_id;
-  reg.pfring_plugin_filter_skb = NULL;
+  reg.pfring_plugin_filter_skb = dummy_plugin_plugin_filter_skb;
   reg.pfring_plugin_handle_skb = dummy_plugin_plugin_handle_skb;
   reg.pfring_plugin_get_stats  = dummy_plugin_plugin_get_stats;
 

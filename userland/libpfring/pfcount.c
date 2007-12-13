@@ -415,17 +415,29 @@ int main(int argc, char* argv[]) {
   if(1) {
     filtering_rule rule;
     
+    struct dummy_filter {      
+      u_int32_t src_host;      
+    };    
+
     pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
 
     memset(&rule, 0, sizeof(rule));
 
     if(1) {
+      struct dummy_filter filter;
+      
+      filter.src_host = ntohl(inet_addr("192.168.1.12"));
+
 #if 1
       rule.rule_id = 5; 
       rule.rule_action = forward_packet_and_stop_rule_evaluation;
       rule.core_fields.proto = 1;
       rule.core_fields.host_low = 0, rule.core_fields.host_high = 0;
       rule.plugin_action.plugin_id = 1; /* Dummy plugin */
+
+      rule.extended_fields.filter_plugin_id = 1; /* Dummy plugin */
+      memcpy(rule.extended_fields.filter_plugin_data, &filter, sizeof(filter));
+      /* strcpy(rule.extended_fields.payload_pattern, "hello"); */
 #else
       rule.rule_id = 5; 
       rule.rule_action = forward_packet_and_stop_rule_evaluation;
@@ -453,11 +465,26 @@ int main(int argc, char* argv[]) {
   }
 
   while(1) {
+    struct simple_stats {
+      u_int64_t num_pkts, num_bytes;
+    };
+    
     u_char buffer[2048];
+    struct simple_stats stats;
     struct pfring_pkthdr hdr;
+    int rc, len;
     
     if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0)
       dummyProcesssPacket(&hdr, buffer);
+
+    len = sizeof(stats);
+    rc = pfring_get_filtering_rule_stats(pd, 5, (char*)&stats, &len);
+    if(rc < 0)
+      printf("pfring_get_filtering_rule_stats() failed [rc=%d]\n", rc);
+    else {
+      printf("[Pkts=%u][Bytes=%u]\n", 
+	     (unsigned long)stats.num_pkts, (unsigned long)stats.num_bytes);
+    }
   }
 
   pfring_close(pd);

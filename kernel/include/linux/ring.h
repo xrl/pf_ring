@@ -149,7 +149,8 @@ typedef int (*plugin_handle_skb)(filtering_rule_element *rule,
 /* Return 1/0 in case of match/no match for the given skb */
 typedef int (*plugin_filter_skb)(filtering_rule_element *rule, 
 				 struct pcap_pkthdr *hdr,
-				 struct sk_buff *skb);
+				 struct sk_buff *skb,
+				 void **filter_rule_memory_storage);
 /* Get stats about the rule */
 typedef int (*plugin_get_stats)(filtering_rule_element *element,
 				u_char* stats_buffer, u_int stats_buffer_len);

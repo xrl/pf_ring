@@ -157,8 +157,8 @@ static u_int ring_table_size;
 struct list_head ring_cluster_list;
 
 /* List of all plugins */
-struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
-
+static struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
+static u_short max_registered_plugin_id = 0;
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
 
 /* ********************************** */
@@ -701,9 +701,10 @@ inline int MatchFound (void* id, int index, void *data) { return(0); }
 static int match_filtering_rule(filtering_rule_element *rule,
 				struct pcap_pkthdr *hdr,
 				struct sk_buff *skb,
-				int displ)
+				int displ,
+				void *parse_memory_buffer[])
 {
-  int debug = 1;
+  int debug = 0;
 
   if(debug) {
     printk("match_filtering_rule(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u) ",
@@ -774,9 +775,10 @@ static int match_filtering_rule(filtering_rule_element *rule,
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id] != NULL)
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb != NULL)
      ) {
-      int rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb(rule, hdr, skb);
-      
-      if(rc == 0)
+      int rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]
+	->pfring_plugin_filter_skb(rule, hdr, skb, &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
+
+      if(rc <= 0)
 	return(0); /* No match */    
   }
 
@@ -855,8 +857,13 @@ static void add_skb_to_ring(struct sk_buff *skb,
   theSlot = get_insert_slot(pfr);
 
   if((theSlot != NULL) && (theSlot->slot_state == 0)) {
+    int i;
     char *bucket;
-
+    void *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL }; /* This is a memory holder
+							    for storing parsed packet information
+							    that will then be freed when the packet 
+							    has been handled
+							 */
     /* Update Index */
     idx++;
 
@@ -869,12 +876,12 @@ static void add_skb_to_ring(struct sk_buff *skb,
     /* ************************** */
     
     if(0)
-    printk("About to evaluate packet [len=%d][tot=%llu][insertIdx=%d]"
-	   "[pkt_type=%d][cloned=%d]\n",
-	   (int)skb->len, pfr->slots_info->tot_pkts,
-	   pfr->slots_info->insert_idx,
-	   skb->pkt_type, skb->cloned);
-
+      printk("About to evaluate packet [len=%d][tot=%llu][insertIdx=%d]"
+	     "[pkt_type=%d][cloned=%d]\n",
+	     (int)skb->len, pfr->slots_info->tot_pkts,
+	     pfr->slots_info->insert_idx,
+	     skb->pkt_type, skb->cloned);
+    
     /* [2] Filter packet according to rules */
     read_lock(&ring_mgmt_lock);
     list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
@@ -883,7 +890,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 	entry = list_entry(ptr, filtering_rule_element, list);
 
-	if(match_filtering_rule(entry, hdr, skb, displ))
+	if(match_filtering_rule(entry, hdr, skb, displ, parse_memory_buffer))
 	  {
 	    if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 1;
@@ -899,6 +906,13 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	  }
       } /* for */
     read_unlock(&ring_mgmt_lock);
+
+    /* Free filtering placeholders */
+    for(i=1; i<=max_registered_plugin_id; i++)
+      if(parse_memory_buffer[i] != NULL) {
+	/* printk("*** Freed parse memory for plugin %d\n", i); */
+	kfree(parse_memory_buffer[i]);
+      }
 
     if(fwd_pkt) {
       /* We accept the packet: it needs to be queued */
@@ -1099,6 +1113,8 @@ static int register_plugin(struct pfring_plugin_registration *reg)
     return(-EINVAL); /* plugin already registered */
   else {
     plugin_registration[reg->plugin_id] = reg;
+
+    max_registered_plugin_id = max(max_registered_plugin_id, reg->plugin_id);
     try_module_get(THIS_MODULE); /* Increment usage count */
     return(0);
   }
@@ -1108,6 +1124,8 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 
 int unregister_plugin(u_int16_t pfring_plugin_id)
 {
+  int i;
+  
   if(pfring_plugin_id >= MAX_PLUGIN_ID)
     return(-EINVAL);
 
@@ -1141,6 +1159,12 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
     }
     read_unlock(&ring_mgmt_lock);
 
+    for(i=MAX_PLUGIN_ID-1; i>0; i--) {
+      if(plugin_registration[i] != NULL) {
+	max_registered_plugin_id = i;
+	break;
+    }
+  }
     module_put(THIS_MODULE); /* Decrement usage count */
     return(0);
   }
@@ -1983,7 +2007,7 @@ static int ring_setsockopt(struct socket *sock,
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
-  u_int cluster_id, debug = 0;
+  u_int cluster_id, debug = 1;
   char devName[8];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
@@ -2132,7 +2156,7 @@ static int ring_setsockopt(struct socket *sock,
 
       if(optlen != sizeof(filtering_rule)) 
 	{
-	  if(debug) printk("bad len (expected %d)\n", sizeof(filtering_rule));
+	  if(debug) printk("Bad len (expected %d)\n", sizeof(filtering_rule));
 	  return -EINVAL;
 	}
       else
@@ -2165,12 +2189,12 @@ static int ring_setsockopt(struct socket *sock,
 		printk("RING: Unable to compile pattern '%s'\n",
 		       rule->rule.extended_fields.payload_pattern);
 		rule->pattern = NULL;
-	      }
+	      } else
+		printk("RING: Compiled pattern '%s'\n", rule->rule.extended_fields.payload_pattern);
 	    } else
 	      rule->pattern = NULL;
 #endif
 	  write_lock(&ring_mgmt_lock);
-
 	  if(debug) printk("SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
 
 	  /* Implement an ordered add */
@@ -2192,26 +2216,23 @@ static int ring_setsockopt(struct socket *sock,
 		  rule = NULL;
 		  if(debug) printk("SO_ADD_FILTERING_RULE: overwritten rule_id %d\n", entry->rule.rule_id);
 		  break;
-		} else if(entry->rule.rule_id > rule->rule.rule_id)
-		  {
-		    if(prev == NULL)
-		      {
-			list_add(&rule->list, &pfr->rules); /* Add as first entry */
-			pfr->num_filtering_rules++;
-			if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as head rule\n", rule->rule.rule_id);
-		      }
-		    else {
-		      list_add(&rule->list, prev);
-		      pfr->num_filtering_rules++;
-		      if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d\n", rule->rule.rule_id);
-		    }
-
-		    rule = NULL;
-		    break;
-		  } else
-		    prev = ptr;
+		} else if(entry->rule.rule_id > rule->rule.rule_id) {
+		  if(prev == NULL) {
+		    list_add(&rule->list, &pfr->rules); /* Add as first entry */
+		    pfr->num_filtering_rules++;
+		    if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as head rule\n", rule->rule.rule_id);
+		  } else  {
+		    list_add(&rule->list, prev);
+		    pfr->num_filtering_rules++;
+		    if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d\n", rule->rule.rule_id);
+		  }
+		  
+		  rule = NULL;
+		  break;
+		} else
+		  prev = ptr;
 	    } /* for */
-
+	  
 	  if(rule != NULL)
 	    {
 	      if(prev == NULL)
@@ -2227,6 +2248,7 @@ static int ring_setsockopt(struct socket *sock,
 		  if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as last rule\n", rule->rule.rule_id);
 		}
 	    }
+
 	  write_unlock(&ring_mgmt_lock);
 	}
       break;
@@ -2372,7 +2394,7 @@ static int ring_getsockopt(struct socket *sock,
 	if(copy_from_user(&rule_id, optval, sizeof(rule_id)))
 	  return -EFAULT;
 
-	printk("SO_GET_FILTERING_RULE_STATS: rule_id=%d\n", rule_id);
+	/* printk("SO_GET_FILTERING_RULE_STATS: rule_id=%d\n", rule_id); */
 
 	write_lock(&ring_mgmt_lock);
 	list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
@@ -2387,14 +2409,18 @@ static int ring_getsockopt(struct socket *sock,
 		if(buffer == NULL)
 		  rc = -EFAULT;
 		else {
-		  if(plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)
+		  if((plugin_registration[rule->rule.plugin_action.plugin_id] == NULL)
+		     || (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)) {
+		    printk("RING: Found rule %d but pluginId %d is not registered\n", 
+			   rule_id, rule->rule.plugin_action.plugin_id);
 		    rc = -EFAULT;
-		  else
+		  } else
 		    rc = plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats(rule, buffer, len);
 
 		  if(rc > 0) {
-		    if(copy_to_user(optval, buffer, rc))
+		    if(copy_to_user(optval, buffer, rc)) {
 		      rc = -EFAULT;
+		    }
 		  }
 		}
 		break;
