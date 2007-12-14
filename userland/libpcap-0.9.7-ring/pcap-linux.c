@@ -487,7 +487,12 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 #endif
 	socklen_t		fromlen;
 	int			packet_len, caplen;
+
+#ifdef HAVE_PF_RING
+	struct pfring_pkthdr    pcap_header;
+#else
 	struct pcap_pkthdr	pcap_header;
+#endif
 
 #ifdef HAVE_PF_RING
 	if(handle->ring) {
@@ -507,7 +512,7 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 
 	  packet_len = pfring_recv(handle->ring, (char*)handle->buffer,
                                    handle->bufsize,
-                                   (struct pfring_pkthdr*)&pcap_header,
+                                   &pcap_header,
                                    1 /* wait_for_incoming_packet */);
           if (packet_len > 0) {
 	    bp = handle->buffer;
@@ -793,8 +798,11 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 	handle->md.packets_read++;
 
 	/* Call the user supplied callback function */
+#ifdef HAVE_PF_RING
+	callback(userdata, (struct pcap_pkthdr*)&pcap_header, bp);
+#else
 	callback(userdata, &pcap_header, bp);
-
+#endif
 	return 1;
 }
 
@@ -914,8 +922,13 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 		 *    getsockopt(handle->fd, SOL_PACKET, PACKET_STATISTICS, ....
 		 * resets the counters to zero.
 		 */
+#ifdef HAVE_PF_RING
+		handle->md.stat.ps_recv = kstats.tp_packets;
+		handle->md.stat.ps_drop = kstats.tp_drops;
+#else
 		handle->md.stat.ps_recv += kstats.tp_packets;
 		handle->md.stat.ps_drop += kstats.tp_drops;
+#endif
 		*stats = handle->md.stat;
 		return 0;
 	}
