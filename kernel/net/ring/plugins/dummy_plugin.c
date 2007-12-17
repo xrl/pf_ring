@@ -62,25 +62,29 @@ static u_int16_t plugin_id = 1;
 /* ************************************ */
 
 static int dummy_plugin_plugin_handle_skb(filtering_rule_element *rule,
+					  hash_filtering_rule *hash_rule,
 					  struct pcap_pkthdr *hdr,
 					  struct sk_buff *skb)
 {
-  if(rule->plugin_data_ptr == NULL) {
-    rule->plugin_data_ptr = (struct simple_stats*)kmalloc(sizeof(struct simple_stats), GFP_KERNEL);
-    if(rule->plugin_data_ptr != NULL)
+
+  if(rule != NULL) {
+    if(rule->plugin_data_ptr == NULL) {
+      rule->plugin_data_ptr = (struct simple_stats*)kmalloc(sizeof(struct simple_stats), GFP_KERNEL);
+      if(rule->plugin_data_ptr != NULL)
 	memset(rule->plugin_data_ptr, 0, sizeof(struct simple_stats));
-  }
-  
-  if(rule->plugin_data_ptr != NULL) {
-    struct simple_stats *stats = (struct simple_stats*)rule->plugin_data_ptr;
-    stats->num_pkts++, stats->num_bytes += hdr->len;
-    
+    }
+
+    if(rule->plugin_data_ptr != NULL) {
+      struct simple_stats *stats = (struct simple_stats*)rule->plugin_data_ptr;
+      stats->num_pkts++, stats->num_bytes += hdr->len;
+
 #ifdef DEBUG
-    printk("-> dummy_plugin_plugin_handle_skb [pkts=%u][bytes=%u]\n",
-	   (unsigned int)stats->num_pkts,
-	   (unsigned int)stats->num_bytes);
+      printk("-> dummy_plugin_plugin_handle_skb [pkts=%u][bytes=%u]\n",
+	     (unsigned int)stats->num_pkts,
+	     (unsigned int)stats->num_bytes);
 #endif
-  }  
+    }
+  }
 
   return(0);
 }
@@ -97,7 +101,7 @@ static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
 					  void **parse_memory)
 {
   struct dummy_filter *filter = (struct dummy_filter*)rule->rule.extended_fields.filter_plugin_data;
-  
+
 #ifdef DEBUG
   printk("-> dummy_plugin_plugin_filter_skb(host=0x%08X)\n", filter->src_host);
 #endif
@@ -117,7 +121,7 @@ static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
 /* ************************************ */
 
 static int dummy_plugin_plugin_get_stats(filtering_rule_element *rule,
-					 u_char* stats_buffer, 
+					 u_char* stats_buffer,
 					 u_int stats_buffer_len)
 {
 #ifdef DEBUG
@@ -131,7 +135,7 @@ static int dummy_plugin_plugin_get_stats(filtering_rule_element *rule,
       memcpy(stats_buffer, rule->plugin_data_ptr, sizeof(struct simple_stats));
 
     return(sizeof(struct simple_stats));
-  } else    
+  } else
     return(0);
 }
 
@@ -143,7 +147,7 @@ static int __init dummy_plugin_init(void)
   int rc;
 
   printk("Welcome to dummy plugin for PF_RING\n");
-  
+
   reg.plugin_id                = plugin_id;
   reg.pfring_plugin_filter_skb = dummy_plugin_plugin_filter_skb;
   reg.pfring_plugin_handle_skb = dummy_plugin_plugin_handle_skb;

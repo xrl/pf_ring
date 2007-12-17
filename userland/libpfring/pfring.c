@@ -236,27 +236,6 @@ int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 
 /* **************************************************** */
 
-int pfring_set_filtering_rule_plugin_id(pfring *ring, 
-					u_int16_t rule_id,
-					u_int16_t plugin_id) {
-  if(ring == NULL)
-    return(-1);
-  else {
-    struct rule_plugin_id info;
-    int rc;
-
-    info.plugin_id = plugin_id;
-    info.rule_id   = rule_id;
-
-    rc = setsockopt(ring->fd, 0, 
-		    SO_SET_FILTERING_RULE_PLUGIN_ID,
-		    &info, sizeof(info));
-    return(rc);
-  }
-}
-
-/* **************************************************** */
-
 int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   int rc;
 
@@ -290,6 +269,21 @@ int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
 
 /* **************************************************** */
 
+int pfring_handle_hash_filtering_rule(pfring *ring, 
+				      hash_filtering_rule* rule_to_add,
+				      u_char add_rule) {
+  int rc;
+
+  if((!rule_to_add) || (!ring)) return(-1);
+
+  rc = setsockopt(ring->fd, 0, add_rule ? SO_ADD_FILTERING_RULE : SO_REMOVE_FILTERING_RULE,
+		  rule_to_add, sizeof(hash_filtering_rule));
+
+  return(rc);
+}
+
+/* **************************************************** */
+
 int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */) {
   int rc;
 
@@ -314,7 +308,6 @@ int pfring_stats(pfring *ring, pfring_stat *stats) {
 
 int pfring_recv(pfring *ring, char* buffer, int buffer_len, 
 		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet) {
-  u_int idx, numRuns = 0, ptrAddr;
   FlowSlot *slot;
   u_int32_t queuedPkts;
 

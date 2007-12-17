@@ -1,4 +1,4 @@
-CC=gcc -g
+CC=gcc -g -Wall
 
 # Specify here the 
 KERNEL_VER=$(shell uname -r)
@@ -11,8 +11,8 @@ RANLIB=ranlib
 
 all: $(TARGET)
 
-$(TARGET): pfcount.o pfring.o $(LIBPFRING)
-	$(CC) pfcount.o pfring.o -o $(TARGET)
+$(TARGET): pfcount.o $(LIBPFRING)
+	$(CC) pfcount.o $(LIBPFRING) -o $(TARGET)
 
 $(LIBPFRING): $(OBJ)
 	@rm -f $@

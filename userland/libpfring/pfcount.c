@@ -31,11 +31,14 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <sys/poll.h>
-#include <time.h>
 #include <netinet/in_systm.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <net/ethernet.h>     /* the L2 protocols */
+#include <sys/time.h>
+#include <time.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include "pfring.h"
 
@@ -45,8 +48,6 @@ pfring  *pd;
 int verbose = 0;
 pfring_stat pfringStats;
 
-
-static u_int64_t totPkts, totLost;
 static struct timeval startTime;
 unsigned long long numPkts = 0, numBytes = 0;
 
@@ -93,8 +94,9 @@ void print_stats() {
   if(pfring_stats(pd, &pfringStat) >= 0)
     fprintf(stderr, "=========================\n"
 	    "Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
-	    "Total Pkts=%d/Dropped=%.1f %%\n",
-	    pfringStat.recv, pfringStat.drop, pfringStat.recv-pfringStat.drop,
+	    "Total Pkts=%u/Dropped=%.1f %%\n",
+	    (unsigned int)pfringStat.recv, (unsigned int)pfringStat.drop,
+	    (unsigned int)(pfringStat.recv-pfringStat.drop),
 	    pfringStat.recv == 0 ? 0 : (double)(pfringStat.drop*100)/(double)pfringStat.recv);
   fprintf(stderr, "%llu pkts [%.1f pkt/sec] - %llu bytes [%.2f Mbit/sec]\n",
 	  numPkts, (double)(numPkts*1000)/deltaMillisec,
@@ -316,8 +318,8 @@ void printHelp(void) {
 /* *************************************** */
 
 int main(int argc, char* argv[]) {
-  char *device = NULL, c, *bpfFilter = NULL, *string = NULL;
-  int i, promisc;
+  char *device = NULL, c, *string = NULL;
+  int promisc;
   u_int clusterId = 0;
   u_char wait_for_packet = 1;
 
@@ -413,19 +415,27 @@ int main(int argc, char* argv[]) {
   }
 
   if(1) {
-    filtering_rule rule;
-    
+    hash_filtering_rule rule;
+
+    memset(&rule, 0, sizeof(rule));
+    rule.proto = 1;
+    rule.host_peer_a = ntohl(inet_addr("192.168.1.1"));
+    rule.host_peer_b = ntohl(inet_addr("192.168.1.12"));
+    if(pfring_handle_hash_filtering_rule(pd, &rule, 1) < 0)
+      printf("pfring_add_hash)filtering_rule() failed\n");
+  } else {
     struct dummy_filter {      
       u_int32_t src_host;      
     };    
-
+      
+    struct dummy_filter filter;
+    filtering_rule rule;
+      
     pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
-
+      
     memset(&rule, 0, sizeof(rule));
 
-    if(1) {
-      struct dummy_filter filter;
-      
+    if(1) {            
       filter.src_host = ntohl(inet_addr("192.168.1.12"));
 
 #if 1
@@ -472,18 +482,22 @@ int main(int argc, char* argv[]) {
     u_char buffer[2048];
     struct simple_stats stats;
     struct pfring_pkthdr hdr;
-    int rc, len;
+    int rc;
+    u_int len;
     
     if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0)
       dummyProcesssPacket(&hdr, buffer);
 
-    len = sizeof(stats);
-    rc = pfring_get_filtering_rule_stats(pd, 5, (char*)&stats, &len);
-    if(rc < 0)
-      printf("pfring_get_filtering_rule_stats() failed [rc=%d]\n", rc);
-    else {
-      printf("[Pkts=%u][Bytes=%u]\n", 
-	     (unsigned long)stats.num_pkts, (unsigned long)stats.num_bytes);
+    if(0) {
+      len = sizeof(stats);
+      rc = pfring_get_filtering_rule_stats(pd, 5, (char*)&stats, &len);
+      if(rc < 0)
+	printf("pfring_get_filtering_rule_stats() failed [rc=%d]\n", rc);
+      else {
+	printf("[Pkts=%u][Bytes=%u]\n", 
+	       (unsigned int)stats.num_pkts, 
+	       (unsigned int)stats.num_bytes);
+      }
     }
   }
 

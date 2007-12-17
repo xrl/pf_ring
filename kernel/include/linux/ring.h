@@ -31,7 +31,7 @@
 #define SO_REMOVE_FILTERING_RULE        104
 #define SO_TOGGLE_FILTER_POLICY         105
 #define SO_SET_SAMPLING_RATE            106
-#define SO_SET_FILTERING_RULE_PLUGIN_ID 107
+
 /* Get */
 #define SO_GET_RING_VERSION             110
 #define SO_GET_FILTERING_RULE_STATS     111
@@ -66,13 +66,6 @@ struct pcap_pkthdr {
 
 #define MAX_PLUGIN_ID   128
 
-/* *********************************** */
-
-struct rule_plugin_id {
-  u_int16_t rule_id;
-  u_int16_t plugin_id;
-};
-
 /* ************************************************* */
 
 typedef struct {
@@ -106,7 +99,7 @@ typedef struct {
 
 typedef struct {
   /* Plugin Action */
-  u_int16_t plugin_id;   /* ('0'=no plugin) id of the plugin associated with this rule */
+  u_int16_t plugin_id; /* ('0'=no plugin) id of the plugin associated with this rule */
 } filtering_rule_plugin_action;
 
 typedef enum {
@@ -126,6 +119,33 @@ typedef struct {
   filtering_rule_plugin_action   plugin_action;
 } filtering_rule;
 
+/* *********************************** */
+
+#define DEFAULT_RING_HASH_SIZE     4096
+
+/*
+ * The hashtable contains only perfect matches: no
+ * wildacards or so are accepted.
+*/
+typedef struct {
+  u_int16_t vlan_id;
+  u_int8_t  proto;
+  u_int32_t host_peer_a, host_peer_b;
+  u_int16_t port_peer_a, port_peer_b;
+
+  rule_action_behaviour rule_action; /* What to do in case of match */
+  filtering_rule_plugin_action plugin_action;  
+} hash_filtering_rule;
+
+/* ************************************************* */
+
+typedef struct _filtering_hash_bucket{
+  hash_filtering_rule           rule;
+  void                          *plugin_data_ptr; /* ptr to a *continuous* memory area
+						    allocated by the plugin */  
+  struct _filtering_hash_bucket *next;
+} filtering_hash_bucket;
+
 /* ************************************************* */
 
 #ifdef __KERNEL__
@@ -143,7 +163,8 @@ typedef struct {
 
 /* Plugins */
 /* Execute an action (e.g. update rule stats) */
-typedef int (*plugin_handle_skb)(filtering_rule_element *rule, 
+typedef int (*plugin_handle_skb)(filtering_rule_element *rule,  /* In case the match is on the list */
+				 hash_filtering_rule *hash_rule, /* In case the match is on the hash */
 				 struct pcap_pkthdr *hdr,
 				 struct sk_buff *skb);
 /* Return 1/0 in case of match/no match for the given skb */
