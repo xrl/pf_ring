@@ -1084,7 +1084,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
       /* No reflector device: the packet needs to be queued */
       if(hdr->caplen > 0) {
 	/* Copy the packet into the bucket */
-	int copy_len, offset;
+	int offset;
 
 	if((last_matched_plugin > 0)
 	   && (parse_memory_buffer[last_matched_plugin] != NULL)) {
@@ -1099,14 +1099,15 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	  memcpy(&ring_bucket[sizeof(struct pcap_pkthdr)],
 		 parse_memory_buffer[last_matched_plugin]->mem, offset);
 	} else
-	  offset = 0;
+	  offset = 0, hdr->parsed_header_len = 0;
 
+	hdr->caplen = min(bucket_len-offset, hdr->caplen);
 	memcpy(ring_bucket, hdr, sizeof(struct pcap_pkthdr)); /* Copy extended packet header */
 
-	copy_len = min(bucket_len-offset, hdr->caplen);
-
-	if(copy_len > 0)
+	if(hdr->caplen > 0) {
+	  /* printk("--> [skb_copy_bits=%d]\n", hdr->caplen); */
 	  skb_copy_bits(skb, -displ, &ring_bucket[sizeof(struct pcap_pkthdr)+offset], hdr->caplen);
+	}
       }
 
 #if defined(RING_DEBUG)

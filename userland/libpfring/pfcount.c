@@ -245,7 +245,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
 
-    memcpy(&ehdr, p, sizeof(struct ether_header));
+    memcpy(&ehdr, p+h->parsed_header_len, sizeof(struct ether_header));
     eth_type = ntohs(ehdr.ether_type);
     printf("[%s -> %s] ",
 	   etheraddr_string(ehdr.ether_shost, buf1),
@@ -258,7 +258,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
       p+=4;
     }
     if(eth_type == 0x0800) {
-      memcpy(&ip, p+sizeof(ehdr), sizeof(struct ip));
+      memcpy(&ip, p+h->parsed_header_len+sizeof(ehdr), sizeof(struct ip));
       printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->parsed_pkt.l4_src_port);
       printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->parsed_pkt.l4_dst_port);
     } else if(eth_type == 0x0806)

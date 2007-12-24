@@ -324,11 +324,14 @@ int pfring_recv(pfring *ring, char* buffer, int buffer_len,
   if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
     char *bucket = (char*)&slot->bucket;
     struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
-    int bktLen = _hdr->caplen;
+    int bktLen = _hdr->caplen+_hdr->parsed_header_len;
 
-    if(bktLen > buffer_len) bktLen = buffer_len;
+    if(bktLen > buffer_len) bktLen = buffer_len-1;
       
-    if(buffer) memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
+    if(buffer) {
+      memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
+      bucket[bktLen] = '\0';
+    }
 
     if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
       ring->slots_info->remove_idx = 0;
