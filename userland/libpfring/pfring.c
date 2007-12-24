@@ -125,7 +125,7 @@ pfring* pfring_open(char *device_name, int promisc) {
       ring->slots_info = (FlowSlotInfo *)ring->buffer;
       if(ring->slots_info->version != RING_FLOWSLOT_VERSION) {
 	printf("Wrong RING version: "
-	       "kernel is %i, libpcap was compiled with %i\n",
+	       "kernel is %i, libpfring was compiled with %i\n",
 	       ring->slots_info->version, RING_FLOWSLOT_VERSION);
 	free(ring); 
 	return (NULL);

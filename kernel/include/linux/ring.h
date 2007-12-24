@@ -16,11 +16,11 @@
 
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
-#define RING_FLOWSLOT_VERSION           8
+#define RING_FLOWSLOT_VERSION           9
 
 /* Versioning */
-#define RING_VERSION              "3.7.1"
-#define RING_VERSION_NUM         0x030701
+#define RING_VERSION                "3.7.2"
+#define RING_VERSION_NUM           0x030702
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -54,11 +54,13 @@ struct pkt_parsing_info {
   u_int16_t eth_offset, vlan_offset, l3_offset, l4_offset, payload_offset; 
 };
 
+/* NOTE: keep 'struct pfring_pkthdr' in sync with 'struct pcap_pkthdr' (ring.h) */
 struct pcap_pkthdr {
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
   struct pkt_parsing_info parsed_pkt; /* packet parsing info */
+  u_int16_t parsed_header_len; /* Extra parsing data before packet */
 };
 #endif
 
@@ -161,6 +163,11 @@ typedef struct {
   void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */  
 } filtering_rule_element;
 
+struct parse_buffer {
+  void      *mem;
+  u_int16_t  mem_len;
+};
+
 /* Plugins */
 /* Execute an action (e.g. update rule stats) */
 typedef int (*plugin_handle_skb)(filtering_rule_element *rule,  /* In case the match is on the list */
@@ -171,7 +178,7 @@ typedef int (*plugin_handle_skb)(filtering_rule_element *rule,  /* In case the m
 typedef int (*plugin_filter_skb)(filtering_rule_element *rule, 
 				 struct pcap_pkthdr *hdr,
 				 struct sk_buff *skb,
-				 void **filter_rule_memory_storage);
+				 struct parse_buffer **filter_rule_memory_storage);
 /* Get stats about the rule */
 typedef int (*plugin_get_stats)(filtering_rule_element *element,
 				u_char* stats_buffer, u_int stats_buffer_len);

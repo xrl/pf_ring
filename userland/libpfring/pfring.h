@@ -75,15 +75,8 @@ extern "C" {
     struct timeval ts;    /* time stamp */
     u_int32_t caplen;     /* length of portion present */
     u_int32_t len;        /* length this packet (off wire) */
-    /* packet parsing info */
-    u_int16_t eth_type;   /* Ethernet type */
-    u_int16_t vlan_id;    /* VLAN Id or NO_VLAN */
-    u_int8_t  l3_proto, ipv4_tos;   /* Layer 3 protocol/TOS */
-    u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
-    u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
-    u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
-    /* Offsets of L3/L4/payload elements */
-    u_int16_t eth_offset, vlan_offset, l3_offset, l4_offset, payload_offset; 
+    struct pkt_parsing_info parsed_pkt; /* packet parsing info */
+    u_int16_t parsed_header_len; /* Extra parsing data before packet */
   }; 
 
   /* ********************************* */

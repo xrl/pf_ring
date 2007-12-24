@@ -237,10 +237,10 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     struct ip ip;
     int s = (h->ts.tv_sec + thiszone) % 86400;
 
-    printf("[eth_type=0x%04X]", h->eth_type);
-    printf("[l3_proto=%u]", (unsigned int)h->l3_proto);
-    printf("[%s:%d -> ", intoa(h->ipv4_src), h->l4_src_port);
-    printf("%s:%d] ", intoa(h->ipv4_dst), h->l4_dst_port);
+    printf("[eth_type=0x%04X]", h->parsed_pkt.eth_type);
+    printf("[l3_proto=%u]", (unsigned int)h->parsed_pkt.l3_proto);
+    printf("[%s:%d -> ", intoa(h->parsed_pkt.ipv4_src), h->parsed_pkt.l4_src_port);
+    printf("%s:%d] ", intoa(h->parsed_pkt.ipv4_dst), h->parsed_pkt.l4_dst_port);
     printf("%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
@@ -259,15 +259,16 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     }
     if(eth_type == 0x0800) {
       memcpy(&ip, p+sizeof(ehdr), sizeof(struct ip));
-      printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->l4_src_port);
-      printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->l4_dst_port);
+      printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->parsed_pkt.l4_src_port);
+      printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->parsed_pkt.l4_dst_port);
     } else if(eth_type == 0x0806)
       printf("[ARP]");
     else
       printf("[eth_type=0x%04X]", eth_type);
     
     printf("[tos=%d][tcp_flags=%d][caplen=%d][len=%d]\n", 
-	   h->ipv4_tos, h->tcp_flags, h->caplen, h->len);
+	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp_flags,
+	   h->caplen, h->len);
   }
 
   if(numPkts == 0) gettimeofday(&startTime, NULL);
@@ -414,6 +415,8 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
+  pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
+
   if(1) {
     hash_filtering_rule rule;
 
@@ -422,16 +425,14 @@ int main(int argc, char* argv[]) {
     rule.host_peer_a = ntohl(inet_addr("192.168.1.1"));
     rule.host_peer_b = ntohl(inet_addr("192.168.1.12"));
     if(pfring_handle_hash_filtering_rule(pd, &rule, 1) < 0)
-      printf("pfring_add_hash)filtering_rule() failed\n");
+      printf("pfring_add_hash_filtering_rule() failed\n");
   } else {
     struct dummy_filter {      
       u_int32_t src_host;      
     };    
       
     struct dummy_filter filter;
-    filtering_rule rule;
-      
-    pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
+    filtering_rule rule;     
       
     memset(&rule, 0, sizeof(rule));
 

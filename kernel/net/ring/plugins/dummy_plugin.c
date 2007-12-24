@@ -98,7 +98,7 @@ struct dummy_filter {
 static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
 					  struct pcap_pkthdr *hdr,
 					  struct sk_buff *skb,
-					  void **parse_memory)
+					  struct parse_buffer **parse_memory)
 {
   struct dummy_filter *filter = (struct dummy_filter*)rule->rule.extended_fields.filter_plugin_data;
 
@@ -108,8 +108,12 @@ static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
 
   /* Test allocation in order to show how memory placeholder works */
   if((*parse_memory) == NULL) {
-    (*parse_memory) = kmalloc(4, GFP_KERNEL);
-    printk("-> dummy_plugin_plugin_filter_skb allocated memory\n");
+    (*parse_memory) = kmalloc(sizeof(struct parse_buffer*), GFP_KERNEL);
+    if(*parse_memory) {
+      (*parse_memory)->mem_len = 4;
+      (*parse_memory)->mem = kmalloc((*parse_memory)->mem_len, GFP_KERNEL);
+      printk("-> dummy_plugin_plugin_filter_skb allocated memory\n");
+    }
   }
 
   if(hdr->parsed_pkt.ipv4_src == filter->src_host)
