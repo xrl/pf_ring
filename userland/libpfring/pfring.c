@@ -236,6 +236,33 @@ int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 
 /* **************************************************** */
 
+int pfring_get_hash_filtering_rule_stats(pfring *ring,
+					 hash_filtering_rule* rule,
+					 char* stats, u_int *stats_len) {
+  if(ring == NULL)
+    return(-1);
+  else {
+    char buffer[2048];
+    int rc;
+    u_int len;
+    
+    memcpy(buffer, rule, sizeof(hash_filtering_rule));
+    len = sizeof(buffer);
+    rc = getsockopt(ring->fd, 0,
+		    SO_GET_HASH_FILTERING_RULE_STATS,
+		    buffer, &len);
+    if(rc < 0) 
+      return(rc);
+    else {
+      *stats_len = min(*stats_len, rc);
+      memcpy(stats, buffer, *stats_len);
+      return(0);
+    }
+  }
+}
+
+/* **************************************************** */
+
 int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   int rc;
 
@@ -254,6 +281,15 @@ int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
 		  rule_to_add, sizeof(filtering_rule));
 
   return(rc);
+}
+
+/* **************************************************** */
+
+int pfring_enable_ring(pfring *ring) {
+  char dummy;
+
+  if(!ring) return(-1);
+  return(setsockopt(ring->fd, 0, SO_ACTIVATE_RING, &dummy, sizeof(dummy)));
 }
 
 /* **************************************************** */

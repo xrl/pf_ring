@@ -62,9 +62,11 @@ static u_int16_t plugin_id = 1;
 /* ************************************ */
 
 static int dummy_plugin_plugin_handle_skb(filtering_rule_element *rule,
-					  hash_filtering_rule *hash_rule,
+					  filtering_hash_bucket *hash_rule,
 					  struct pcap_pkthdr *hdr,
-					  struct sk_buff *skb)
+					  struct sk_buff *skb,
+					  u_int16_t filter_plugin_id,
+					  struct parse_buffer *filter_rule_memory_storage)
 {
 
   if(rule != NULL) {

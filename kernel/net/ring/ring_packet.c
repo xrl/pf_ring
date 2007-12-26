@@ -795,38 +795,42 @@ static int match_filtering_rule(filtering_rule_element *rule,
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id] != NULL)
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb != NULL)
      ) {
-      int rc, debug = 0;
+    int rc, debug = 0;
+
+    if(debug)
+      printk("rule->plugin_id [rule_id=%d][filter_plugin_id=%d][plugin_action=%d][ptr=%p]\n",
+	     rule->rule.rule_id,
+	     rule->rule.extended_fields.filter_plugin_id,
+	     rule->rule.plugin_action.plugin_id,
+	     plugin_registration[rule->rule.plugin_action.plugin_id]);
+
+    rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]
+      ->pfring_plugin_filter_skb(rule, hdr, skb,
+				 &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
+
+    if(rc <= 0)
+      return(0); /* No match */
+    else {
+      *last_matched_plugin = rule->rule.extended_fields.filter_plugin_id;
 
       if(debug)
-	printk("rule->plugin_id [rule_id=%d][filter_plugin_id=%d][plugin_action=%d][ptr=%p]\n",
-	       rule->rule.rule_id,
-	       rule->rule.extended_fields.filter_plugin_id,
-	       rule->rule.plugin_action.plugin_id,
-	       plugin_registration[rule->rule.plugin_action.plugin_id]);
-
-      rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb(rule, hdr, skb,
-								      &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
-
-      if(rc <= 0)
-	return(0); /* No match */
-      else {
-	*last_matched_plugin = rule->rule.extended_fields.filter_plugin_id;
-
-	if(debug)
-	  printk("[last_matched_plugin = %d][buffer=%p][len=%d]\n",
-		 *last_matched_plugin, parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id],
-		 parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id] ? 
-		 parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]->mem_len : 0);
-      }
+	printk("[last_matched_plugin = %d][buffer=%p][len=%d]\n",
+	       *last_matched_plugin, parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id],
+	       parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id] ?
+	       parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]->mem_len : 0);
+    }
   }
-  
+
   /* Action to be performed in case of match */
   if((rule->rule.plugin_action.plugin_id != 0)
      && (rule->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
      && (plugin_registration[rule->rule.plugin_action.plugin_id] != NULL)
      && (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
      ) {
-    plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb(rule, NULL, hdr, skb);
+    plugin_registration[rule->rule.plugin_action.plugin_id]
+      ->pfring_plugin_handle_skb(rule, NULL, hdr, skb,
+				 rule->rule.extended_fields.filter_plugin_id,
+				 parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
   }
 
   if(debug) {
@@ -946,7 +950,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	       hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto,
 	       hdr->parsed_pkt.ipv4_src, hdr->parsed_pkt.l4_src_port,
 	       hdr->parsed_pkt.ipv4_dst, hdr->parsed_pkt.l4_dst_port, hash_idx);
-      
+
       while(hash_bucket != NULL) {
 	if(hash_bucket_match(hash_bucket, hdr)) {
 	  hash_found = 1;
@@ -961,7 +965,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	   && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id] != NULL)
 	   && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
 	   ) {
-	  plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb(NULL, &hash_bucket->rule, hdr, skb);
+	  plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
+	    ->pfring_plugin_handle_skb(NULL, hash_bucket, hdr, skb, 0 /* no plugin */, NULL);
 	}
 
 	if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
@@ -1092,7 +1097,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 	  /*
 	    printk("--> [last_matched_plugin = %d][parsed_header_len=%d]\n",
-	           last_matched_plugin, hdr->parsed_header_len);
+	    last_matched_plugin, hdr->parsed_header_len);
 	  */
 	  if(offset > bucket_len) offset = hdr->parsed_header_len = bucket_len;
 
@@ -1225,7 +1230,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 {
   if(reg == NULL) return(-1);
 
-#ifndef RING_DEBUG
+#ifdef RING_DEBUG
   printk("--> register_plugin(%d)\n", reg->plugin_id);
 #endif
 
@@ -1238,6 +1243,9 @@ static int register_plugin(struct pfring_plugin_registration *reg)
     plugin_registration[reg->plugin_id] = reg;
 
     max_registered_plugin_id = max(max_registered_plugin_id, reg->plugin_id);
+
+    printk("RING: registered plugin [id=%d][max=%d][%p]\n", 
+	   reg->plugin_id, max_registered_plugin_id, plugin_registration[reg->plugin_id]);
     try_module_get(THIS_MODULE); /* Increment usage count */
     return(0);
   }
@@ -1286,8 +1294,11 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
       if(plugin_registration[i] != NULL) {
 	max_registered_plugin_id = i;
 	break;
+      }
     }
-  }
+
+    printk("RING: unregistered plugin [id=%d][max=%d]\n", 
+	   pfring_plugin_id, max_registered_plugin_id);
     module_put(THIS_MODULE); /* Decrement usage count */
     return(0);
   }
@@ -1650,10 +1661,6 @@ static int ring_release(struct socket *sock)
       filtering_rule_element *rule;
 
       rule = list_entry(ptr, filtering_rule_element, list);
-
-#if defined(RING_DEBUG)
-      printk("RING: Deleting rule_id %d\n", rule->rule.core_fields.rule_id);
-#endif
 
 #ifdef CONFIG_TEXTSEARCH
       if(rule->pattern) textsearch_destroy(rule->pattern);
@@ -2131,7 +2138,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 0;
 
-  if(debug) printk("handle_filtering_hash_bucket(hash_value=%u,add_rule=%d) called\n", 
+  if(debug) printk("handle_filtering_hash_bucket(hash_value=%u,add_rule=%d) called\n",
 		   hash_value, add_rule);
 
   write_lock(&ring_mgmt_lock);
@@ -2151,7 +2158,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
   if(pfr->filtering_hash[hash_value] == NULL) {
     if(add_rule)
       pfr->filtering_hash[hash_value] = rule, rc = 0;
-    else {      
+    else {
       return(-1); /* Unable to find the specified rule */
     }
   } else {
@@ -2350,102 +2357,104 @@ static int ring_setsockopt(struct socket *sock,
 	write_lock(&ring_mgmt_lock);
 	pfr->rules_default_accept_policy = new_policy;
 	write_unlock(&ring_mgmt_lock);
+	/*
 	if(debug) printk("SO_TOGGLE_FILTER_POLICY: default policy is %s\n",
 			 pfr->rules_default_accept_policy ? "accept" : "drop");
+	*/
       }
       break;
 
     case SO_ADD_FILTERING_RULE:
-      if(debug) printk("+++ SO_ADD_FILTERING_RULE(len=%d)\n", optlen);
+      /* if(debug) printk("+++ SO_ADD_FILTERING_RULE(len=%d)\n", optlen); */
 
       if(optlen == sizeof(filtering_rule)) {
-	  struct list_head *ptr, *tmp_ptr;
+	struct list_head *ptr, *tmp_ptr;
 
-	  if(debug) printk("Allocating memory\n");
+	if(debug) printk("Allocating memory\n");
 
-	  rule = (filtering_rule_element*)kcalloc(1, sizeof(filtering_rule_element), GFP_KERNEL);
+	rule = (filtering_rule_element*)kcalloc(1, sizeof(filtering_rule_element), GFP_KERNEL);
 
-	  if(rule == NULL)
-	    return -EFAULT;
+	if(rule == NULL)
+	  return -EFAULT;
 
-	  if(copy_from_user(&rule->rule, optval, optlen))
-	    return -EFAULT;
+	if(copy_from_user(&rule->rule, optval, optlen))
+	  return -EFAULT;
 
-	  INIT_LIST_HEAD(&rule->list);
+	INIT_LIST_HEAD(&rule->list);
 
 #ifdef CONFIG_TEXTSEARCH
-	  /* Compile pattern if present */
-	  if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
-	    {
-	      rule->pattern = textsearch_prepare("kmp", rule->rule.extended_fields.payload_pattern,
-						 strlen(rule->rule.extended_fields.payload_pattern),
-						 GFP_KERNEL, TS_AUTOLOAD);
+	/* Compile pattern if present */
+	if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
+	  {
+	    rule->pattern = textsearch_prepare("kmp", rule->rule.extended_fields.payload_pattern,
+					       strlen(rule->rule.extended_fields.payload_pattern),
+					       GFP_KERNEL, TS_AUTOLOAD);
 
-	      if(IS_ERR(rule->pattern)) {
-		printk("RING: Unable to compile pattern '%s'\n",
-		       rule->rule.extended_fields.payload_pattern);
-		rule->pattern = NULL;
-	      } else
-		printk("RING: Compiled pattern '%s'\n", rule->rule.extended_fields.payload_pattern);
-	    } else
+	    if(IS_ERR(rule->pattern)) {
+	      printk("RING: Unable to compile pattern '%s'\n",
+		     rule->rule.extended_fields.payload_pattern);
 	      rule->pattern = NULL;
+	    } else
+	      printk("RING: Compiled pattern '%s'\n", rule->rule.extended_fields.payload_pattern);
+	  } else
+	    rule->pattern = NULL;
 #endif
-	  write_lock(&ring_mgmt_lock);
-	  if(debug) printk("SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
+	write_lock(&ring_mgmt_lock);
+	if(debug) printk("SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
 
-	  /* Implement an ordered add */
-	  list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
-	    {
-	      entry = list_entry(ptr, filtering_rule_element, list);
+	/* Implement an ordered add */
+	list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
+	  {
+	    entry = list_entry(ptr, filtering_rule_element, list);
 
-	      if(debug) printk("SO_ADD_FILTERING_RULE: [current rule %d][rule to add %d]\n",
-			       entry->rule.rule_id, rule->rule.rule_id);
+	    if(debug) printk("SO_ADD_FILTERING_RULE: [current rule %d][rule to add %d]\n",
+			     entry->rule.rule_id, rule->rule.rule_id);
 
-	      if(entry->rule.rule_id == rule->rule.rule_id)
-		{
-		  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
+	    if(entry->rule.rule_id == rule->rule.rule_id)
+	      {
+		memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
 #ifdef CONFIG_TEXTSEARCH
-		  if(entry->pattern != NULL) textsearch_destroy(entry->pattern);
-		  entry->pattern = rule->pattern;
+		if(entry->pattern != NULL) textsearch_destroy(entry->pattern);
+		entry->pattern = rule->pattern;
 #endif
-		  kfree(rule);
-		  rule = NULL;
-		  if(debug) printk("SO_ADD_FILTERING_RULE: overwritten rule_id %d\n", entry->rule.rule_id);
-		  break;
-		} else if(entry->rule.rule_id > rule->rule.rule_id) {
-		  if(prev == NULL) {
-		    list_add(&rule->list, &pfr->rules); /* Add as first entry */
-		    pfr->num_filtering_rules++;
-		    if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as head rule\n", rule->rule.rule_id);
-		  } else  {
-		    list_add(&rule->list, prev);
-		    pfr->num_filtering_rules++;
-		    if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d\n", rule->rule.rule_id);
-		  }
-
-		  rule = NULL;
-		  break;
-		} else
-		  prev = ptr;
-	    } /* for */
-
-	  if(rule != NULL)
-	    {
-	      if(prev == NULL)
-		{
+		kfree(rule);
+		rule = NULL;
+		if(debug) printk("SO_ADD_FILTERING_RULE: overwritten rule_id %d\n", entry->rule.rule_id);
+		break;
+	      } else if(entry->rule.rule_id > rule->rule.rule_id) {
+		if(prev == NULL) {
 		  list_add(&rule->list, &pfr->rules); /* Add as first entry */
 		  pfr->num_filtering_rules++;
-		  if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as first rule\n", rule->rule.rule_id);
-		}
-	      else
-		{
-		  list_add_tail(&rule->list, &pfr->rules); /* Add as first entry */
+		  if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as head rule\n", rule->rule.rule_id);
+		} else  {
+		  list_add(&rule->list, prev);
 		  pfr->num_filtering_rules++;
-		  if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as last rule\n", rule->rule.rule_id);
+		  if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d\n", rule->rule.rule_id);
 		}
-	    }
 
-	  write_unlock(&ring_mgmt_lock);
+		rule = NULL;
+		break;
+	      } else
+		prev = ptr;
+	  } /* for */
+
+	if(rule != NULL)
+	  {
+	    if(prev == NULL)
+	      {
+		list_add(&rule->list, &pfr->rules); /* Add as first entry */
+		pfr->num_filtering_rules++;
+		if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as first rule\n", rule->rule.rule_id);
+	      }
+	    else
+	      {
+		list_add_tail(&rule->list, &pfr->rules); /* Add as first entry */
+		pfr->num_filtering_rules++;
+		if(debug) printk("SO_ADD_FILTERING_RULE: added rule %d as last rule\n", rule->rule.rule_id);
+	      }
+	  }
+
+	write_unlock(&ring_mgmt_lock);
       } else if(optlen == sizeof(hash_filtering_rule)) {
 	/* This is a hash rule */
 	filtering_hash_bucket *rule = (filtering_hash_bucket*)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
@@ -2523,6 +2532,11 @@ static int ring_setsockopt(struct socket *sock,
 	return -EFAULT;
       break;
 
+    case SO_ACTIVATE_RING:
+      printk("* SO_ACTIVATE_RING *\n");
+      found = 1, pfr->ring_active = 1;
+      break;
+
     default:
       found = 0;
       break;
@@ -2579,12 +2593,56 @@ static int ring_getsockopt(struct socket *sock,
 	break;
       }
 
+    case SO_GET_HASH_FILTERING_RULE_STATS:
+      {
+	int rc = -EFAULT;
+
+	if(len >= sizeof(hash_filtering_rule)) {
+	  hash_filtering_rule rule;
+	  u_int hash_idx;
+	  
+	  if(pfr->filtering_hash == NULL) return -EFAULT;
+
+	  if(copy_from_user(&rule, optval, sizeof(rule)))
+            return -EFAULT;
+
+	  hash_idx = hash_pkt(rule.vlan_id, rule.proto,
+			      rule.host_peer_a, rule.host_peer_b,
+			      rule.port_peer_a, rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;	  
+
+	  if(pfr->filtering_hash[hash_idx] != NULL) {
+	    filtering_hash_bucket *bucket;
+
+	    read_lock(&ring_mgmt_lock);
+	    bucket = pfr->filtering_hash[hash_idx];
+
+	    while(bucket != NULL) {
+	      if(memcmp(&bucket->rule, &rule, sizeof(hash_filtering_rule)) == 0) {
+		if(copy_to_user(optval, bucket->plugin_data_ptr, 
+				bucket->plugin_data_ptr_len)) {
+		  rc = -EFAULT;
+		} else
+		  rc = bucket->plugin_data_ptr_len;
+
+		break;
+	      } else
+		bucket = bucket->next;
+	    }
+
+	    read_unlock(&ring_mgmt_lock);
+	  }
+	}
+
+	return(rc);
+	break;
+      }
+
     case SO_GET_FILTERING_RULE_STATS:
       {
-	u_int16_t rule_id;
 	char *buffer = NULL;
 	int rc = -EFAULT;
 	struct list_head *ptr, *tmp_ptr;
+	u_int16_t rule_id;
 
 	if(len < sizeof(rule_id))
 	  return -EINVAL;
@@ -2592,7 +2650,7 @@ static int ring_getsockopt(struct socket *sock,
 	if(copy_from_user(&rule_id, optval, sizeof(rule_id)))
 	  return -EFAULT;
 
-	printk("SO_GET_FILTERING_RULE_STATS: rule_id=%d\n", rule_id);
+	/* printk("SO_GET_FILTERING_RULE_STATS: rule_id=%d\n", rule_id); */
 
 	write_lock(&ring_mgmt_lock);
 	list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
@@ -2613,7 +2671,8 @@ static int ring_getsockopt(struct socket *sock,
 			   rule_id, rule->rule.plugin_action.plugin_id);
 		    rc = -EFAULT;
 		  } else
-		    rc = plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats(rule, buffer, len);
+		    rc = plugin_registration[rule->rule.plugin_action.plugin_id]
+		      ->pfring_plugin_get_stats(rule, buffer, len);
 
 		  if(rc > 0) {
 		    if(copy_to_user(optval, buffer, rc)) {
@@ -2626,8 +2685,9 @@ static int ring_getsockopt(struct socket *sock,
 	  }
 	write_unlock(&ring_mgmt_lock);
 
-	if(buffer != NULL) kfree(buffer);
-	printk("SO_GET_FILTERING_RULE_STATS *END*\n");
+	if(buffer != NULL) kfree(buffer);	
+
+	/* printk("SO_GET_FILTERING_RULE_STATS *END*\n"); */
 	return(rc);
 	break;
       }

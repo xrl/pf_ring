@@ -91,10 +91,14 @@ extern "C" {
 		  struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet);
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 				      char* stats, u_int *stats_len);
+  int pfring_get_hash_filtering_rule_stats(pfring *ring,
+					 hash_filtering_rule* rule,
+					 char* stats, u_int *stats_len);
   int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add);
   int pfring_handle_hash_filtering_rule(pfring *ring,
 					hash_filtering_rule* rule_to_add,
 					u_char add_rule);
+  int pfring_enable_ring(pfring *ring);
   int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id);
   int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy);
   int pfring_version(pfring *ring, u_int32_t *version);

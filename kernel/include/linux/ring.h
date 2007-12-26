@@ -19,22 +19,24 @@
 #define RING_FLOWSLOT_VERSION           9
 
 /* Versioning */
-#define RING_VERSION                "3.7.2"
-#define RING_VERSION_NUM           0x030702
+#define RING_VERSION                "3.7.3"
+#define RING_VERSION_NUM           0x030703
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
-#define SO_REMOVE_FROM_CLUSTER          100
-#define SO_SET_REFLECTOR                101
-#define SO_SET_STRING                   102
-#define SO_ADD_FILTERING_RULE           103
-#define SO_REMOVE_FILTERING_RULE        104
-#define SO_TOGGLE_FILTER_POLICY         105
-#define SO_SET_SAMPLING_RATE            106
+#define SO_REMOVE_FROM_CLUSTER           100
+#define SO_SET_REFLECTOR                 101
+#define SO_SET_STRING                    102
+#define SO_ADD_FILTERING_RULE            103
+#define SO_REMOVE_FILTERING_RULE         104
+#define SO_TOGGLE_FILTER_POLICY          105
+#define SO_SET_SAMPLING_RATE             106
+#define SO_ACTIVATE_RING                 107
 
 /* Get */
-#define SO_GET_RING_VERSION             110
-#define SO_GET_FILTERING_RULE_STATS     111
+#define SO_GET_RING_VERSION              110
+#define SO_GET_FILTERING_RULE_STATS      111
+#define SO_GET_HASH_FILTERING_RULE_STATS 112
 
 /* *********************************** */
 
@@ -141,10 +143,11 @@ typedef struct {
 
 /* ************************************************* */
 
-typedef struct _filtering_hash_bucket{
+typedef struct _filtering_hash_bucket {
   hash_filtering_rule           rule;
   void                          *plugin_data_ptr; /* ptr to a *continuous* memory area
-						    allocated by the plugin */  
+						     allocated by the plugin */  
+  u_int16_t                     plugin_data_ptr_len;
   struct _filtering_hash_bucket *next;
 } filtering_hash_bucket;
 
@@ -170,10 +173,12 @@ struct parse_buffer {
 
 /* Plugins */
 /* Execute an action (e.g. update rule stats) */
-typedef int (*plugin_handle_skb)(filtering_rule_element *rule,  /* In case the match is on the list */
-				 hash_filtering_rule *hash_rule, /* In case the match is on the hash */
+typedef int (*plugin_handle_skb)(filtering_rule_element *rule,       /* In case the match is on the list */
+				 filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
 				 struct pcap_pkthdr *hdr,
-				 struct sk_buff *skb);
+				 struct sk_buff *skb,
+				 u_int16_t filter_plugin_id,
+				 struct parse_buffer *filter_rule_memory_storage);
 /* Return 1/0 in case of match/no match for the given skb */
 typedef int (*plugin_filter_skb)(filtering_rule_element *rule, 
 				 struct pcap_pkthdr *hdr,
