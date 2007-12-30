@@ -18,6 +18,10 @@
  * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
+#define __USE_XOPEN2K
+#include <sys/types.h>
+#include <pthread.h>
+
 #include "pfring.h"
 
 // #define RING_DEBUG
@@ -86,7 +90,7 @@ static int set_if_promisc(const char *device, int set_promisc) {
 
 /* **************************************************** */
 
-pfring* pfring_open(char *device_name, int promisc) {
+pfring* pfring_open(char *device_name, u_int8_t promisc, u_int8_t _reentrant) {
   int err = 0;
   pfring *ring = (pfring*)malloc(sizeof(pfring));
   
@@ -95,6 +99,7 @@ pfring* pfring_open(char *device_name, int promisc) {
   else
     memset(ring, 0, sizeof(pfring));
 
+  ring->reentrant = _reentrant;
   ring->fd = socket(PF_RING, SOCK_RAW, htons(ETH_P_ALL));
 
 #ifdef RING_DEBUG
@@ -180,7 +185,12 @@ pfring* pfring_open(char *device_name, int promisc) {
     free(ring);
   }
 
-  return(err == 0 ? ring : NULL);
+  if(err == 0) {
+    if(ring->reentrant)
+      pthread_spin_init(&ring->spinlock, PTHREAD_PROCESS_PRIVATE);    
+    return(ring);
+  } else    
+    return(NULL);
 }
 
 /* **************************************************** */
@@ -197,6 +207,8 @@ void pfring_close(pfring *ring) {
 
   free(ring->device_name);
   close(ring->fd);
+  if(ring->reentrant)
+    pthread_spin_destroy(&ring->spinlock);
   free(ring);
 }
 
@@ -342,16 +354,19 @@ int pfring_stats(pfring *ring, pfring_stat *stats) {
 
 /* **************************************************** */
 
-int pfring_recv(pfring *ring, char* buffer, int buffer_len, 
+int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
 		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet) {
   FlowSlot *slot;
   u_int32_t queuedPkts;
 
   if((ring == NULL) || (ring->buffer == NULL)) return(-1);
+
+ do_pfring_recv:
+  if(ring->reentrant)
+    pthread_spin_lock(&ring->spinlock);
 	  
   slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
 
- do_pfring_recv:
   if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
     queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
   else
@@ -381,11 +396,13 @@ int pfring_recv(pfring *ring, char* buffer, int buffer_len,
 
     ring->slots_info->tot_read++;
     slot->slot_state = 0; /* Empty slot */
-      
+    if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
     return(1);
   } else if(wait_for_incoming_packet) {
     struct pollfd pfd;
     int rc;
+
+    if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
 
     /* Sleep when nothing is happening */
     pfd.fd      = ring->fd;

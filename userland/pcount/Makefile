@@ -3,14 +3,15 @@ LIBPFRING=../libpfring/libpfring.a
 KERNEL_VER=$(shell uname -r)
 KERNEL_DIR=/lib/modules/$(KERNEL_VER)/source/include
 INCLUDE=-I$(KERNEL_DIR)
+LIBS=-lpthread
 
 all: pcount pwrite
 
 pcount: pcount.c $(LIBPCAP) $(LIBPFRING) Makefile
-	gcc -g pcount.c -o pcount $(LIBPCAP) $(LIBPFRING)
+	gcc -g pcount.c -o pcount $(LIBPCAP) $(LIBPFRING) $(LIBS)
 
 pwrite: pwrite.c $(LIBPCAP) $(LIBPFRING) Makefile
-	gcc $(INCLUDE) -g pwrite.c -o pwrite $(LIBPCAP) $(LIBPFRING)
+	gcc $(INCLUDE) -g pwrite.c -o pwrite $(LIBPCAP) $(LIBPFRING) $(LIBS)
 
 clean:
 	\rm -f pcount pwrite *~

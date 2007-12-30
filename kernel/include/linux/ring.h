@@ -19,8 +19,8 @@
 #define RING_FLOWSLOT_VERSION           9
 
 /* Versioning */
-#define RING_VERSION                "3.7.3"
-#define RING_VERSION_NUM           0x030703
+#define RING_VERSION                "3.7.4"
+#define RING_VERSION_NUM           0x030704
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -40,8 +40,6 @@
 
 /* *********************************** */
 
-#ifndef HAVE_PCAP
-
 #define NO_VLAN ((u_int16_t)-1)
 
 struct pkt_parsing_info {
@@ -56,6 +54,7 @@ struct pkt_parsing_info {
   u_int16_t eth_offset, vlan_offset, l3_offset, l4_offset, payload_offset; 
 };
 
+#ifndef HAVE_PCAP
 /* NOTE: keep 'struct pfring_pkthdr' in sync with 'struct pcap_pkthdr' (ring.h) */
 struct pcap_pkthdr {
   struct timeval ts;    /* time stamp */

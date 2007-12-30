@@ -60,14 +60,19 @@ class PFring {
     { return((pcapPtr && pcapPtr->ring) ? pfring_remove_filtering_rule(pcapPtr->ring, rule_id) : -1); };
   inline int toggle_filtering_policy(bool rules_default_accept_policy)
     { return((pcapPtr && pcapPtr->ring) ? pfring_toggle_filtering_policy(pcapPtr->ring, rules_default_accept_policy ? 1 : 0) : -1); };
-  inline int set_filtering_rule_plugin_id(u_int16_t rule_id, u_int16_t plugin_id)
-    { return((pcapPtr && pcapPtr->ring) ? pfring_set_filtering_rule_plugin_id(pcapPtr->ring, rule_id, plugin_id) : -1); };
+  inline int add_hash_filtering_rule(hash_filtering_rule *rule)
+    { return((pcapPtr && pcapPtr->ring) ? pfring_handle_hash_filtering_rule(pcapPtr->ring, rule, 1) : -1); };
+  inline int remove_hash_filtering_rule(hash_filtering_rule *rule)
+    { return((pcapPtr && pcapPtr->ring) ? pfring_handle_hash_filtering_rule(pcapPtr->ring, rule, 0) : -1); };
+
 
   /* Stats */
   inline int get_stats(pfring_stat *stats)
     { return((pcapPtr && pcapPtr->ring) ? pfring_stats(pcapPtr->ring, stats) : -1); };
   inline int get_filtering_rule_stats(u_int16_t rule_id, char *stats, u_int *stats_len)
     { return((pcapPtr && pcapPtr->ring) ? pfring_get_filtering_rule_stats(pcapPtr->ring, rule_id, stats, stats_len) : -1); };
+  inline int get_hash_filtering_rule_stats(hash_filtering_rule* rule, char *stats, u_int *stats_len)
+    { return((pcapPtr && pcapPtr->ring) ? pfring_get_hash_filtering_rule_stats(pcapPtr->ring, rule, stats, stats_len) : -1); };
 
   /* Utils */
   inline char* get_device_name() { return(device_name); };

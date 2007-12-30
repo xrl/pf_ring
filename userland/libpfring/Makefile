@@ -1,4 +1,4 @@
-CC=gcc -g -Wall
+CC=gcc -g -Wall -pthread
 
 # Specify here the 
 KERNEL_VER=$(shell uname -r)
@@ -8,15 +8,16 @@ OBJ=pfring.o
 LIBPFRING=libpfring.a
 TARGET=pfcount
 RANLIB=ranlib
+LIBS=-lpthread
 
 all: $(TARGET)
 
 $(TARGET): pfcount.o $(LIBPFRING)
-	$(CC) pfcount.o $(LIBPFRING) -o $(TARGET)
+	$(CC) pfcount.o $(LIBPFRING) -o $(TARGET) $(LIBS)
 
 $(LIBPFRING): $(OBJ)
 	@rm -f $@
-	ar rc $@ $(OBJ) $(LIBS)
+	ar rc $@ $(OBJ)
 	$(RANLIB) $@
 
 pfring.o: pfring.c pfring.h

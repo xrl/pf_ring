@@ -132,7 +132,7 @@ int main(int argc, char* argv[]) {
   }
 
   promisc = 1;
-  if((pd = pfring_open(device, promisc)) == NULL) {
+  if((pd = pfring_open(device, promisc, 0)) == NULL) {
     printf("pfring_open error\n");
     return(-1);
   }

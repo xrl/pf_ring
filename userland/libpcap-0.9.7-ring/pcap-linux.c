@@ -272,7 +272,7 @@ pcap_open_live(const char *device, int snaplen, int promisc, int to_ms,
 	handle->md.timeout	= to_ms;
 
 #ifdef HAVE_PF_RING
-	handle->ring = pfring_open((char*)device, promisc);
+	handle->ring = pfring_open((char*)device, promisc, 1);
 
 	if(handle->ring != NULL) {
 	  handle->fd = handle->ring->fd;

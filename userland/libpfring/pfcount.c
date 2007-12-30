@@ -396,7 +396,7 @@ int main(int argc, char* argv[]) {
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
-  if((pd = pfring_open(device, promisc)) == NULL) {
+  if((pd = pfring_open(device, promisc, 0 /* we don't use threads */)) == NULL) {
     printf("pfring_open error\n");
     return(-1);
   } else {
@@ -415,10 +415,10 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
-
-  if(1) {
+  if(0) {
     hash_filtering_rule rule;
+
+    pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
 
     memset(&rule, 0, sizeof(rule));
     rule.proto = 1;

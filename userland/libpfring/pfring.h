@@ -21,6 +21,27 @@
 #ifndef _PFRING_H_
 #define _PFRING_H_
 
+#include <sys/types.h>
+
+#ifndef __USE_XOPEN2K
+typedef volatile int pthread_spinlock_t;
+extern int pthread_spin_init (pthread_spinlock_t *__lock, int __pshared) __THROW;
+
+/* Destroy the spinlock LOCK.  */
+extern int pthread_spin_destroy (pthread_spinlock_t *__lock) __THROW;
+
+/* Wait until spinlock LOCK is retrieved.  */
+extern int pthread_spin_lock (pthread_spinlock_t *__lock) __THROW;
+
+/* Release spinlock LOCK.  */
+extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
+#endif
+
+
+#include <stdio.h>
+#include <stdarg.h>
+#include <sys/types.h>
+
 #ifndef HAVE_PCAP
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +59,15 @@
 #include <arpa/inet.h>
 #include <linux/ring.h>
 #include <sys/ioctl.h>
+
+
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/time.h>
+#include <time.h>
+#include <string.h>
+#include <pthread.h>
+
 
 #define PAGE_SIZE         4096
 
@@ -62,8 +92,9 @@ extern "C" {
     FlowSlotInfo *slots_info;
     u_int page_id, slot_id, pkts_per_page;
     u_int poll_sleep;
-    u_char clear_promisc;
+    u_int8_t clear_promisc, reentrant;
     u_long num_poll_calls;
+    pthread_spinlock_t spinlock;
   } pfring;
 
   typedef struct {
@@ -84,10 +115,10 @@ extern "C" {
   int pfring_set_cluster(pfring *ring, u_int clusterId);
   int pfring_remove_from_cluster(pfring *ring);
   int pfring_set_reflector(pfring *ring, char *reflectorDevice);
-  pfring* pfring_open(char *device_name, int promisc);
+  pfring* pfring_open(char *device_name, u_int8_t promisc, u_int8_t reentrant);
   void pfring_close(pfring *ring);
   int pfring_stats(pfring *ring, pfring_stat *stats);
-  int pfring_recv(pfring *ring, char* buffer, int buffer_len, 
+  int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
 		  struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet);
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 				      char* stats, u_int *stats_len);

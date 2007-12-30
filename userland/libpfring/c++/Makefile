@@ -8,11 +8,12 @@ INCLUDE=-I$(KERNEL_DIR) -I$(LIBPCAP_DIR)
 LIBPFRING_CPP=libpfring_cpp.a
 RANLIB=ranlib
 OBJ=PFring.o
+LIBS=-lpthread
 
 all: $(LIBPFRING_CPP) pf_test
 
 pf_test: pf_test.cpp $(LIBPFRING_CPP)
-	$(CPP) $(INCLUDE) $< $(LIBPFRING_CPP) $(LIBPCAP_DIR)/libpcap.a -o $@
+	$(CPP) $(INCLUDE) $< $(LIBPFRING_CPP) $(LIBPCAP_DIR)/libpcap.a -o $@ $(LIBS)
 
 $(LIBPFRING_CPP): $(OBJ)
 	@rm -f $@
