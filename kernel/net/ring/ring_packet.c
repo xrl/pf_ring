@@ -11,6 +11,7 @@
  * - Michael Stiller <ms@2scale.net> (author of the VM memory support)
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
  * - Andrew Gallatin <gallatyn@myri.com>
+ * - Mahdi <rdfm2000@gmail.com>
  * - Matthew J. Roth <mroth@imminc.com>
  * - Vincent Carrier <vicarrier@wanadoo.fr>
  * - Marketakis Yannis <marketak@ics.forth.gr>
@@ -1315,6 +1316,7 @@ static int skb_ring_handler(struct sk_buff *skb,
   struct list_head *ptr;
   struct pcap_pkthdr hdr;
   int displ;
+  struct sk_buff *skk = NULL;
 
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
@@ -1375,7 +1377,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 	{
 	  if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL)
 	    {
-	      struct sk_buff *skk = NULL;
 #if defined (RING_DEBUG)
 	      int offset = ntohs(iphdr->frag_off);
 	      offset &= IP_OFFSET;
@@ -1492,6 +1493,9 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
     rc = 0;
 
+  if(skk != NULL)
+    kfree_skb(skk);
+  
   if((rc != 0) && real_skb) {
 #if 0
     dev_kfree_skb(skb); /* Free the skb */
