@@ -19,8 +19,8 @@
 #define RING_FLOWSLOT_VERSION           9
 
 /* Versioning */
-#define RING_VERSION                "3.7.4"
-#define RING_VERSION_NUM           0x030704
+#define RING_VERSION                "3.7.5"
+#define RING_VERSION_NUM           0x030705
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -67,7 +67,8 @@ struct pcap_pkthdr {
 
 /* *********************************** */
 
-#define MAX_PLUGIN_ID   128
+#define MAX_PLUGIN_ID     128
+#define MAX_PLUGIN_FIELDS  32
 
 /* ************************************************* */
 
@@ -86,12 +87,15 @@ typedef struct {
 
 /* ************************************************* */
 
+#define FILTER_PLUGIN_DATA_LEN   128
+
 typedef struct {
   char payload_pattern[32];         /* If strlen(payload_pattern) > 0, the packet payload
 				       must match the specified pattern */
   u_int16_t filter_plugin_id;       /* If > 0 identifies a plugin to which the datastructure
 				       below will be passed for matching */
-  char      filter_plugin_data[64]; /* Opaque datastructure that is interpreted by the
+  char      filter_plugin_data[FILTER_PLUGIN_DATA_LEN]; 
+                                    /* Opaque datastructure that is interpreted by the
 				       specified plugin and that specifies a filtering
 				       criteria to be checked for match. Usually this data
 				       is re-casted to a more meaningful datastructure
@@ -189,6 +193,8 @@ typedef int (*plugin_get_stats)(filtering_rule_element *element,
 
 struct pfring_plugin_registration {
   u_int16_t plugin_id;
+  char name[16];          /* Unique plugin name (e.g. sip, udp) */
+  char description[64];   /* Short plugin description */
   plugin_filter_skb pfring_plugin_filter_skb; /* Filter skb: 1=match, 0=no match */
   plugin_handle_skb pfring_plugin_handle_skb;
   plugin_get_stats  pfring_plugin_get_stats;

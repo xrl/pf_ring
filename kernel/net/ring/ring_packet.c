@@ -159,6 +159,7 @@ static u_int ring_table_size;
 struct list_head ring_cluster_list;
 
 /* List of all plugins */
+static u_int plugin_registration_size = 0;
 static struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
 static u_short max_registered_plugin_id = 0;
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
@@ -168,8 +169,10 @@ static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
 /* /proc entry for ring module */
 struct proc_dir_entry *ring_proc_dir = NULL;
 struct proc_dir_entry *ring_proc = NULL;
+struct proc_dir_entry *ring_proc_plugins_info = NULL;
 
 static int ring_proc_get_info(char *, char **, off_t, int, int *, void *);
+static int ring_proc_get_plugin_info(char *, char **, off_t, int, int *, void *);
 static void ring_proc_add(struct ring_opt *pfr);
 static void ring_proc_remove(struct ring_opt *pfr);
 static void ring_proc_init(void);
@@ -197,35 +200,27 @@ extern struct sk_buff *ip_defrag(struct sk_buff *skb, u32 user);
 static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096;
 static unsigned int enable_tx_capture = 1;
 static unsigned int enable_ip_defrag = 0;
-#if 0
 static unsigned int transparent_mode = 1;
-#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
 module_param(bucket_len, uint, 0644);
 module_param(num_slots,  uint, 0644);
-#if 0
 module_param(transparent_mode, uint, 0644);
-#endif
 module_param(enable_tx_capture, uint, 0644);
 module_param(enable_ip_defrag, uint, 0644);
 #else
 MODULE_PARM(bucket_len, "i");
 MODULE_PARM(num_slots, "i");
-#if 0
 MODULE_PARM(transparent_mode, "i");
-#endif
 MODULE_PARM(enable_tx_capture, "i");
 MODULE_PARM(enable_ip_defrag, "i");
 #endif
 
 MODULE_PARM_DESC(bucket_len, "Size (in bytes) a ring bucket");
 MODULE_PARM_DESC(num_slots,  "Number of ring slots");
-#if 0
 MODULE_PARM_DESC(transparent_mode,
                  "Set to 1 to set transparent mode "
                  "(slower but backwards compatible)");
-#endif
 MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
 MODULE_PARM_DESC(enable_ip_defrag,
 		 "Set to 1 to enable IP defragmentation"
@@ -427,19 +422,17 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
   if(data == NULL) {
     /* /proc/net/pf_ring/info */
-    rlen = sprintf(buf,        "Version             : %s\n", RING_VERSION);
-    rlen += sprintf(buf + rlen,"Bucket length       : %d bytes\n", bucket_len);
-    rlen += sprintf(buf + rlen,"Ring slots          : %d\n", num_slots);
-    rlen += sprintf(buf + rlen,"Slot version        : %d\n", RING_FLOWSLOT_VERSION);
-    rlen += sprintf(buf + rlen,"Capture TX          : %s\n",
+    rlen = sprintf(buf,         "Version             : %s\n", RING_VERSION);
+    rlen += sprintf(buf + rlen, "Bucket length       : %d bytes\n", bucket_len);
+    rlen += sprintf(buf + rlen, "Ring slots          : %d\n", num_slots);
+    rlen += sprintf(buf + rlen, "Slot version        : %d\n", RING_FLOWSLOT_VERSION);
+    rlen += sprintf(buf + rlen, "Capture TX          : %s\n",
 		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    rlen += sprintf(buf + rlen,"IP Defragment       : %s\n",  enable_ip_defrag ? "Yes" : "No");
-
-#if 0
-    rlen += sprintf(buf + rlen,"Transparent mode    : %s\n",
+    rlen += sprintf(buf + rlen, "IP Defragment       : %s\n",  enable_ip_defrag ? "Yes" : "No");
+    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n",
                     transparent_mode ? "Yes" : "No");
-#endif
-    rlen += sprintf(buf + rlen,"Total rings         : %d\n", ring_table_size);
+    rlen += sprintf(buf + rlen, "Total rings         : %d\n", ring_table_size);
+    rlen += sprintf(buf + rlen, "Total plugins       : %d\n", plugin_registration_size);
   } else {
     /* detailed statistics about a PF_RING */
     pfr = (struct ring_opt*)data;
@@ -475,6 +468,32 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
 /* ********************************** */
 
+static int ring_proc_get_plugin_info(char *buf, char **start, off_t offset,
+				     int len, int *unused, void *data)
+{
+  int rlen = 0, i = 0;
+  struct pfring_plugin_registration* tmp = NULL;
+
+  /* FIXME: I should now the number of plugins registered */
+  if (!plugin_registration_size) return rlen;
+
+  /* plugins_info */
+
+  rlen += sprintf(buf + rlen , "ID\tPlugin\n");
+
+  for(i = 0; i < MAX_PLUGIN_ID; i++) {
+    tmp = plugin_registration[i];
+    if (tmp) {
+      rlen += sprintf(buf + rlen , "%d\t%s [%s]\n", 
+		      tmp->plugin_id, tmp->name, tmp->description);
+    }
+  }
+
+  return rlen;
+}
+
+/* ********************************** */
+
 static void ring_proc_init(void) {
   ring_proc_dir = proc_mkdir("pf_ring", proc_net);
 
@@ -482,7 +501,10 @@ static void ring_proc_init(void) {
     ring_proc_dir->owner = THIS_MODULE;
     ring_proc = create_proc_read_entry("info", 0, ring_proc_dir,
 				       ring_proc_get_info, NULL);
-    if(!ring_proc)
+    ring_proc_plugins_info = create_proc_read_entry("plugins_info", 0,
+						    ring_proc_dir, ring_proc_get_plugin_info, NULL);
+
+    if(!ring_proc || !ring_proc_plugins_info)
       printk("PF_RING: unable to register proc file\n");
     else {
       ring_proc->owner = THIS_MODULE;
@@ -1244,6 +1266,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
     return(-EINVAL); /* plugin already registered */
   else {
     plugin_registration[reg->plugin_id] = reg;
+    plugin_registration_size++;
 
     max_registered_plugin_id = max(max_registered_plugin_id, reg->plugin_id);
 
@@ -1269,6 +1292,7 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
     struct list_head *ptr, *tmp_ptr, *ring_ptr, *ring_tmp_ptr;
 
     plugin_registration[pfring_plugin_id] = NULL;
+    plugin_registration_size--;
 
     read_lock(&ring_mgmt_lock);
     list_for_each_safe(ring_ptr, ring_tmp_ptr, &ring_table) {
@@ -1490,9 +1514,7 @@ static int skb_ring_handler(struct sk_buff *skb,
   rdt2 = _rdtsc();
 #endif
 
-#if 0
   if(transparent_mode)
-#endif
     rc = 0;
 
   if(skk != NULL)
@@ -2859,7 +2881,7 @@ static int __init ring_init(void)
 	   enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
     printk("PF_RING: IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
 
-    printk("PF_RING: initialized correctly\n");
+    printk("PF_RING: initialized correctly\n");    
 
     ring_proc_init();
     return 0;

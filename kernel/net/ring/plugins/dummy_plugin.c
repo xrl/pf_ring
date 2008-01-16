@@ -159,6 +159,9 @@ static int __init dummy_plugin_init(void)
   reg.pfring_plugin_handle_skb = dummy_plugin_plugin_handle_skb;
   reg.pfring_plugin_get_stats  = dummy_plugin_plugin_get_stats;
 
+  snprintf(reg.name, sizeof(reg.name)-1, "dummy");
+  snprintf(reg.description, sizeof(reg.description)-1, "This is a dummy plugin");
+
   rc = do_register_pfring_plugin(&reg);
 
   printk("Dummy plugin registered [id=%d][rc=%d]\n", plugin_id, rc);
