@@ -2205,6 +2205,12 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     }
   }
 
+  if(pfr->filtering_hash == NULL) {
+    /* We're trying to delete a hash rule from an empty hash */
+      write_unlock(&ring_mgmt_lock);
+      return(-EFAULT);
+  }
+
   if(pfr->filtering_hash[hash_value] == NULL) {
     if(add_rule)
       pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
