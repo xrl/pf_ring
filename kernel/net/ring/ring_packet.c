@@ -2201,14 +2201,15 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     if(pfr->filtering_hash == NULL) {
       kfree(rule);
       write_unlock(&ring_mgmt_lock);
-      return -EFAULT;
+      return(-EFAULT);
     }
   }
 
   if(pfr->filtering_hash[hash_value] == NULL) {
     if(add_rule)
-      pfr->filtering_hash[hash_value] = rule, rc = 0;
+      pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
     else {
+      write_unlock(&ring_mgmt_lock);
       return(-1); /* Unable to find the specified rule */
     }
   } else {
@@ -2220,7 +2221,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 	  printk("Duplicate found while adding rule: discarded\n");
 	  kfree(rule);
 	  write_unlock(&ring_mgmt_lock);
-	  return -EFAULT;
+	  return(-EFAULT);
 	} else {
 	  /* We've found the bucket to delete */
 
@@ -2253,7 +2254,6 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
   }
 
   write_unlock(&ring_mgmt_lock);
-
   if(debug) printk("handle_filtering_hash_bucket() returned %d\n", rc);
 
   return(rc);
@@ -2516,7 +2516,7 @@ static int ring_setsockopt(struct socket *sock,
 	if(copy_from_user(&rule->rule, optval, optlen))
 	  return -EFAULT;
 
-	rc = handle_filtering_hash_bucket(pfr, rule, 1/* add */);
+	rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */);
 	if(rc != 0) return(rc);
       } else {
 	printk("Bad rule length: discarded\n");
