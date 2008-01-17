@@ -1684,6 +1684,7 @@ static int ring_release(struct socket *sock)
   ring_remove(sk);
   sock->sk = NULL;
 
+  /* Free rules */
   list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
     {
       filtering_rule_element *rule;
@@ -1696,6 +1697,26 @@ static int ring_release(struct socket *sock)
       list_del(ptr);
       kfree(rule);
     }
+
+  /* Filtering hash rules */
+  if(pfr->filtering_hash) {
+    int i;
+
+    for(i=0; i<DEFAULT_RING_HASH_SIZE; i++) {
+      if(pfr->filtering_hash[i] != NULL) {
+	filtering_hash_bucket *scan = pfr->filtering_hash[i], *next;
+	
+	while(scan != NULL) {
+	  next = scan->next;
+	  if(scan->plugin_data_ptr != NULL) kfree(scan->plugin_data_ptr);
+	  kfree(scan);
+	  scan = next;
+	}
+      }
+    }
+
+    kfree(pfr->filtering_hash);
+  }
 
   /* Free the ring buffer later, vfree needs interrupts enabled */
   ring_memory_ptr = pfr->ring_memory;
@@ -2166,8 +2187,9 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 0;
 
-  if(debug) printk("handle_filtering_hash_bucket(hash_value=%u,add_rule=%d) called\n",
-		   hash_value, add_rule);
+  if(debug) printk("handle_filtering_hash_bucket(hash_value=%u,add_rule=%d) [proto=%d][sport=%d][dport=%d] called\n",
+		   hash_value, add_rule, rule->rule.proto,
+		   rule->rule.port_peer_a, rule->rule.port_peer_b);
 
   write_lock(&ring_mgmt_lock);
 
@@ -2246,7 +2268,7 @@ static int ring_setsockopt(struct socket *sock,
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
-  u_int cluster_id, debug = 1;
+  u_int cluster_id, debug = 0;
   char devName[8];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
@@ -2393,8 +2415,8 @@ static int ring_setsockopt(struct socket *sock,
       break;
 
     case SO_ADD_FILTERING_RULE:
-      /* if(debug) printk("+++ SO_ADD_FILTERING_RULE(len=%d)\n", optlen); */
-
+      /* if(debug) */ printk("+++ SO_ADD_FILTERING_RULE(len=%d)\n", optlen); 
+      
       if(optlen == sizeof(filtering_rule)) {
 	struct list_head *ptr, *tmp_ptr;
 
