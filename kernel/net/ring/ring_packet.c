@@ -7,8 +7,8 @@
  * - Helmut Manck <helmut.manck@secunet.com>
  * - Brad Doctor <brad@stillsecure.com>
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
- * - Francesco Fusco <fusco@ntop.org> (IP defrag implementation)
- * - Michael Stiller <ms@2scale.net> (author of the VM memory support)
+ * - Francesco Fusco <fusco@ntop.org> (IP defrag)
+ * - Michael Stiller <ms@2scale.net> (VM memory support)
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
  * - Andrew Gallatin <gallatyn@myri.com>
  * - Mahdi <rdfm2000@gmail.com>
@@ -727,34 +727,37 @@ inline int MatchFound (void* id, int index, void *data) { return(0); }
 
 inline u_int32_t hash_pkt(u_int16_t vlan_id, u_int8_t proto,
 			  u_int32_t host_peer_a, u_int32_t host_peer_b,
-			  u_int16_t port_peer_a, u_int32_t port_peer_b) {
+			  u_int16_t port_peer_a, u_int16_t port_peer_b) {
   return(vlan_id+proto+host_peer_a+host_peer_b+port_peer_a+port_peer_b);
 }
 
 /* ********************************** */
 
-inline u_int32_t hash_pkt_header(struct pcap_pkthdr *hdr) {
+inline u_int32_t hash_pkt_header(struct pcap_pkthdr *hdr, u_char mask_src, u_char mask_dst) {
   return(hash_pkt(hdr->parsed_pkt.vlan_id,
 		  hdr->parsed_pkt.l3_proto,
-		  hdr->parsed_pkt.ipv4_src, hdr->parsed_pkt.l4_src_port,
-		  hdr->parsed_pkt.ipv4_dst, hdr->parsed_pkt.l4_dst_port));
+		  mask_src ? 0 : hdr->parsed_pkt.ipv4_src, 
+		  mask_dst ? 0 : hdr->parsed_pkt.ipv4_dst,
+		  mask_src ? 0 : hdr->parsed_pkt.l4_src_port,
+		  mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port));
 }
 
 /* ********************************** */
 
 static int hash_bucket_match(filtering_hash_bucket *hash_bucket,
-			     struct pcap_pkthdr *hdr) {
+			     struct pcap_pkthdr *hdr, 
+			     u_char mask_src, u_char mask_dst) {
   if((hash_bucket->rule.proto == hdr->parsed_pkt.l3_proto)
      && (hash_bucket->rule.vlan_id == hdr->parsed_pkt.vlan_id)
-     && (((hash_bucket->rule.host_peer_a == hdr->parsed_pkt.ipv4_src)
-	  && (hash_bucket->rule.host_peer_b == hdr->parsed_pkt.ipv4_dst)
-	  && (hash_bucket->rule.port_peer_a == hdr->parsed_pkt.l4_src_port)
-	  && (hash_bucket->rule.port_peer_b == hdr->parsed_pkt.l4_dst_port))
+     && (((hash_bucket->rule.host_peer_a == (mask_src ? 0 : hdr->parsed_pkt.ipv4_src))
+	  && (hash_bucket->rule.host_peer_b == (mask_dst ? 0 : hdr->parsed_pkt.ipv4_dst))
+	  && (hash_bucket->rule.port_peer_a == (mask_src ? 0 : hdr->parsed_pkt.l4_src_port))
+	  && (hash_bucket->rule.port_peer_b == (mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port)))
 	 ||
-	 ((hash_bucket->rule.host_peer_a == hdr->parsed_pkt.ipv4_dst)
-	  && (hash_bucket->rule.host_peer_b == hdr->parsed_pkt.ipv4_src)
-	  && (hash_bucket->rule.port_peer_a == hdr->parsed_pkt.l4_dst_port)
-	  && (hash_bucket->rule.port_peer_b == hdr->parsed_pkt.l4_src_port))))
+	 ((hash_bucket->rule.host_peer_a == (mask_dst ? 0 : hdr->parsed_pkt.ipv4_dst))
+	  && (hash_bucket->rule.host_peer_b == (mask_src ? 0 : hdr->parsed_pkt.ipv4_src))
+	  && (hash_bucket->rule.port_peer_a == (mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port))
+	  && (hash_bucket->rule.port_peer_b == (mask_src ? 0 : hdr->parsed_pkt.l4_src_port)))))
     return(1);
   else
     return(0);
@@ -789,7 +792,7 @@ static int match_filtering_rule(filtering_rule_element *rule,
     return(0);
 
   if(rule->rule.balance_pool > 0) {
-    u_int32_t balance_hash = hash_pkt_header(hdr) % rule->rule.balance_pool;
+    u_int32_t balance_hash = hash_pkt_header(hdr, 0, 0) % rule->rule.balance_pool;
     if(balance_hash != rule->rule.balance_id) return(0);
   }
 
@@ -967,43 +970,72 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     /* [2.1] Search the hash */
     if(pfr->filtering_hash != NULL) {
-      u_int hash_idx = hash_pkt_header(hdr) % DEFAULT_RING_HASH_SIZE;
-      filtering_hash_bucket *hash_bucket = pfr->filtering_hash[hash_idx];
-
-      if(0)
-	printk("About to find packet in hash (vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u, idx=%u)\n",
-	       hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto,
-	       hdr->parsed_pkt.ipv4_src, hdr->parsed_pkt.l4_src_port,
-	       hdr->parsed_pkt.ipv4_dst, hdr->parsed_pkt.l4_dst_port, hash_idx);
-
-      while(hash_bucket != NULL) {
-	if(hash_bucket_match(hash_bucket, hdr)) {
-	  hash_found = 1;
+      u_int hash_idx, num_run, mask_src = 0, mask_dst = 0;
+      filtering_hash_bucket *hash_bucket;
+      
+      /*
+       * In the case of hash match, PF_RING supports wildcarding. This means that
+       * users can add rules like IP_A:port_A <-> 0.0.0.0:0 or 0.0.0.0:0 <-> IP_B:port_B
+       * so that (in the first case) all packets from/to IP_A:port_A and (in the second
+       * case) all packets from/to IP_B:port_B match. This means that the hash has to be scan up
+       * to three times. Note that as soon as a match is found, the scan is over.
+       */
+      for(num_run = 0; num_run < 3; num_run++) {
+	switch(num_run) {
+	case 0:
+	  mask_src = 0, mask_dst = 0;
 	  break;
-	} else
-	  hash_bucket = hash_bucket->next;
-      }
 
-      if(hash_found) {
-	if((hash_bucket->rule.plugin_action.plugin_id != 0)
-	   && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
-	   && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id] != NULL)
-	   && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
-	   ) {
-	  plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
-	    ->pfring_plugin_handle_skb(NULL, hash_bucket, hdr, skb, 0 /* no plugin */, NULL);
+	case 1:
+	  mask_src = 1, mask_dst = 0;
+	  break;
+
+	case 2:
+	  mask_src = 0, mask_dst = 1;
+	  break;
 	}
 
-	if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 1;
-	} else if(hash_bucket->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 0;
-	} else if(hash_bucket->rule.rule_action == execute_action_and_continue_rule_evaluation) {
-	  hash_found = 0; /* This way we also evaluate the list of rules */
+	hash_idx = hash_pkt_header(hdr, mask_src, mask_dst) % DEFAULT_RING_HASH_SIZE;
+	hash_bucket = pfr->filtering_hash[hash_idx];
+
+	if(0)
+	  printk("About to find packet in hash (vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u, idx=%u, num_run=%d)\n",
+		 hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto,
+		 mask_src ? 0 : hdr->parsed_pkt.ipv4_src, mask_src ? 0 : hdr->parsed_pkt.l4_src_port,
+		 mask_dst ? 0 : hdr->parsed_pkt.ipv4_dst, mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port, 
+		 hash_idx, num_run);
+	
+	while(hash_bucket != NULL) {
+	  if(hash_bucket_match(hash_bucket, hdr, mask_src, mask_dst)) {
+	    hash_found = 1;
+	    break;
+	  } else
+	    hash_bucket = hash_bucket->next;
+	} /* while */
+
+	if(hash_found) {
+	  if((hash_bucket->rule.plugin_action.plugin_id != 0)
+	     && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
+	     && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id] != NULL)
+	     && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
+	     ) {
+	    plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
+	      ->pfring_plugin_handle_skb(NULL, hash_bucket, hdr, skb, 0 /* no plugin */, NULL);
+	  }
+
+	  if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+	    fwd_pkt = 1;
+	  } else if(hash_bucket->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+	    fwd_pkt = 0;
+	  } else if(hash_bucket->rule.rule_action == execute_action_and_continue_rule_evaluation) {
+	    hash_found = 0; /* This way we also evaluate the list of rules */
+	  }
+
+	  break; /* exit the for() loop */
+	} else {
+	  /* printk("Packet not found\n"); */
 	}
-      } else {
-	/* printk("Packet not found\n"); */
-      }
+      } /* for() */
     }
 
     /* [2.2] Search rules list */
@@ -2187,9 +2219,12 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 0;
 
-  if(debug) printk("handle_filtering_hash_bucket(hash_value=%u,add_rule=%d) [proto=%d][sport=%d][dport=%d] called\n",
-		   hash_value, add_rule, rule->rule.proto,
-		   rule->rule.port_peer_a, rule->rule.port_peer_b);
+  if(debug) printk("handle_filtering_hash_bucket(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u, "
+		   "hash_value=%u, add_rule=%d) called\n",
+		   rule->rule.vlan_id, rule->rule.proto,
+		   rule->rule.host_peer_a, rule->rule.port_peer_a,
+		   rule->rule.host_peer_b, rule->rule.port_peer_b,
+		   hash_value, add_rule);
 
   write_lock(&ring_mgmt_lock);
 
@@ -2421,7 +2456,7 @@ static int ring_setsockopt(struct socket *sock,
       break;
 
     case SO_ADD_FILTERING_RULE:
-      /* if(debug) */ printk("+++ SO_ADD_FILTERING_RULE(len=%d)\n", optlen); 
+      if(debug) printk("+++ SO_ADD_FILTERING_RULE(len=%d)\n", optlen); 
       
       if(optlen == sizeof(filtering_rule)) {
 	struct list_head *ptr, *tmp_ptr;
@@ -2589,7 +2624,7 @@ static int ring_setsockopt(struct socket *sock,
       break;
 
     case SO_ACTIVATE_RING:
-      printk("* SO_ACTIVATE_RING *\n");
+      if(debug) printk("* SO_ACTIVATE_RING *\n");
       found = 1, pfr->ring_active = 1;
       break;
 
