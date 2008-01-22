@@ -288,6 +288,10 @@ int pcap_setbuff(pcap_t *p, int dim);
 int pcap_setmode(pcap_t *p, int mode);
 int pcap_setmintocopy(pcap_t *p, int size);
 
+#ifdef HAVE_PF_RING
+pfring* pcap_get_pfring_handle(const pcap_t *pHandle);
+#endif
+
 #ifdef WPCAP
 /* Include file with the wpcap-specific extensions */
 #include <Win32-Extensions.h>
@@ -320,5 +324,7 @@ int	pcap_get_selectable_fd(pcap_t *);
 #ifdef __cplusplus
 }
 #endif
+
+
 
 #endif

@@ -42,12 +42,12 @@ srcdir = .
 #
 
 CC = gcc
-CCOPT = -g -fPIC -O2
+CCOPT = -g -fPIC
 PF_RING_INCLUDES=-I ../../kernel/include -I ../libpfring
 PF_RING_LIBS=../libpfring/pfring.o
-INCLS = -I.  $(PF_RING_INCLUDES)
+INCLS = -I.   $(PF_RING_INCLUDES)
 DEFS = -DHAVE_CONFIG_H  -D_U_="__attribute__((unused))"
-LIBS =  $(PF_RING_LIBS)
+LIBS =   $(PF_RING_LIBS)
 DAGLIBS = 
 DYEXT = so
 PROG=libpcap

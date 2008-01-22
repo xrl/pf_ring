@@ -2326,4 +2326,9 @@ reset_kernel_filter(pcap_t *handle)
 int pcap_set_cluster(pfring *ring, u_int clusterId) { return(pfring_set_cluster(ring, clusterId)); }
 int pcap_remove_from_cluster(pfring *ring)          { return(pfring_remove_from_cluster(ring));    }
 int pcap_set_reflector(pfring *ring, char *reflectorDevice) { return(pfring_set_reflector(ring, reflectorDevice)); }
+
+pfring* pcap_get_pfring_handle(const pcap_t *pHandle) {
+  return(pHandle ? pHandle->ring : NULL);
+}
+
 #endif
