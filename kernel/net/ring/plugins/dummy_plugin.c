@@ -127,6 +127,7 @@ static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
 /* ************************************ */
 
 static int dummy_plugin_plugin_get_stats(filtering_rule_element *rule,
+					 filtering_hash_bucket  *hash_bucket,
 					 u_char* stats_buffer,
 					 u_int stats_buffer_len)
 {
