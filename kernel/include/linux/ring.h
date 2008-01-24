@@ -188,7 +188,8 @@ typedef int (*plugin_filter_skb)(filtering_rule_element *rule,
 				 struct sk_buff *skb,
 				 struct parse_buffer **filter_rule_memory_storage);
 /* Get stats about the rule */
-typedef int (*plugin_get_stats)(filtering_rule_element *element,
+typedef int (*plugin_get_stats)(filtering_rule_element *rule,
+				filtering_hash_bucket  *hash_bucket,
 				u_char* stats_buffer, u_int stats_buffer_len);
 
 struct pfring_plugin_registration {

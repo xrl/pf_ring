@@ -2762,11 +2762,31 @@ static int ring_getsockopt(struct socket *sock,
 
 	    while(bucket != NULL) {
 	      if(memcmp(&bucket->rule, &rule, sizeof(hash_filtering_rule)) == 0) {
-		if(copy_to_user(optval, bucket->plugin_data_ptr,
-				bucket->plugin_data_ptr_len)) {
+		char *buffer = kmalloc(len, GFP_ATOMIC);
+
+		if(buffer == NULL)
 		  rc = -EFAULT;
-		} else
+		else {
+		  if((plugin_registration[rule.plugin_action.plugin_id] == NULL)
+		     || (plugin_registration[rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)) {
+		    printk("RING: Found rule but pluginId %d is not registered\n", rule.plugin_action.plugin_id);
+		    rc = -EFAULT;
+		  } else
+		    rc = plugin_registration[rule.plugin_action.plugin_id] ->pfring_plugin_get_stats(NULL, bucket, buffer, len);
+
+		  if(rc > 0) {
+		    if(copy_to_user(optval, buffer, rc)) {
+		      rc = -EFAULT;
+		    }
+		  }
+		}
+	       
+		/*
+		  if(copy_to_user(optval, bucket->plugin_data_ptr, bucket->plugin_data_ptr_len)) {
+		  rc = -EFAULT;
+		  } else
 		  rc = bucket->plugin_data_ptr_len;
+		*/
 
 		break;
 	      } else
@@ -2816,7 +2836,7 @@ static int ring_getsockopt(struct socket *sock,
 		    rc = -EFAULT;
 		  } else
 		    rc = plugin_registration[rule->rule.plugin_action.plugin_id]
-		      ->pfring_plugin_get_stats(rule, buffer, len);
+		      ->pfring_plugin_get_stats(rule, NULL, buffer, len);
 
 		  if(rc > 0) {
 		    if(copy_to_user(optval, buffer, rc)) {
