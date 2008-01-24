@@ -1014,43 +1014,14 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     /* [2.1] Search the hash */
     if(pfr->filtering_hash != NULL) {
-      u_int hash_idx, num_run, mask_src = 0, mask_dst = 0;
+      u_int hash_idx;
       filtering_hash_bucket *hash_bucket;
 
-      /*
-       * In the case of hash match, PF_RING supports wildcarding. This means that
-       * users can add rules like IP_A:port_A <-> 0.0.0.0:0 or 0.0.0.0:0 <-> IP_B:port_B
-       * so that (in the first case) all packets from/to IP_A:port_A and (in the second
-       * case) all packets from/to IP_B:port_B match. This means that the hash has to be scan up
-       * to three times. Note that as soon as a match is found, the scan is over.
-       */
-      for(num_run = 0; num_run < 3; num_run++) {
-	switch(num_run) {
-	case 0:
-	  mask_src = 0, mask_dst = 0;
-	  break;
-
-	case 1:
-	  mask_src = 1, mask_dst = 0;
-	  break;
-
-	case 2:
-	  mask_src = 0, mask_dst = 1;
-	  break;
-	}
-
-	hash_idx = hash_pkt_header(hdr, mask_src, mask_dst) % DEFAULT_RING_HASH_SIZE;
+	hash_idx = hash_pkt_header(hdr, 0, 0) % DEFAULT_RING_HASH_SIZE;
 	hash_bucket = pfr->filtering_hash[hash_idx];
 
-	if(0)
-	  printk("About to find packet in hash (vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u, idx=%u, num_run=%d)\n",
-		 hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto,
-		 mask_src ? 0 : hdr->parsed_pkt.ipv4_src, mask_src ? 0 : hdr->parsed_pkt.l4_src_port,
-		 mask_dst ? 0 : hdr->parsed_pkt.ipv4_dst, mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port,
-		 hash_idx, num_run);
-
 	while(hash_bucket != NULL) {
-	  if(hash_bucket_match(hash_bucket, hdr, mask_src, mask_dst)) {
+	  if(hash_bucket_match(hash_bucket, hdr, 0, 0)) {
 	    hash_found = 1;
 	    break;
 	  } else
@@ -1074,12 +1045,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	  } else if(hash_bucket->rule.rule_action == execute_action_and_continue_rule_evaluation) {
 	    hash_found = 0; /* This way we also evaluate the list of rules */
 	  }
-
-	  break; /* exit the for() loop */
 	} else {
 	  /* printk("Packet not found\n"); */
 	}
-      } /* for() */
     }
 
     /* [2.2] Search rules list */
@@ -2266,11 +2234,19 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 1;
 
-  if(debug) printk("handle_filtering_hash_bucket(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u, "
+  if(debug) printk("handle_filtering_hash_bucket(vlan=%u, proto=%u, sip=%d.%d.%d.%d, sport=%u, dip=%d.%d.%d.%d, dport=%u, "
 		   "hash_value=%u, add_rule=%d) called\n",
 		   rule->rule.vlan_id, rule->rule.proto,
-		   rule->rule.host_peer_a, rule->rule.port_peer_a,
-		   rule->rule.host_peer_b, rule->rule.port_peer_b,
+		   ((rule->rule.host_peer_a >> 24) & 0xff),
+		   ((rule->rule.host_peer_a >> 16) & 0xff),
+		   ((rule->rule.host_peer_a >> 8) & 0xff),
+		   ((rule->rule.host_peer_a >> 0) & 0xff),
+		   rule->rule.port_peer_a,
+		   ((rule->rule.host_peer_b >> 24) & 0xff),
+		   ((rule->rule.host_peer_b >> 16) & 0xff),
+		   ((rule->rule.host_peer_b >> 8) & 0xff),
+		   ((rule->rule.host_peer_b >> 0) & 0xff),
+		   rule->rule.port_peer_b,
 		   hash_value, add_rule);
 
   write_lock(&ring_mgmt_lock);
