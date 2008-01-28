@@ -437,7 +437,7 @@ static void ring_proc_remove(struct ring_opt *pfr)
       snprintf(name, sizeof(name), "%d", pfr->ring_pid);
 
     remove_proc_entry(name, ring_proc_dir);
-    /* printk("PF_RING: removed /proc/net/pf_ring/%s\n", name); */
+    printk("PF_RING: removed /proc/net/pf_ring/%s\n", name);
   }
 }
 
@@ -533,12 +533,14 @@ static void ring_proc_init(void)
     ring_proc = create_proc_read_entry("info", 0, ring_proc_dir,
 				       ring_proc_get_info, NULL);
     ring_proc_plugins_info = create_proc_read_entry("plugins_info", 0,
-						    ring_proc_dir, ring_proc_get_plugin_info, NULL);
-
+						    ring_proc_dir, 
+						    ring_proc_get_plugin_info, 
+						    NULL);
     if(!ring_proc || !ring_proc_plugins_info)
       printk("PF_RING: unable to register proc file\n");
     else {
       ring_proc->owner = THIS_MODULE;
+      ring_proc_plugins_info->owner = THIS_MODULE;
       printk("PF_RING: registered /proc/net/pf_ring/\n");
     }
   } else
@@ -551,9 +553,15 @@ static void ring_proc_term(void)
 {
   if(ring_proc != NULL) {
     remove_proc_entry("info", ring_proc_dir);
-    if(ring_proc_dir != NULL) remove_proc_entry("pf_ring", proc_net);
+    printk("PF_RING: removed /proc/net/pf_ring/info\n");
 
-    printk("PF_RING: deregistered /proc/net/pf_ring\n");
+    remove_proc_entry("plugins_info", ring_proc_dir);
+    printk("PF_RING: removed /proc/net/pf_ring/info\n");
+
+    if(ring_proc_dir != NULL) {
+      remove_proc_entry("pf_ring", proc_net);
+      printk("PF_RING: deregistered /proc/net/pf_ring\n");
+    }
   }
 }
 
@@ -577,9 +585,9 @@ static inline void ring_insert(struct sock *sk)
   next = kmalloc(sizeof(struct ring_element), GFP_ATOMIC);
   if(next != NULL) {
     next->sk = sk;
-    write_lock_irq(&ring_mgmt_lock);
+    write_lock_bh(&ring_mgmt_lock);
     list_add(&next->list, &ring_table);
-    write_unlock_irq(&ring_mgmt_lock);
+    write_unlock_bh(&ring_mgmt_lock);
   } else {
     if(net_ratelimit())
       printk("RING: could not kmalloc slot!!\n");
@@ -945,7 +953,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	 displ, is_ip_pkt, hdr->parsed_pkt.l4_src_port, hdr->parsed_pkt.l4_dst_port);
 #endif
 
-  write_lock_irq(&pfr->ring_index_lock);
+  write_lock_bh(&pfr->ring_index_lock);
   pfr->slots_info->tot_pkts++;
 
   /* ************************** */
@@ -970,7 +978,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	     skb->pkt_type, skb->cloned);
 #endif
 
-      write_unlock_irq(&pfr->ring_index_lock);
+      write_unlock_bh(&pfr->ring_index_lock);
       return;
     }
   }
@@ -1095,7 +1103,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 		 skb->pkt_type, skb->cloned);
 #endif
 
-	  write_unlock_irq(&pfr->ring_index_lock);
+	  write_unlock_bh(&pfr->ring_index_lock);
 	  return;
 	}
       }
@@ -1134,7 +1142,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 		printk("++ hard_start_xmit succeeded\n");
 #endif
 
-		write_unlock_irq(&pfr->ring_index_lock);
+		write_unlock_bh(&pfr->ring_index_lock);
 		return; /* OK */
 	      }
 
@@ -1151,7 +1159,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	  printk("++ hard_start_xmit failed\n");
 #endif
 	  skb->data += displ;
-	  write_unlock_irq(&pfr->ring_index_lock);
+	  write_unlock_bh(&pfr->ring_index_lock);
 	  return; /* -ENETDOWN */
 	}
 
@@ -1224,7 +1232,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 #endif
   }
 
-  write_unlock_irq(&pfr->ring_index_lock);
+  write_unlock_bh(&pfr->ring_index_lock);
 
   if(fwd_pkt) {
     /* wakeup in case of poll() */
@@ -1720,12 +1728,12 @@ static int ring_release(struct socket *sock)
 
   /*
     The calls below must be placed outside the
-    write_lock_irq...write_unlock_irq block.
+    write_lock_bh...write_unlock_bh block.
   */
   sock_orphan(sk);
   ring_proc_remove(ring_sk(sk));
 
-  write_lock_irq(&ring_mgmt_lock);
+  write_lock_bh(&ring_mgmt_lock);
   ring_remove(sk);
   sock->sk = NULL;
 
@@ -1773,7 +1781,7 @@ static int ring_release(struct socket *sock)
 #endif
 
   sock_put(sk);
-  write_unlock_irq(&ring_mgmt_lock);
+  write_unlock_bh(&ring_mgmt_lock);
 
   if(ring_memory_ptr != NULL) {
 #if defined(RING_DEBUG)
