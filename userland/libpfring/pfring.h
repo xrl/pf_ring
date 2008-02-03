@@ -102,13 +102,6 @@ extern "C" {
   } pfring_stat;
 
   /* NOTE: keep 'struct pfring_pkthdr' in sync with 'struct pcap_pkthdr' (ring.h) */
-  struct pfring_pkthdr {
-    struct timeval ts;    /* time stamp */
-    u_int32_t caplen;     /* length of portion present */
-    u_int32_t len;        /* length this packet (off wire) */
-    struct pkt_parsing_info parsed_pkt; /* packet parsing info */
-    u_int16_t parsed_header_len; /* Extra parsing data before packet */
-  }; 
 
   /* ********************************* */
 

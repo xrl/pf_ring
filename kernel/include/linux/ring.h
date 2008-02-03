@@ -54,16 +54,13 @@ struct pkt_parsing_info {
   u_int16_t eth_offset, vlan_offset, l3_offset, l4_offset, payload_offset; 
 };
 
-#ifndef HAVE_PCAP
-/* NOTE: keep 'struct pfring_pkthdr' in sync with 'struct pcap_pkthdr' (ring.h) */
-struct pcap_pkthdr {
+struct pfring_pkthdr {
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
   struct pkt_parsing_info parsed_pkt; /* packet parsing info */
   u_int16_t parsed_header_len; /* Extra parsing data before packet */
-};
-#endif
+}; 
 
 /* *********************************** */
 
@@ -178,13 +175,13 @@ struct parse_buffer {
 /* Execute an action (e.g. update rule stats) */
 typedef int (*plugin_handle_skb)(filtering_rule_element *rule,       /* In case the match is on the list */
 				 filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
-				 struct pcap_pkthdr *hdr,
+				 struct pfring_pkthdr *hdr,
 				 struct sk_buff *skb,
 				 u_int16_t filter_plugin_id,
 				 struct parse_buffer *filter_rule_memory_storage);
 /* Return 1/0 in case of match/no match for the given skb */
 typedef int (*plugin_filter_skb)(filtering_rule_element *rule, 
-				 struct pcap_pkthdr *hdr,
+				 struct pfring_pkthdr *hdr,
 				 struct sk_buff *skb,
 				 struct parse_buffer **filter_rule_memory_storage);
 /* Get stats about the rule */
@@ -223,8 +220,8 @@ enum cluster_type {
 
 /* *********************************** */
 
-#define RING_MIN_SLOT_SIZE    (60+sizeof(struct pcap_pkthdr))
-#define RING_MAX_SLOT_SIZE    (1514+sizeof(struct pcap_pkthdr))
+#define RING_MIN_SLOT_SIZE    (60+sizeof(struct pfring_pkthdr))
+#define RING_MAX_SLOT_SIZE    (1514+sizeof(struct pfring_pkthdr))
 
 #ifndef min
 #define min(a,b) ((a < b) ? a : b)

@@ -266,9 +266,9 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     else
       printf("[eth_type=0x%04X]", eth_type);
     
-    printf("[tos=%d][tcp_flags=%d][caplen=%d][len=%d]\n", 
+    printf("[tos=%d][tcp_flags=%d][caplen=%d][len=%d][parsed_header_len=%d]\n", 
 	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp_flags,
-	   h->caplen, h->len);
+	   h->caplen, h->len, h->parsed_header_len);
   }
 
   if(numPkts == 0) gettimeofday(&startTime, NULL);
