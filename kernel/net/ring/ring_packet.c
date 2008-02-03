@@ -948,8 +948,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
   if(!pfr->ring_active) return;
 
 #if defined(RING_DEBUG)
-  printk("add_skb_to_ring: [displ=%d][is_ip_pkt=%d][%d -> %d]\n",
-	 displ, is_ip_pkt, hdr->parsed_pkt.l4_src_port, hdr->parsed_pkt.l4_dst_port);
+  printk("add_skb_to_ring: [displ=%d][len=%d][caplen=%d][is_ip_pkt=%d][%d -> %d]\n",
+	 displ, hdr->len, hdr->caplen,
+	 is_ip_pkt, hdr->parsed_pkt.l4_src_port, hdr->parsed_pkt.l4_dst_port);
 #endif
 
   write_lock_bh(&pfr->ring_index_lock);
@@ -1188,8 +1189,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 	if(hdr->caplen > 0) {
 #if defined(RING_DEBUG)
-	  printk("--> [caplen=%d][len=%d][parsed_header_len=%d]\n",
-		 hdr->caplen, hdr->len, hdr->parsed_header_len);
+	  printk("--> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d]\n",
+		 hdr->caplen, hdr->len, displ, hdr->parsed_header_len);
 #endif
 	  skb_copy_bits(skb, -displ, &ring_bucket[sizeof(struct pfring_pkthdr)+offset], hdr->caplen);
 	} else {
@@ -1425,7 +1426,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     }
 
 #if defined(RING_DEBUG)
-  if(0) {
+  if(1) {
     struct timeval tv;
 
     skb_get_timestamp(skb, &tv);
@@ -1452,6 +1453,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   /* (de)Fragmentation <fusco@ntop.org> */
   if (enable_ip_defrag
+      && real_skb
       && is_ip_pkt
       && recv_packet
       && (ring_table_size > 0))
