@@ -159,7 +159,7 @@ struct ring_opt {
   /* Locks */
   atomic_t num_ring_slots_waiters;
   wait_queue_head_t ring_slots_waitqueue;
-  rwlock_t ring_index_lock;
+  rwlock_t ring_index_lock, ring_rules_lock;
 
   /* Indexes (Internal) */
   u_int insert_page_id, insert_slot_id;
@@ -1700,6 +1700,7 @@ static int ring_create(struct socket *sock, int protocol)
   pfr->ring_active = 0; /* We activate as soon as somebody waits for packets */
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
+  rwlock_init(&pfr->ring_rules_lock);
   atomic_set(&pfr->num_ring_slots_waiters, 0);
   INIT_LIST_HEAD(&pfr->rules);
 
@@ -2279,6 +2280,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 							     GFP_KERNEL);
     if(pfr->filtering_hash == NULL) {
       kfree(rule);
+      if(debug) printk("handle_filtering_hash_bucket() returned %d [0]\n", -EFAULT);
       return(-EFAULT);
     }
   }
@@ -2292,6 +2294,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     if(add_rule)
       pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
     else {
+      if(debug) printk("handle_filtering_hash_bucket() returned %d [1]\n", -1);
       return(-1); /* Unable to find the specified rule */
     }
   } else {
@@ -2314,6 +2317,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 	  /* Free the bucket */
 	  if(bucket->plugin_data_ptr) kfree(bucket->plugin_data_ptr);
 	  kfree(bucket);
+	  if(debug) printk("handle_filtering_hash_bucket() returned %d [2]\n", 0);
 	  return(0);
 	}
       } else {
@@ -2333,7 +2337,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     }
   }
 
-  if(debug) printk("handle_filtering_hash_bucket() returned %d\n", rc);
+  if(debug) printk("handle_filtering_hash_bucket() returned %d [3]\n", rc);
 
   return(rc);
 }
@@ -2408,24 +2412,23 @@ static int ring_setsockopt(struct socket *sock,
 	    }
 
 	  /* get the lock, set the filter, release the lock */
-	  write_lock(&ring_mgmt_lock);
+	  write_lock(&pfr->ring_rules_lock);
 	  pfr->bpfFilter = filter;
-	  write_unlock(&ring_mgmt_lock);
+	  write_unlock(&pfr->ring_rules_lock);
 	  ret = 0;
 	}
       break;
 
     case SO_DETACH_FILTER:
-      write_lock(&ring_mgmt_lock);
+      write_lock(&pfr->ring_rules_lock);
       found = 1;
       if(pfr->bpfFilter != NULL)
 	{
 	  kfree(pfr->bpfFilter);
-	  pfr->bpfFilter = NULL;
-	  write_unlock(&ring_mgmt_lock);
-	  break;
-	}
-      ret = -ENONET;
+	  pfr->bpfFilter = NULL;	  
+	} else
+	ret = -ENONET;
+      write_unlock(&pfr->ring_rules_lock);
       break;
 
     case SO_ADD_TO_CLUSTER:
@@ -2435,15 +2438,15 @@ static int ring_setsockopt(struct socket *sock,
       if (copy_from_user(&cluster_id, optval, sizeof(cluster_id)))
 	return -EFAULT;
 
-      write_lock(&ring_mgmt_lock);
+      write_lock(&pfr->ring_rules_lock);
       ret = add_to_cluster(sock->sk, pfr, cluster_id);
-      write_unlock(&ring_mgmt_lock);
+      write_unlock(&pfr->ring_rules_lock);
       break;
 
     case SO_REMOVE_FROM_CLUSTER:
-      write_lock(&ring_mgmt_lock);
+      write_lock(&pfr->ring_rules_lock);
       ret = remove_from_cluster(sock->sk, pfr);
-      write_unlock(&ring_mgmt_lock);
+      write_unlock(&pfr->ring_rules_lock);
       break;
 
     case SO_SET_REFLECTOR:
@@ -2462,9 +2465,9 @@ static int ring_setsockopt(struct socket *sock,
       printk("+++ SO_SET_REFLECTOR(%s)\n", devName);
 #endif
 
-      write_lock(&ring_mgmt_lock);
+      write_lock(&pfr->ring_rules_lock);
       pfr->reflector_dev = dev_get_by_name(devName);
-      write_unlock(&ring_mgmt_lock);
+      write_unlock(&pfr->ring_rules_lock);
 
 #if defined(RING_DEBUG)
       if(pfr->reflector_dev != NULL)
@@ -2483,9 +2486,9 @@ static int ring_setsockopt(struct socket *sock,
 	if(copy_from_user(&new_policy, optval, optlen))
 	  return -EFAULT;
 
-	write_lock(&ring_mgmt_lock);
+	write_lock(&pfr->ring_rules_lock);
 	pfr->rules_default_accept_policy = new_policy;
-	write_unlock(&ring_mgmt_lock);
+	write_unlock(&pfr->ring_rules_lock);
 	/*
 	  if(debug) printk("SO_TOGGLE_FILTER_POLICY: default policy is %s\n",
 	  pfr->rules_default_accept_policy ? "accept" : "drop");
@@ -2528,7 +2531,7 @@ static int ring_setsockopt(struct socket *sock,
 	  } else
 	    rule->pattern = NULL;
 #endif
-	write_lock(&ring_mgmt_lock);
+	write_lock(&pfr->ring_rules_lock);
 	if(debug) printk("SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
 
 	/* Implement an ordered add */
@@ -2583,7 +2586,7 @@ static int ring_setsockopt(struct socket *sock,
 	      }
 	  }
 
-	write_unlock(&ring_mgmt_lock);
+	write_unlock(&pfr->ring_rules_lock);
       } else if(optlen == sizeof(hash_filtering_rule)) {
 	/* This is a hash rule */
 	filtering_hash_bucket *rule = (filtering_hash_bucket*)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
@@ -2595,9 +2598,9 @@ static int ring_setsockopt(struct socket *sock,
 	if(copy_from_user(&rule->rule, optval, optlen))
 	  return -EFAULT;
 
-	write_lock(&ring_mgmt_lock);
+	write_lock(&pfr->ring_rules_lock);
 	rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */);
-	write_unlock(&ring_mgmt_lock);
+	write_unlock(&pfr->ring_rules_lock);
 	if(rc != 0) return(rc);
       } else {
 	printk("Bad rule length: discarded\n");
@@ -2615,7 +2618,7 @@ static int ring_setsockopt(struct socket *sock,
 	  if(copy_from_user(&rule_id, optval, optlen))
 	    return -EFAULT;
 
-	  write_lock(&ring_mgmt_lock);
+	  write_lock(&pfr->ring_rules_lock);
 
 	  list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
 	    {
@@ -2636,7 +2639,7 @@ static int ring_setsockopt(struct socket *sock,
 		}
 	    } /* for */
 
-	  write_unlock(&ring_mgmt_lock);
+	  write_unlock(&pfr->ring_rules_lock);
 	  if(!rule_found) {
 	    if(debug) printk("SO_REMOVE_FILTERING_RULE: rule %d does not exist\n", rule_id);
 	    return -EFAULT; /* Rule not found */
@@ -2649,9 +2652,9 @@ static int ring_setsockopt(struct socket *sock,
 	  if(copy_from_user(&rule.rule, optval, optlen))
 	    return -EFAULT;
 
-	  write_lock(&ring_mgmt_lock);
+	  write_lock(&pfr->ring_rules_lock);
 	  rc = handle_filtering_hash_bucket(pfr, &rule, 0 /* delete */);
-	  write_unlock(&ring_mgmt_lock);
+	  write_unlock(&pfr->ring_rules_lock);
 	  if(rc != 0) return(rc);
 	} else
 	  return -EFAULT;
@@ -2739,7 +2742,7 @@ static int ring_getsockopt(struct socket *sock,
 	  if(copy_from_user(&rule, optval, sizeof(rule)))
 	    return -EFAULT;
 
-	  if(1)
+	  if(0)
 	    printk("so_get_hash_filtering_rule_stats(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u)\n",
 		   rule.vlan_id, rule.proto,
 		   rule.host_peer_a, rule.port_peer_a,
@@ -2752,7 +2755,7 @@ static int ring_getsockopt(struct socket *sock,
 	  if(pfr->filtering_hash[hash_idx] != NULL) {
 	    filtering_hash_bucket *bucket;
 
-	    read_lock(&ring_mgmt_lock);
+	    read_lock(&pfr->ring_rules_lock);
 	    bucket = pfr->filtering_hash[hash_idx];
 
 	    while(bucket != NULL) {
@@ -2780,7 +2783,7 @@ static int ring_getsockopt(struct socket *sock,
 		bucket = bucket->next;
 	    } /* while */
 	    
-	    read_unlock(&ring_mgmt_lock);
+	    read_unlock(&pfr->ring_rules_lock);
 	  }
 	}
 
@@ -2803,7 +2806,7 @@ static int ring_getsockopt(struct socket *sock,
 
 	/* printk("SO_GET_FILTERING_RULE_STATS: rule_id=%d\n", rule_id); */
 
-	read_lock(&ring_mgmt_lock);
+	read_lock(&pfr->ring_rules_lock);
 	list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
 	  {
 	    filtering_rule_element *rule;
@@ -2835,7 +2838,7 @@ static int ring_getsockopt(struct socket *sock,
 	      }
 	  }
 
-	read_unlock(&ring_mgmt_lock);
+	read_unlock(&pfr->ring_rules_lock);
 	if(buffer != NULL) kfree(buffer);
 
 	/* printk("SO_GET_FILTERING_RULE_STATS *END*\n"); */
