@@ -114,7 +114,7 @@ void print_stats() {
   
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
-  fprintf(stderr, "=========================\n");
+  fprintf(stderr, "=========================\n\n");
 }
 
 /* ******************************** */
@@ -133,7 +133,6 @@ void sigproc(int sig) {
 
 void my_sigalarm(int sig) {
   print_stats();
-  printf("\n");
   alarm(ALARM_SLEEP);
   signal(SIGALRM, my_sigalarm);
 }
