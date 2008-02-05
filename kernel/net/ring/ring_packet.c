@@ -1581,17 +1581,16 @@ static int skb_ring_handler(struct sk_buff *skb,
   rdt2 = _rdtsc();
 #endif
 
-  if(transparent_mode)
+  if(transparent_mode) {
     rc = 0;
+  } else {
+    if(real_skb) kfree_skb(skb);
+    rc = 1;
+  }
 
+  /* Fragment handling */
   if(skk != NULL)
     kfree_skb(skk);
-
-  if((rc != 0) && real_skb) {
-#if 0
-    dev_kfree_skb(skb); /* Free the skb */
-#endif
-  }
 
 #ifdef PROFILING
   rdt2 = _rdtsc()-rdt2;
