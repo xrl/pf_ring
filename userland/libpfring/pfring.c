@@ -37,27 +37,40 @@ unsigned long long rdtsc() {
 /* ******************************* */
 
 int pfring_set_cluster(pfring *ring, u_int clusterId) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   return(ring ? setsockopt(ring->fd, 0, SO_ADD_TO_CLUSTER,
 			      &clusterId, sizeof(clusterId)): -1);
+#endif
 }
 
 /* ******************************* */
 
 int pfring_remove_from_cluster(pfring *ring) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   return(ring ? setsockopt(ring->fd, 0, SO_REMOVE_FROM_CLUSTER, 
 			      NULL, 0) : -1);
+#endif
 }
 
 /* ******************************* */
 
 int pfring_set_reflector(pfring *ring, char *reflectorDevice) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   return(ring ?
 	 setsockopt(ring->fd, 0, SO_SET_REFLECTOR,
 		    &reflectorDevice, strlen(reflectorDevice)) : -1);
+#endif
 }
 
 /* ******************************* */
 
+#ifndef USE_PCAP
 static int set_if_promisc(const char *device, int set_promisc) {
   int sock_fd;
   struct ifreq ifr;
@@ -87,10 +100,22 @@ static int set_if_promisc(const char *device, int set_promisc) {
   close(sock_fd);
   return(0);
 }
+#endif
 
 /* **************************************************** */
 
 pfring* pfring_open(char *device_name, u_int8_t promisc, u_int8_t _reentrant) {
+#ifdef USE_PCAP
+  char ebuf[256];
+
+  pcap_t *pcapPtr = pcap_open_live(device_name,
+				   1500,
+				   1 /* promiscuous mode */,
+				   1000 /* ms */,
+				   ebuf);
+
+  return((pfring*)pcapPtr);
+#else
   int err = 0;
   pfring *ring = (pfring*)malloc(sizeof(pfring));
   
@@ -191,11 +216,16 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int8_t _reentrant) {
     return(ring);
   } else    
     return(NULL);
+#endif
 }
 
 /* **************************************************** */
 
 void pfring_close(pfring *ring) {
+#ifdef USE_PCAP
+  pcap_t *pcapPtr = (pcap_t*)ring;
+  pcap_close(pcapPtr);
+#else
   if(!ring) return;
 
   if(ring->buffer != NULL) {
@@ -210,32 +240,43 @@ void pfring_close(pfring *ring) {
   if(ring->reentrant)
     pthread_spin_destroy(&ring->spinlock);
   free(ring);
+#endif
 }
 
 /* **************************************************** */
 
 int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   return(ring ? setsockopt(ring->fd, 0, SO_TOGGLE_FILTER_POLICY, 
 			   &rules_default_accept_policy,
 			   sizeof(rules_default_accept_policy)): -1);
-
+#endif
 }
 
 /* **************************************************** */
 
 int pfring_version(pfring *ring, u_int32_t *version) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   if(ring == NULL) 
     return(-1);
   else {
     socklen_t len = sizeof(u_int32_t);
     return(getsockopt(ring->fd, 0, SO_GET_RING_VERSION, version, &len));
   }
+#endif
 }
 
 /* **************************************************** */
 
 int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 				    char* stats, u_int *stats_len) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   if((ring == NULL) || (*stats_len < sizeof(u_int16_t)))
     return(-1);
   else {
@@ -244,6 +285,7 @@ int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 		      SO_GET_FILTERING_RULE_STATS,
 		      stats, stats_len));
   }
+#endif
 }
 
 /* **************************************************** */
@@ -251,6 +293,9 @@ int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 int pfring_get_hash_filtering_rule_stats(pfring *ring,
 					 hash_filtering_rule* rule,
 					 char* stats, u_int *stats_len) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   if(ring == NULL)
     return(-1);
   else {
@@ -271,11 +316,15 @@ int pfring_get_hash_filtering_rule_stats(pfring *ring,
       return(0);
     }
   }
+#endif
 }
 
 /* **************************************************** */
 
 int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   int rc;
 
   if((!rule_to_add) || (!ring)) return(-1);
@@ -293,26 +342,35 @@ int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
 		  rule_to_add, sizeof(filtering_rule));
 
   return(rc);
+#endif
 }
 
 /* **************************************************** */
 
 int pfring_enable_ring(pfring *ring) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   char dummy;
 
   if(!ring) return(-1);
   return(setsockopt(ring->fd, 0, SO_ACTIVATE_RING, &dummy, sizeof(dummy)));
+#endif
 }
 
 /* **************************************************** */
 
 int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   int rc;
 
   rc = ring ? setsockopt(ring->fd, 0, SO_REMOVE_FILTERING_RULE,
 			 &rule_id, sizeof(rule_id)): -1;
 
   return(rc);
+#endif
 }
 
 /* **************************************************** */
@@ -320,6 +378,9 @@ int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
 int pfring_handle_hash_filtering_rule(pfring *ring, 
 				      hash_filtering_rule* rule_to_add,
 				      u_char add_rule) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   int rc;
 
   if((!rule_to_add) || (!ring)) return(-1);
@@ -328,34 +389,200 @@ int pfring_handle_hash_filtering_rule(pfring *ring,
 		  rule_to_add, sizeof(hash_filtering_rule));
 
   return(rc);
+#endif
 }
 
 /* **************************************************** */
 
 int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   int rc;
 
   rc = ring ? setsockopt(ring->fd, 0, SO_SET_SAMPLING_RATE,
 			 &rate, sizeof(rate)): -1;
 
   return(rc);
+#endif
 }
 
 /* ******************************* */
 
 int pfring_stats(pfring *ring, pfring_stat *stats) {
+#ifdef USE_PCAP
+  return(-1);
+#else
   if(ring && stats) {
     stats->recv = ring->slots_info->tot_read;
     stats->drop = ring->slots_info->tot_lost;
     return(1);
   } else
     return(0);
+#endif
 }
+
+/* **************************************************** */
+
+#ifdef USE_PCAP
+struct eth_hdr {
+  unsigned char   h_dest[ETH_ALEN];       /* destination eth addr */
+  unsigned char   h_source[ETH_ALEN];     /* source ether addr    */
+  u_int16_t          h_proto;                /* packet type ID field */
+};
+
+#define __LITTLE_ENDIAN_BITFIELD /* FIX */
+struct iphdr {
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	u_int8_t	ihl:4,
+		version:4;
+#elif defined (__BIG_ENDIAN_BITFIELD)
+	u_int8_t	version:4,
+  		ihl:4;
+#else
+#error	"Please fix <asm/byteorder.h>"
+#endif
+	u_int8_t	tos;
+	u_int16_t	tot_len;
+	u_int16_t	id;
+	u_int16_t	frag_off;
+	u_int8_t	ttl;
+	u_int8_t	protocol;
+	u_int16_t	check;
+	u_int32_t	saddr;
+	u_int32_t	daddr;
+	/*The options start here. */
+};
+
+struct tcphdr {
+	u_int16_t	source;
+	u_int16_t	dest;
+	u_int32_t	seq;
+	u_int32_t	ack_seq;
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	__u16	res1:4,
+		doff:4,
+		fin:1,
+		syn:1,
+		rst:1,
+		psh:1,
+		ack:1,
+		urg:1,
+		ece:1,
+		cwr:1;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	__u16	doff:4,
+		res1:4,
+		cwr:1,
+		ece:1,
+		urg:1,
+		ack:1,
+		psh:1,
+		rst:1,
+		syn:1,
+		fin:1;
+#else
+#error	"Adjust your <asm/byteorder.h> defines"
+#endif	
+	u_int16_t	window;
+	u_int16_t	check;
+	u_int16_t	urg_ptr;
+};
+
+struct udphdr {
+	u_int16_t	source;
+	u_int16_t	dest;
+	u_int16_t	len;
+	u_int16_t	check;
+};
+
+#define TH_FIN_MULTIPLIER	0x01
+#define TH_SYN_MULTIPLIER	0x02
+#define TH_RST_MULTIPLIER	0x04
+#define TH_PUSH_MULTIPLIER	0x08
+#define TH_ACK_MULTIPLIER	0x10
+#define TH_URG_MULTIPLIER	0x20
+
+
+static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
+{
+  struct iphdr *ip;
+  struct eth_hdr *eh = (struct eth_hdr*)pkt;
+  u_int16_t displ;
+
+  memset(&hdr->parsed_pkt, 0, sizeof(struct pkt_parsing_info));
+
+  hdr->parsed_pkt.eth_type = ntohs(eh->h_proto);
+  hdr->parsed_pkt.eth_offset = 0;
+
+  if(hdr->parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */)
+    {
+      hdr->parsed_pkt.vlan_offset = hdr->parsed_pkt.eth_offset + sizeof(struct eth_hdr);
+      hdr->parsed_pkt.vlan_id = (pkt[hdr->parsed_pkt.eth_offset + 14] & 15) * 256
+	+ pkt[hdr->parsed_pkt.eth_offset + 15];
+      hdr->parsed_pkt.eth_type = (pkt[hdr->parsed_pkt.eth_offset + 16]) * 256
+	+ pkt[hdr->parsed_pkt.eth_offset + 17];
+      displ = 4;
+    }
+  else
+    {
+      displ = 0;
+      hdr->parsed_pkt.vlan_id = 0; /* Any VLAN */
+    }
+
+  if(hdr->parsed_pkt.eth_type == 0x0800 /* IP */) {
+    hdr->parsed_pkt.l3_offset = hdr->parsed_pkt.eth_offset+displ+sizeof(struct eth_hdr);
+    ip = (struct iphdr*)(pkt+hdr->parsed_pkt.l3_offset);
+
+    hdr->parsed_pkt.ipv4_src = ntohl(ip->saddr), hdr->parsed_pkt.ipv4_dst = ntohl(ip->daddr), hdr->parsed_pkt.l3_proto = ip->protocol;
+    hdr->parsed_pkt.ipv4_tos = ip->tos;
+
+    if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP))
+      {
+	u_int16_t ip_len = ip->ihl*4;
+
+	hdr->parsed_pkt.l4_offset = hdr->parsed_pkt.l3_offset+ip_len;
+
+	if(ip->protocol == IPPROTO_TCP)
+	  {
+	    struct tcphdr *tcp = (struct tcphdr*)(pkt+hdr->parsed_pkt.l4_offset);
+	    hdr->parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->parsed_pkt.l4_dst_port = ntohs(tcp->dest);
+	    hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset+(tcp->doff * 4);
+	    hdr->parsed_pkt.tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
+	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
+	  } else if(ip->protocol == IPPROTO_UDP)
+	    {
+	      struct udphdr *udp = (struct udphdr*)(pkt+hdr->parsed_pkt.l4_offset);
+	      hdr->parsed_pkt.l4_src_port = ntohs(udp->source), hdr->parsed_pkt.l4_dst_port = ntohs(udp->dest);
+	      hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset+sizeof(struct udphdr);
+	    } else
+	      hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset;
+      } else
+	hdr->parsed_pkt.l4_src_port = hdr->parsed_pkt.l4_dst_port = 0;
+
+    return(1); /* IP */
+  } /* TODO: handle IPv6 */
+
+  return(0); /* No IP */
+}
+#endif
 
 /* **************************************************** */
 
 int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
 		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet) {
+#ifdef USE_PCAP
+  pcap_t *pcapPtr = (pcap_t*)ring;
+  const u_char *packet;
+
+  packet = pcap_next(pcapPtr, (struct pcap_pkthdr*)hdr);
+  if(hdr->caplen > 0) {
+    memcpy(buffer, packet, min(hdr->caplen, buffer_len));
+    parse_pkt(buffer, hdr);
+    return(1);
+  } else
+    return(0);
+#else
   FlowSlot *slot;
   u_int32_t queuedPkts;
 
@@ -433,4 +660,5 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
   }
 
   return(-1); /* Not reached */
+#endif
 }

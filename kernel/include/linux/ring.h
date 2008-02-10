@@ -1,7 +1,7 @@
 /*
  * Definitions for packet ring
  *
- * 2004-07 Luca Deri <deri@ntop.org>
+ * 2004-08 Luca Deri <deri@ntop.org>
  */
 #ifndef __RING_H
 #define __RING_H
@@ -19,8 +19,8 @@
 #define RING_FLOWSLOT_VERSION           9
 
 /* Versioning */
-#define RING_VERSION                "3.7.6"
-#define RING_VERSION_NUM           0x030706
+#define RING_VERSION                "3.7.7"
+#define RING_VERSION_NUM           0x030707
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99

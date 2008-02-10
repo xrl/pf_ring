@@ -8,7 +8,7 @@ OBJ=pfring.o
 LIBPFRING=libpfring.a
 TARGET=pfcount
 RANLIB=ranlib
-LIBS=-lpthread
+LIBS=-lpthread -lpcap
 
 all: $(TARGET)
 

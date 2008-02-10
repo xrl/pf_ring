@@ -21,6 +21,10 @@
 #ifndef _PFRING_H_
 #define _PFRING_H_
 
+/* Test Only */
+/* #define USE_PCAP */
+
+
 #include <sys/types.h>
 
 #ifndef __USE_XOPEN2K
@@ -54,6 +58,10 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <linux/if.h>
 #include <linux/if_ether.h>
 #include <linux/sockios.h>
+#endif
+
+#ifdef USE_PCAP 
+#include <pcap.h>
 #endif
 
 #include <arpa/inet.h>

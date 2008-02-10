@@ -3,21 +3,22 @@
  * (C) 2004-08 - Luca Deri <deri@ntop.org>
  *
  * This code includes contributions courtesy of
- * - Jeff Randall <jrandall@nexvu.com>
- * - Helmut Manck <helmut.manck@secunet.com>
- * - Brad Doctor <brad@stillsecure.com>
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
- * - Francesco Fusco <fusco@ntop.org> (IP defrag)
- * - Michael Stiller <ms@2scale.net> (VM memory support)
- * - Hitoshi Irino <irino@sfc.wide.ad.jp>
  * - Andrew Gallatin <gallatyn@myri.com>
+ * - Brad Doctor <brad@stillsecure.com>
+ * - Francesco Fusco <fusco@ntop.org> (IP defrag)
+ * - Helmut Manck <helmut.manck@secunet.com>
+ * - Hitoshi Irino <irino@sfc.wide.ad.jp>
+ * - Jeff Randall <jrandall@nexvu.com>
+ * - Kevin Wormington <kworm@sofnet.com>
+ * - Mahdi Dashtbozorgi <rdfm2000@gmail.com>
  * - Mahdi <rdfm2000@gmail.com>
- * - Matthew J. Roth <mroth@imminc.com>
- * - Vincent Carrier <vicarrier@wanadoo.fr>
  * - Marketakis Yannis <marketak@ics.forth.gr>
+ * - Matthew J. Roth <mroth@imminc.com>
+ * - Michael Stiller <ms@2scale.net> (VM memory support)
  * - Noam Dev <noamdev@gmail.com>
  * - Siva Kollipara <siva@cs.arizona.edu>
- * - Kevin Wormington <kworm@sofnet.com>
+ * - Vincent Carrier <vicarrier@wanadoo.fr>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -123,7 +124,7 @@ struct ring_element {
 /* ************************************************* */
 
 /*
- * Ring options 
+ * Ring options
  */
 struct ring_opt {
   u_int8_t ring_active;
@@ -411,11 +412,11 @@ static void ring_proc_add(struct ring_opt *pfr, struct net_device *dev)
 
     pfr->ring_pid = current->pid;
 
-    if(NULL != dev) 
-      snprintf(name, sizeof(name), "%d-%s", pfr->ring_pid, dev->name); 
-    else 
+    if(NULL != dev)
+      snprintf(name, sizeof(name), "%d-%s", pfr->ring_pid, dev->name);
+    else
       snprintf(name, sizeof(name), "%d", pfr->ring_pid);
- 
+
     create_proc_read_entry(name, 0, ring_proc_dir,
 			   ring_proc_get_info, pfr);
     /* printk("[PF_RING] added /proc/net/pf_ring/%s\n", name); */
@@ -428,11 +429,11 @@ static void ring_proc_remove(struct ring_opt *pfr)
 {
   if(ring_proc_dir != NULL) {
     char name[64];
-    
+
     if (pfr->ring_netdev && pfr->ring_netdev->name)
       snprintf(name, sizeof(name), "%d-%s",
 	       pfr->ring_pid,pfr->ring_netdev->name);
-    else 
+    else
       snprintf(name, sizeof(name), "%d", pfr->ring_pid);
 
     remove_proc_entry(name, ring_proc_dir);
@@ -532,8 +533,8 @@ static void ring_proc_init(void)
     ring_proc = create_proc_read_entry("info", 0, ring_proc_dir,
 				       ring_proc_get_info, NULL);
     ring_proc_plugins_info = create_proc_read_entry("plugins_info", 0,
-						    ring_proc_dir, 
-						    ring_proc_get_plugin_info, 
+						    ring_proc_dir,
+						    ring_proc_get_plugin_info,
 						    NULL);
     if(!ring_proc || !ring_proc_plugins_info)
       printk("[PF_RING] unable to register proc file\n");
@@ -758,6 +759,8 @@ static int parse_pkt(struct sk_buff *skb,
 	      hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset;
       } else
 	hdr->parsed_pkt.l4_src_port = hdr->parsed_pkt.l4_dst_port = 0;
+
+    hdr->parsed_pkt.eth_offset = skb_displ;
 
     return(1); /* IP */
   } /* TODO: handle IPv6 */
@@ -1196,7 +1199,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	} else {
 	  if(hdr->parsed_header_len >= bucket_len) {
 	    static u_char print_once = 0;
-	    
+
 	    if(!print_once) {
 	      printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
 		     bucket_len, hdr->parsed_header_len);
@@ -1409,6 +1412,7 @@ static int skb_ring_handler(struct sk_buff *skb,
   struct pfring_pkthdr hdr;
   int displ;
   struct sk_buff *skk = NULL;
+  struct sk_buff *orig_skb = skb;
 
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
@@ -1581,16 +1585,18 @@ static int skb_ring_handler(struct sk_buff *skb,
   rdt2 = _rdtsc();
 #endif
 
-  if(transparent_mode) {
-    rc = 0;
-  } else {
-    if(real_skb) kfree_skb(skb);
-    rc = 1;
-  }
-
   /* Fragment handling */
   if(skk != NULL)
     kfree_skb(skk);
+
+  if(rc == 1) {
+    if(transparent_mode) {
+      rc = 0;
+    } else {
+      if(recv_packet && real_skb) 
+	kfree_skb(orig_skb);
+    }
+  }
 
 #ifdef PROFILING
   rdt2 = _rdtsc()-rdt2;
@@ -2424,7 +2430,7 @@ static int ring_setsockopt(struct socket *sock,
       if(pfr->bpfFilter != NULL)
 	{
 	  kfree(pfr->bpfFilter);
-	  pfr->bpfFilter = NULL;	  
+	  pfr->bpfFilter = NULL;
 	} else
 	ret = -ENONET;
       write_unlock(&pfr->ring_rules_lock);
@@ -2781,7 +2787,7 @@ static int ring_getsockopt(struct socket *sock,
 	      } else
 		bucket = bucket->next;
 	    } /* while */
-	    
+
 	    read_unlock(&pfr->ring_rules_lock);
 	  }
 	}

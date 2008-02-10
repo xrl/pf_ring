@@ -83,7 +83,11 @@ int PFring::get_next_packet(struct pfring_pkthdr *hdr, const u_char *pkt, u_int 
   if((!pcapPtr) || (!hdr) || (pkt_len < snaplen)) return(-1);
   
   if(pcapPtr->ring) {
+#ifdef USE_PCAP
+    return(pfring_recv((pfring*)pcapPtr, (char*)pkt, pkt_len, hdr, 1 /* wait_for_incoming_packet */));
+#else
     return(pfring_recv(pcapPtr->ring, (char*)pkt, pkt_len, hdr, 1 /* wait_for_incoming_packet */));
+#endif
   } else {
     pcap_pkthdr *_hdr = (pcap_pkthdr*)hdr;
     return(pcap_next_ex(pcapPtr, &_hdr, &pkt));
