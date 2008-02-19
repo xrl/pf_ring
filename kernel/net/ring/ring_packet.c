@@ -9,6 +9,7 @@
  * - Francesco Fusco <fusco@ntop.org> (IP defrag)
  * - Helmut Manck <helmut.manck@secunet.com>
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
+ * - Jakov Haron <jyh@cabel.net>
  * - Jeff Randall <jrandall@nexvu.com>
  * - Kevin Wormington <kworm@sofnet.com>
  * - Mahdi Dashtbozorgi <rdfm2000@gmail.com>
@@ -209,7 +210,13 @@ static int buffer_ring_handler(struct net_device *dev, char *data, int len);
 static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 
 /* Extern */
-extern struct sk_buff *ip_defrag(struct sk_buff *skb, u32 user);
+extern
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,23))
+struct sk_buff*
+#else
+int
+#endif        
+ip_defrag(struct sk_buff *skb, u32 user);
 
 /* ********************************** */
 
@@ -360,10 +367,17 @@ static void rvfree(void *mem, unsigned long size)
 /* Returns new sk_buff, or NULL  */
 static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
 {
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,23))
   skb = ip_defrag(skb, IP_DEFRAG_RING);
-
+  
   if(skb)
     ip_send_check(ip_hdr(skb));
+#else
+  if(ip_defrag(skb, IP_DEFRAG_RING))
+    skb = NULL;
+  else
+    ip_send_check(ip_hdr(skb));
+#endif    
 
   return(skb);
 }
@@ -526,8 +540,12 @@ static int ring_proc_get_plugin_info(char *buf, char **start, off_t offset,
 
 static void ring_proc_init(void)
 {
-  ring_proc_dir = proc_mkdir("pf_ring", proc_net);
-
+  ring_proc_dir = proc_mkdir("pf_ring", 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+			     init_net.
+#endif			    
+			     proc_net);
+  
   if(ring_proc_dir) {
     ring_proc_dir->owner = THIS_MODULE;
     ring_proc = create_proc_read_entry("info", 0, ring_proc_dir,
@@ -559,7 +577,11 @@ static void ring_proc_term(void)
     printk("[PF_RING] removed /proc/net/pf_ring/info\n");
 
     if(ring_proc_dir != NULL) {
-      remove_proc_entry("pf_ring", proc_net);
+      remove_proc_entry("pf_ring", 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+			init_net.
+#endif			    
+    			proc_net);
       printk("[PF_RING] deregistered /proc/net/pf_ring\n");
     }
   }
@@ -1642,7 +1664,11 @@ static int buffer_ring_handler(struct net_device *dev,
 
 /* ********************************** */
 
-static int ring_create(struct socket *sock, int protocol)
+static int ring_create(
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+		       struct net *net,
+#endif
+		       struct socket *sock, int protocol)
 {
   struct sock *sk;
   struct ring_opt *pfr;
@@ -1670,17 +1696,21 @@ static int ring_create(struct socket *sock, int protocol)
 
   // BD: -- broke this out to keep it more simple and clear as to what the
   // options are.
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0))
+  sk = sk_alloc(PF_RING, GFP_KERNEL, 1); /* Kernel 2.4 */
+#else
+  /* 2.6.X */
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,11))
   sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
 #else
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24))
   // BD: API changed in 2.6.12, ref:
   // http://svn.clkao.org/svnweb/linux/revision/?rev=28201
   sk = sk_alloc(PF_RING, GFP_ATOMIC, &ring_proto, 1);
-#endif
 #else
-  /* Kernel 2.4 */
-  sk = sk_alloc(PF_RING, GFP_KERNEL, 1);
+  sk = sk_alloc(net, PF_INET, GFP_KERNEL, &ring_proto);
+#endif
+#endif
 #endif
 
   if (sk == NULL)
@@ -1952,7 +1982,11 @@ static int ring_bind(struct socket *sock,
   printk("[PF_RING] searching device %s\n", sa->sa_data);
 #endif
 
-  if((dev = __dev_get_by_name(sa->sa_data)) == NULL) {
+  if((dev = __dev_get_by_name(
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+			      &init_net,
+#endif
+			      sa->sa_data)) == NULL) {
 #if defined(RING_DEBUG)
     printk("[PF_RING] search failed\n");
 #endif
@@ -2471,7 +2505,11 @@ static int ring_setsockopt(struct socket *sock,
 #endif
 
       write_lock(&pfr->ring_rules_lock);
-      pfr->reflector_dev = dev_get_by_name(devName);
+      pfr->reflector_dev = dev_get_by_name(
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+					    &init_net,
+#endif
+    					    devName);
       write_unlock(&pfr->ring_rules_lock);
 
 #if defined(RING_DEBUG)
