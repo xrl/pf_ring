@@ -427,9 +427,9 @@ static void ring_proc_add(struct ring_opt *pfr, struct net_device *dev)
     pfr->ring_pid = current->pid;
 
     if(NULL != dev)
-      snprintf(name, sizeof(name), "%d-%s", pfr->ring_pid, dev->name);
+      snprintf(name, sizeof(name), "%d-%s.%d", pfr->ring_pid, dev->name, ring_table_size);
     else
-      snprintf(name, sizeof(name), "%d", pfr->ring_pid);
+      snprintf(name, sizeof(name), "%d.%d", pfr->ring_pid, ring_table_size);
 
     create_proc_read_entry(name, 0, ring_proc_dir,
 			   ring_proc_get_info, pfr);
