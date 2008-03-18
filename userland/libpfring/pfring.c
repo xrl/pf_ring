@@ -64,7 +64,7 @@ int pfring_set_reflector(pfring *ring, char *reflectorDevice) {
 #else
   return(ring ?
 	 setsockopt(ring->fd, 0, SO_SET_REFLECTOR,
-		    &reflectorDevice, strlen(reflectorDevice)) : -1);
+		    reflectorDevice, strlen(reflectorDevice)) : -1);
 #endif
 }
 

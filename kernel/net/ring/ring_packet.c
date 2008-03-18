@@ -6,6 +6,7 @@
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
  * - Andrew Gallatin <gallatyn@myri.com>
  * - Brad Doctor <brad@stillsecure.com>
+ * - Felipe Huici <felipe.huici@nw.neclab.eu>
  * - Francesco Fusco <fusco@ntop.org> (IP defrag)
  * - Helmut Manck <helmut.manck@secunet.com>
  * - Hitoshi Irino <irino@sfc.wide.ad.jp>
@@ -574,7 +575,7 @@ static void ring_proc_term(void)
     printk("[PF_RING] removed /proc/net/pf_ring/info\n");
 
     remove_proc_entry("plugins_info", ring_proc_dir);
-    printk("[PF_RING] removed /proc/net/pf_ring/info\n");
+    printk("[PF_RING] removed /proc/net/pf_ring/plugins_info\n");
 
     if(ring_proc_dir != NULL) {
       remove_proc_entry("pf_ring", 
