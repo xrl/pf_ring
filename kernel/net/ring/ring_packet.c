@@ -88,6 +88,11 @@
 
 /* ************************************************* */
 
+#define PROC_INFO        "info"
+#define PROC_PLUGINS_INFO "plugins_info"
+
+/* ************************************************* */
+
 #define CLUSTER_LEN       8
 
 /*
@@ -549,9 +554,9 @@ static void ring_proc_init(void)
   
   if(ring_proc_dir) {
     ring_proc_dir->owner = THIS_MODULE;
-    ring_proc = create_proc_read_entry("info", 0, ring_proc_dir,
+    ring_proc = create_proc_read_entry(PROC_INFO, 0, ring_proc_dir,
 				       ring_proc_get_info, NULL);
-    ring_proc_plugins_info = create_proc_read_entry("plugins_info", 0,
+    ring_proc_plugins_info = create_proc_read_entry(PROC_PLUGINS_INFO, 0,
 						    ring_proc_dir,
 						    ring_proc_get_plugin_info,
 						    NULL);
@@ -571,11 +576,11 @@ static void ring_proc_init(void)
 static void ring_proc_term(void)
 {
   if(ring_proc != NULL) {
-    remove_proc_entry("info", ring_proc_dir);
-    printk("[PF_RING] removed /proc/net/pf_ring/info\n");
+    remove_proc_entry(PROC_INFO, ring_proc_dir);
+    printk("[PF_RING] removed /proc/net/pf_ring/%s\n", PROC_INFO);
 
-    remove_proc_entry("plugins_info", ring_proc_dir);
-    printk("[PF_RING] removed /proc/net/pf_ring/plugins_info\n");
+    remove_proc_entry(PROC_PLUGINS_INFO, ring_proc_dir);
+    printk("[PF_RING] removed /proc/net/pf_ring/%s\n", PROC_PLUGINS_INFO);
 
     if(ring_proc_dir != NULL) {
       remove_proc_entry("pf_ring", 
