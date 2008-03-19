@@ -137,6 +137,7 @@ struct ring_opt {
   u_int8_t ring_active;
   struct net_device *ring_netdev;
   u_short ring_pid;
+  u_int32_t ring_id;
 
   /* Cluster */
   u_short cluster_id; /* 0 = no cluster */
@@ -231,6 +232,7 @@ static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096;
 static unsigned int enable_tx_capture = 1;
 static unsigned int enable_ip_defrag = 0;
 static unsigned int transparent_mode = 1;
+static u_int32_t ring_id_serial = 0;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
 module_param(bucket_len, uint, 0644);
@@ -431,11 +433,12 @@ static void ring_proc_add(struct ring_opt *pfr, struct net_device *dev)
     char name[64];
 
     pfr->ring_pid = current->pid;
+    pfr->ring_id = ring_id_serial++;
 
     if(NULL != dev)
-      snprintf(name, sizeof(name), "%d-%s.%d", pfr->ring_pid, dev->name, ring_table_size);
+      snprintf(name, sizeof(name), "%d-%s.%d", pfr->ring_pid, dev->name, pfr->ring_id);
     else
-      snprintf(name, sizeof(name), "%d.%d", pfr->ring_pid, ring_table_size);
+      snprintf(name, sizeof(name), "%d.%d", pfr->ring_pid, pfr->ring_id);
 
     create_proc_read_entry(name, 0, ring_proc_dir,
 			   ring_proc_get_info, pfr);
@@ -451,10 +454,10 @@ static void ring_proc_remove(struct ring_opt *pfr)
     char name[64];
 
     if (pfr->ring_netdev && pfr->ring_netdev->name)
-      snprintf(name, sizeof(name), "%d-%s",
-	       pfr->ring_pid,pfr->ring_netdev->name);
+      snprintf(name, sizeof(name), "%d-%s.%d",
+	       pfr->ring_pid,pfr-> ring_netdev->name, pfr->ring_id);
     else
-      snprintf(name, sizeof(name), "%d", pfr->ring_pid);
+      snprintf(name, sizeof(name), "%d.%d", pfr->ring_pid, pfr->ring_id);
 
     remove_proc_entry(name, ring_proc_dir);
     printk("[PF_RING] removed /proc/net/pf_ring/%s\n", name);
@@ -554,8 +557,10 @@ static void ring_proc_init(void)
   
   if(ring_proc_dir) {
     ring_proc_dir->owner = THIS_MODULE;
-    ring_proc = create_proc_read_entry(PROC_INFO, 0, ring_proc_dir,
-				       ring_proc_get_info, NULL);
+    ring_proc = create_proc_read_entry(PROC_INFO, 0,
+				       ring_proc_dir,
+				       ring_proc_get_info, 
+				       NULL);
     ring_proc_plugins_info = create_proc_read_entry(PROC_PLUGINS_INFO, 0,
 						    ring_proc_dir,
 						    ring_proc_get_plugin_info,
