@@ -7,13 +7,17 @@ INCLUDE=-I$(KERNEL_DIR)
 OBJ=pfring.o
 LIBPFRING=libpfring.a
 TARGET=pfcount
+F_TARGET=forwarder
 RANLIB=ranlib
 LIBS=-lpthread -lpcap
 
-all: $(TARGET)
+all: $(TARGET) $(F_TARGET)
 
 $(TARGET): pfcount.o $(LIBPFRING)
 	$(CC) pfcount.o $(LIBPFRING) -o $(TARGET) $(LIBS)
+
+$(F_TARGET): $(F_TARGET).o $(LIBPFRING)
+	$(CC) $(F_TARGET).o $(LIBPFRING) -o $(F_TARGET) $(LIBS)
 
 $(LIBPFRING): $(OBJ)
 	@rm -f $@
@@ -21,6 +25,9 @@ $(LIBPFRING): $(OBJ)
 	$(RANLIB) $@
 
 pfring.o: pfring.c pfring.h
+	$(CC) -c $(INCLUDE) $<
+
+forwarder.o: forwarder.c pfring.h
 	$(CC) -c $(INCLUDE) $<
 
 pfcount.o: pfcount.c
