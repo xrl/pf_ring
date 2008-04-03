@@ -22,7 +22,7 @@
 #define _PFRING_H_
 
 /* Test Only */
-/* #define USE_PCAP */
+//#define USE_PCAP 
 
 
 #include <sys/types.h>
