@@ -19,8 +19,8 @@
 #define RING_FLOWSLOT_VERSION           9
 
 /* Versioning */
-#define RING_VERSION                "3.7.7"
-#define RING_VERSION_NUM           0x030707
+#define RING_VERSION                "3.7.8"
+#define RING_VERSION_NUM           0x030708
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -64,7 +64,7 @@ struct pfring_pkthdr {
 
 /* *********************************** */
 
-#define MAX_PLUGIN_ID     128
+#define MAX_PLUGIN_ID      64
 #define MAX_PLUGIN_FIELDS  32
 
 /* ************************************************* */

@@ -975,11 +975,12 @@ static void add_skb_to_ring(struct sk_buff *skb,
   struct list_head *ptr, *tmp_ptr;
   u_int last_matched_plugin = 0;
   u_char hash_found = 0;
-  struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL }; /* This is a memory holder
-									 for storing parsed packet information
-									 that will then be freed when the packet
-									 has been handled
-								      */
+  struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL }; 
+  /* This is a memory holder
+     for storing parsed packet information
+     that will then be freed when the packet
+     has been handled
+  */
 
   if(!pfr->ring_active) return;
 
@@ -993,6 +994,15 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
   write_lock_bh(&pfr->ring_index_lock);
   pfr->slots_info->tot_pkts++;
+  idx = pfr->slots_info->insert_idx;
+  theSlot = get_insert_slot(pfr);
+
+  if((theSlot == NULL) || (theSlot->slot_state != 0)) {
+    /* No room left */
+    pfr->slots_info->tot_lost++;
+    write_unlock_bh(&pfr->ring_index_lock);
+    return;
+  }
 
   /* ************************** */
 
@@ -1030,9 +1040,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	 pfr->slots_info->insert_idx,
 	 skb->pkt_type, skb->cloned);
 #endif
-
-  idx = pfr->slots_info->insert_idx;
-  theSlot = get_insert_slot(pfr);
 
   if((theSlot != NULL) && (theSlot->slot_state == 0)) {
     char *ring_bucket;
