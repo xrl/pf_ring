@@ -88,7 +88,7 @@
 
 /* ************************************************* */
 
-#define PROC_INFO        "info"
+#define PROC_INFO         "info"
 #define PROC_PLUGINS_INFO "plugins_info"
 
 /* ************************************************* */
@@ -984,9 +984,11 @@ static void add_skb_to_ring(struct sk_buff *skb,
   if(!pfr->ring_active) return;
 
 #if defined(RING_DEBUG)
-  printk("add_skb_to_ring: [displ=%d][len=%d][caplen=%d][is_ip_pkt=%d][%d -> %d]\n",
+  printk("add_skb_to_ring: [displ=%d][len=%d][caplen=%d]"
+	 "[is_ip_pkt=%d][%d -> %d]\n",
 	 displ, hdr->len, hdr->caplen,
-	 is_ip_pkt, hdr->parsed_pkt.l4_src_port, hdr->parsed_pkt.l4_dst_port);
+	 is_ip_pkt, hdr->parsed_pkt.l4_src_port, 
+	 hdr->parsed_pkt.l4_dst_port);
 #endif
 
   write_lock_bh(&pfr->ring_index_lock);
@@ -1046,15 +1048,14 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
     /* ************************** */
 
+    /* [2] Filter packet according to rules */
+
     if(0)
       printk("About to evaluate packet [len=%d][tot=%llu][insertIdx=%d]"
 	     "[pkt_type=%d][cloned=%d]\n",
 	     (int)skb->len, pfr->slots_info->tot_pkts,
 	     pfr->slots_info->insert_idx,
 	     skb->pkt_type, skb->cloned);
-
-    /* [2] Filter packet according to rules */
-    read_lock_bh(&ring_mgmt_lock);
 
     /* [2.1] Search the hash */
     if(pfr->filtering_hash != NULL) {
@@ -1095,7 +1096,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
     }
 
     /* [2.2] Search rules list */
-    if(!hash_found) {
+    if((!hash_found) && (pfr->num_filtering_rules > 0)) {
       list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
 	{
 	  filtering_rule_element *entry;
@@ -1118,8 +1119,6 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	    }
 	} /* for */
     }
-
-    read_unlock_bh(&ring_mgmt_lock); /* Unlock all */
 
     if(fwd_pkt) {
       /* We accept the packet: it needs to be queued */
