@@ -75,7 +75,7 @@
 #endif
 #include <net/ip.h>
 
-/* #define RING_DEBUG */
+/* #define RING_DEBUG  */
 
 /* ************************************************* */
 
@@ -90,89 +90,6 @@
 
 #define PROC_INFO         "info"
 #define PROC_PLUGINS_INFO "plugins_info"
-
-/* ************************************************* */
-
-#define CLUSTER_LEN       8
-
-/*
- * A ring cluster is used group together rings used by various applications
- * so that they look, from the PF_RING point of view, as a single ring.
- * This means that developers can use clusters for sharing packets across
- * applications using various policies as specified in the hashing_mode
- * parameter.
- */
-struct ring_cluster {
-  u_short             cluster_id; /* 0 = no cluster */
-  u_short             num_cluster_elements;
-  enum cluster_type   hashing_mode;
-  u_short             hashing_id;
-  struct sock         *sk[CLUSTER_LEN];
-};
-
-/*
- * Linked-list of ring clusters.
- */
-typedef struct {
-  struct ring_cluster cluster;
-  struct list_head list;
-} ring_cluster_element;
-
-/* ************************************************* */
-
-/*
- * Linked-list of ring sockets.
- */
-struct ring_element {
-  struct list_head  list;
-  struct sock      *sk;
-};
-
-/* ************************************************* */
-
-/*
- * Ring options
- */
-struct ring_opt {
-  u_int8_t ring_active;
-  struct net_device *ring_netdev;
-  u_short ring_pid;
-  u_int32_t ring_id;
-
-  /* Cluster */
-  u_short cluster_id; /* 0 = no cluster */
-
-  /* Reflector */
-  struct net_device *reflector_dev; /* Reflector device */
-
-  /* Packet buffers */
-  unsigned long order;
-
-  /* Ring Slots */
-  void * ring_memory;
-  FlowSlotInfo *slots_info; /* Points to ring_memory */
-  char *ring_slots;         /* Points to ring_memory+sizeof(FlowSlotInfo) */
-
-  /* Packet Sampling */
-  u_int32_t pktToSample, sample_rate;
-
-  /* BPF Filter */
-  struct sk_filter *bpfFilter;
-
-  /* Filtering Rules */
-  filtering_hash_bucket **filtering_hash;
-  u_int16_t num_filtering_rules;
-  u_int8_t rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
-  struct list_head rules;
-
-  /* Locks */
-  atomic_t num_ring_slots_waiters;
-  wait_queue_head_t ring_slots_waitqueue;
-  rwlock_t ring_index_lock, ring_rules_lock;
-
-  /* Indexes (Internal) */
-  u_int insert_page_id, insert_slot_id;
-};
 
 /* ************************************************* */
 
@@ -706,16 +623,20 @@ static u_int32_t num_queued_pkts(struct ring_opt *pfr)
 
 static inline FlowSlot* get_insert_slot(struct ring_opt *pfr)
 {
-#if defined(RING_DEBUG)
-  printk("get_insert_slot(%d)\n", pfr->slots_info->insert_idx);
-#endif
-
   if(pfr->ring_slots != NULL) {
     FlowSlot *slot = (FlowSlot*)&(pfr->ring_slots[pfr->slots_info->insert_idx
 						  *pfr->slots_info->slot_len]);
+#if defined(RING_DEBUG)
+    printk("get_insert_slot(%d): returned slot [slot_state=%d]\n", 
+	   pfr->slots_info->insert_idx, slot->slot_state);
+#endif
     return(slot);
-  } else
+  } else {
+#if defined(RING_DEBUG)
+    printk("get_insert_slot(%d): NULL slot\n", pfr->slots_info->insert_idx);
+#endif
     return(NULL);
+  }
 }
 
 /* ********************************** */
@@ -744,17 +665,18 @@ static int parse_pkt(struct sk_buff *skb,
   u_int16_t displ;
 
   memset(&hdr->parsed_pkt, 0, sizeof(struct pkt_parsing_info));
+  hdr->parsed_header_len = 9;
 
-  hdr->parsed_pkt.eth_type = ntohs(eh->h_proto);
-  hdr->parsed_pkt.eth_offset = -skb_displ;
-
+  hdr->parsed_pkt.eth_type   = ntohs(eh->h_proto);
+  hdr->parsed_pkt.pkt_detail.offset.eth_offset = -skb_displ;
+  
   if(hdr->parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */)
     {
-      hdr->parsed_pkt.vlan_offset = hdr->parsed_pkt.eth_offset + sizeof(struct ethhdr);
-      hdr->parsed_pkt.vlan_id = (skb->data[hdr->parsed_pkt.eth_offset + 14] & 15) * 256
-	+ skb->data[hdr->parsed_pkt.eth_offset + 15];
-      hdr->parsed_pkt.eth_type = (skb->data[hdr->parsed_pkt.eth_offset + 16]) * 256
-	+ skb->data[hdr->parsed_pkt.eth_offset + 17];
+      hdr->parsed_pkt.pkt_detail.offset.vlan_offset = hdr->parsed_pkt.pkt_detail.offset.eth_offset + sizeof(struct ethhdr);
+      hdr->parsed_pkt.vlan_id = (skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 14] & 15) * 256
+	+ skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 15];
+      hdr->parsed_pkt.eth_type = (skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 16]) * 256
+	+ skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 17];
       displ = 4;
     }
   else
@@ -764,8 +686,8 @@ static int parse_pkt(struct sk_buff *skb,
     }
 
   if(hdr->parsed_pkt.eth_type == 0x0800 /* IP */) {
-    hdr->parsed_pkt.l3_offset = hdr->parsed_pkt.eth_offset+displ+sizeof(struct ethhdr);
-    ip = (struct iphdr*)(skb->data+hdr->parsed_pkt.l3_offset);
+    hdr->parsed_pkt.pkt_detail.offset.l3_offset = hdr->parsed_pkt.pkt_detail.offset.eth_offset+displ+sizeof(struct ethhdr);
+    ip = (struct iphdr*)(skb->data+hdr->parsed_pkt.pkt_detail.offset.l3_offset);
 
     hdr->parsed_pkt.ipv4_src = ntohl(ip->saddr), hdr->parsed_pkt.ipv4_dst = ntohl(ip->daddr), hdr->parsed_pkt.l3_proto = ip->protocol;
     hdr->parsed_pkt.ipv4_tos = ip->tos;
@@ -774,26 +696,26 @@ static int parse_pkt(struct sk_buff *skb,
       {
 	u_int16_t ip_len = ip->ihl*4;
 
-	hdr->parsed_pkt.l4_offset = hdr->parsed_pkt.l3_offset+ip_len;
+	hdr->parsed_pkt.pkt_detail.offset.l4_offset = hdr->parsed_pkt.pkt_detail.offset.l3_offset+ip_len;
 
 	if(ip->protocol == IPPROTO_TCP)
 	  {
-	    struct tcphdr *tcp = (struct tcphdr*)(skb->data+hdr->parsed_pkt.l4_offset);
+	    struct tcphdr *tcp = (struct tcphdr*)(skb->data+hdr->parsed_pkt.pkt_detail.offset.l4_offset);
 	    hdr->parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->parsed_pkt.l4_dst_port = ntohs(tcp->dest);
-	    hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset+(tcp->doff * 4);
+	    hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset+(tcp->doff * 4);
 	    hdr->parsed_pkt.tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
 	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
 	  } else if(ip->protocol == IPPROTO_UDP)
 	    {
-	      struct udphdr *udp = (struct udphdr*)(skb->data+hdr->parsed_pkt.l4_offset);
+	      struct udphdr *udp = (struct udphdr*)(skb->data+hdr->parsed_pkt.pkt_detail.offset.l4_offset);
 	      hdr->parsed_pkt.l4_src_port = ntohs(udp->source), hdr->parsed_pkt.l4_dst_port = ntohs(udp->dest);
-	      hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset+sizeof(struct udphdr);
+	      hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset+sizeof(struct udphdr);
 	    } else
-	      hdr->parsed_pkt.payload_offset = hdr->parsed_pkt.l4_offset;
+	      hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset;
       } else
 	hdr->parsed_pkt.l4_src_port = hdr->parsed_pkt.l4_dst_port = 0;
 
-    hdr->parsed_pkt.eth_offset = skb_displ;
+    hdr->parsed_pkt.pkt_detail.offset.eth_offset = skb_displ;
 
     return(1); /* IP */
   } /* TODO: handle IPv6 */
@@ -853,7 +775,8 @@ static int hash_bucket_match(filtering_hash_bucket *hash_bucket,
 /* ********************************** */
 
 /* 0 = no match, 1 = match */
-static int match_filtering_rule(filtering_rule_element *rule,
+static int match_filtering_rule(struct ring_opt *the_ring,
+				filtering_rule_element *rule,
 				struct pfring_pkthdr *hdr,
 				struct sk_buff *skb,
 				int displ,
@@ -861,6 +784,8 @@ static int match_filtering_rule(filtering_rule_element *rule,
 				u_int *last_matched_plugin)
 {
   int debug = 0;
+
+  if(debug) printk("match_filtering_rule()\n");
 
   if((rule->rule.core_fields.vlan_id > 0) && (hdr->parsed_pkt.vlan_id  != rule->rule.core_fields.vlan_id)) return(0);
   if((rule->rule.core_fields.proto > 0)   && (hdr->parsed_pkt.l3_proto != rule->rule.core_fields.proto))   return(0);
@@ -874,8 +799,10 @@ static int match_filtering_rule(filtering_rule_element *rule,
   }
 
   if((rule->rule.core_fields.port_high > 0)
-     && (!((hdr->parsed_pkt.l4_src_port >= rule->rule.core_fields.port_low) && (hdr->parsed_pkt.l4_src_port <= rule->rule.core_fields.port_high)))
-     && (!((hdr->parsed_pkt.l4_dst_port >= rule->rule.core_fields.port_low) && (hdr->parsed_pkt.l4_dst_port <= rule->rule.core_fields.port_high))))
+     && (!((hdr->parsed_pkt.l4_src_port >= rule->rule.core_fields.port_low) 
+	   && (hdr->parsed_pkt.l4_src_port <= rule->rule.core_fields.port_high)))
+     && (!((hdr->parsed_pkt.l4_dst_port >= rule->rule.core_fields.port_low)
+	   && (hdr->parsed_pkt.l4_dst_port <= rule->rule.core_fields.port_high))))
     return(0);
 
   if(rule->rule.balance_pool > 0) {
@@ -885,13 +812,14 @@ static int match_filtering_rule(filtering_rule_element *rule,
 
 #ifdef CONFIG_TEXTSEARCH
   if(rule->pattern != NULL) {
-    if((hdr->parsed_pkt.payload_offset > 0) && (hdr->caplen > hdr->parsed_pkt.payload_offset)) {
+    if((hdr->parsed_pkt.pkt_detail.offset.payload_offset > 0) 
+       && (hdr->caplen > hdr->parsed_pkt.pkt_detail.offset.payload_offset)) {
       struct ts_state state;
-      char *payload = (char*)&(skb->data[hdr->parsed_pkt.payload_offset-displ]);
-      int i, rc, payload_len = hdr->caplen - hdr->parsed_pkt.payload_offset;
+      char *payload = (char*)&(skb->data[hdr->parsed_pkt.pkt_detail.offset.payload_offset-displ]);
+      int i, rc, payload_len = hdr->caplen - hdr->parsed_pkt.pkt_detail.offset.payload_offset;
 
       printk("Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][",
-	     hdr->caplen, payload_len, displ, hdr->parsed_pkt.payload_offset);
+	     hdr->caplen, payload_len, displ, hdr->parsed_pkt.pkt_detail.offset.payload_offset);
 
       for(i=0; i<payload_len; i++) printk("%c", payload[i]);
       printk("]\n");
@@ -910,7 +838,7 @@ static int match_filtering_rule(filtering_rule_element *rule,
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id] != NULL)
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb != NULL)
      ) {
-    int rc, debug = 0;
+    int rc, debug = 1;
 
     if(debug)
       printk("rule->plugin_id [rule_id=%d][filter_plugin_id=%d][plugin_action=%d][ptr=%p]\n",
@@ -923,9 +851,9 @@ static int match_filtering_rule(filtering_rule_element *rule,
       ->pfring_plugin_filter_skb(rule, hdr, skb,
 				 &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
 
-    if(rc <= 0)
+    if(rc <= 0) {
       return(0); /* No match */
-    else {
+    } else {
       *last_matched_plugin = rule->rule.extended_fields.filter_plugin_id;
 
       if(debug)
@@ -943,7 +871,7 @@ static int match_filtering_rule(filtering_rule_element *rule,
      && (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
      ) {
     plugin_registration[rule->rule.plugin_action.plugin_id]
-      ->pfring_plugin_handle_skb(rule, NULL, hdr, skb,
+      ->pfring_plugin_handle_skb(the_ring, rule, NULL, hdr, skb,
 				 rule->rule.extended_fields.filter_plugin_id,
 				 parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
   }
@@ -964,6 +892,92 @@ static int match_filtering_rule(filtering_rule_element *rule,
 
 /* ********************************** */
 
+/*
+  NOTE: This function does *not* lock (pfr->ring_index_lock) the ring
+*/
+static void add_pkt_to_ring(struct sk_buff *skb,
+			    struct ring_opt *pfr,
+			    struct pfring_pkthdr *hdr,
+			    int displ, int offset) {
+  char *ring_bucket;
+  int idx;
+  FlowSlot *theSlot;
+
+#if defined(RING_DEBUG)
+  printk("--> add_pkt_to_ring(len=%d)\n", hdr->len);
+#endif
+
+  idx = pfr->slots_info->insert_idx;
+  idx++;
+  theSlot = get_insert_slot(pfr);
+  
+  if((theSlot == NULL) || (theSlot->slot_state != 0)) {
+    /* No room left */
+    pfr->slots_info->tot_lost++;
+    return;
+  }
+
+  ring_bucket = &theSlot->bucket;
+  memcpy(ring_bucket, hdr, sizeof(struct pfring_pkthdr)); /* Copy extended packet header */
+
+  if(skb != NULL) {
+    hdr->caplen = min(bucket_len-offset, hdr->caplen);
+    
+    if(hdr->caplen > 0) {
+#if defined(RING_DEBUG)
+      printk("--> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d]\n",
+	     hdr->caplen, hdr->len, displ, hdr->parsed_header_len);
+#endif
+      skb_copy_bits(skb, -displ, &ring_bucket[sizeof(struct pfring_pkthdr)+offset], hdr->caplen);
+    } else {
+      if(hdr->parsed_header_len >= bucket_len) {
+	static u_char print_once = 0;
+
+	if(!print_once) {
+	  printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
+	       bucket_len, hdr->parsed_header_len);
+	  print_once = 1;
+	}
+      }
+    }
+  }
+
+#if defined(RING_DEBUG)
+  {
+    static unsigned int lastLoss = 0;
+	  
+    if(pfr->slots_info->tot_lost
+       && (lastLoss != pfr->slots_info->tot_lost)) {
+      printk("add_skb_to_ring(%d): [data_len=%d]"
+	     "[hdr.caplen=%d][skb->len=%d]"
+	     "[pfring_pkthdr=%d][removeIdx=%d]"
+	     "[loss=%lu][page=%u][slot=%u]\n",
+	     idx-1, pfr->slots_info->data_len, hdr->caplen, skb->len,
+	     sizeof(struct pfring_pkthdr),
+	     pfr->slots_info->remove_idx,
+	     (long unsigned int)pfr->slots_info->tot_lost,
+	     pfr->insert_page_id, pfr->insert_slot_id);
+	    
+      lastLoss = pfr->slots_info->tot_lost;
+    }
+  }
+#endif
+	
+  if(idx == pfr->slots_info->tot_slots)
+    pfr->slots_info->insert_idx = 0;
+  else
+    pfr->slots_info->insert_idx = idx;
+
+#if defined(RING_DEBUG)
+  printk("==> insert_idx=%d\n",  pfr->slots_info->insert_idx);
+#endif
+	
+  pfr->slots_info->tot_insert++;
+  theSlot->slot_state = 1;
+}
+
+/* ********************************** */
+
 static void add_skb_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    struct pfring_pkthdr *hdr,
@@ -971,7 +985,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 			    int displ)
 {
   FlowSlot *theSlot;
-  int idx, fwd_pkt = 0;
+  int idx, initial_idx, fwd_pkt = 0;
   struct list_head *ptr, *tmp_ptr;
   u_int last_matched_plugin = 0;
   u_char hash_found = 0;
@@ -994,12 +1008,16 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
   write_lock_bh(&pfr->ring_index_lock);
   pfr->slots_info->tot_pkts++;
-  idx = pfr->slots_info->insert_idx;
+  initial_idx = idx = pfr->slots_info->insert_idx;
   theSlot = get_insert_slot(pfr);
 
   if((theSlot == NULL) || (theSlot->slot_state != 0)) {
     /* No room left */
     pfr->slots_info->tot_lost++;
+#if defined(RING_DEBUG)
+    printk("add_skb_to_ring(skb): packet lost [tot_lost=%d]\n", 
+	   (int)pfr->slots_info->tot_lost);
+#endif
     write_unlock_bh(&pfr->ring_index_lock);
     return;
   }
@@ -1087,7 +1105,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	     && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
 	     ) {
 	    plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
-	      ->pfring_plugin_handle_skb(NULL, hash_bucket, hdr, skb, 0 /* no plugin */, NULL);
+	      ->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, 0 /* no plugin */, NULL);
 	  }
 
 	  if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
@@ -1110,7 +1128,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
 	  entry = list_entry(ptr, filtering_rule_element, list);
 
-	  if(match_filtering_rule(entry, hdr, skb, displ, parse_memory_buffer, &last_matched_plugin))
+	  if(match_filtering_rule(pfr, entry, hdr, skb, displ, parse_memory_buffer, &last_matched_plugin))
 	    {
 	      if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
 		fwd_pkt = 1;
@@ -1225,57 +1243,9 @@ static void add_skb_to_ring(struct sk_buff *skb,
 		 parse_memory_buffer[last_matched_plugin]->mem, offset);
 	} else
 	  offset = 0, hdr->parsed_header_len = 0;
-
-	hdr->caplen = min(bucket_len-offset, hdr->caplen);
-	memcpy(ring_bucket, hdr, sizeof(struct pfring_pkthdr)); /* Copy extended packet header */
-
-	if(hdr->caplen > 0) {
-#if defined(RING_DEBUG)
-	  printk("--> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d]\n",
-		 hdr->caplen, hdr->len, displ, hdr->parsed_header_len);
-#endif
-	  skb_copy_bits(skb, -displ, &ring_bucket[sizeof(struct pfring_pkthdr)+offset], hdr->caplen);
-	} else {
-	  if(hdr->parsed_header_len >= bucket_len) {
-	    static u_char print_once = 0;
-
-	    if(!print_once) {
-	      printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
-		     bucket_len, hdr->parsed_header_len);
-	      print_once = 1;
-	    }
-	  }
-	}
+	
+	add_pkt_to_ring(skb, pfr, hdr, displ, offset);
       }
-
-#if defined(RING_DEBUG)
-      {
-	static unsigned int lastLoss = 0;
-
-	if(pfr->slots_info->tot_lost
-	   && (lastLoss != pfr->slots_info->tot_lost)) {
-	  printk("add_skb_to_ring(%d): [data_len=%d]"
-		 "[hdr.caplen=%d][skb->len=%d]"
-		 "[pfring_pkthdr=%d][removeIdx=%d]"
-		 "[loss=%lu][page=%u][slot=%u]\n",
-		 idx-1, pfr->slots_info->data_len, hdr->caplen, skb->len,
-		 sizeof(struct pfring_pkthdr),
-		 pfr->slots_info->remove_idx,
-		 (long unsigned int)pfr->slots_info->tot_lost,
-		 pfr->insert_page_id, pfr->insert_slot_id);
-
-	  lastLoss = pfr->slots_info->tot_lost;
-	}
-      }
-#endif
-
-      if(idx == pfr->slots_info->tot_slots)
-	pfr->slots_info->insert_idx = 0;
-      else
-	pfr->slots_info->insert_idx = idx;
-
-      pfr->slots_info->tot_insert++;
-      theSlot->slot_state = 1;
     }
   } else {
     pfr->slots_info->tot_lost++;
@@ -1290,7 +1260,12 @@ static void add_skb_to_ring(struct sk_buff *skb,
 
   write_unlock_bh(&pfr->ring_index_lock);
 
-  if(fwd_pkt) {
+#if defined(RING_DEBUG)
+  printk("[pfr->slots_info->insert_idx=%d][initial_idx=%d]\n",
+	 pfr->slots_info->insert_idx, initial_idx);
+#endif
+
+  if(fwd_pkt || (pfr->slots_info->insert_idx != initial_idx)) {
     /* wakeup in case of poll() */
     if(waitqueue_active(&pfr->ring_slots_waitqueue))
       wake_up_interruptible(&pfr->ring_slots_waitqueue);
@@ -1414,9 +1389,15 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
 	  rule = list_entry(ptr, filtering_rule_element, list);
 
 	  if(rule->rule.plugin_action.plugin_id == pfring_plugin_id) {
-	    if(rule->plugin_data_ptr != NULL) {
-	      kfree(rule->plugin_data_ptr);
-	      rule->plugin_data_ptr = NULL;
+	    if(plugin_registration[pfring_plugin_id]
+	       && plugin_registration[pfring_plugin_id]->pfring_plugin_free_ring_mem) {
+	      /* Custom free function */
+	      plugin_registration[pfring_plugin_id]->pfring_plugin_free_ring_mem(rule);
+	    } else {
+	      if(rule->plugin_data_ptr != NULL) {
+		kfree(rule->plugin_data_ptr);
+		rule->plugin_data_ptr = NULL;
+	      }
 	    }
 
 	    rule->rule.plugin_action.plugin_id = 0;
@@ -1506,7 +1487,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 
       skb_reset_network_header(skb);
       skb_reset_transport_header(skb);
-      skb_set_network_header(skb, hdr.parsed_pkt.l3_offset-displ);
+      skb_set_network_header(skb, hdr.parsed_pkt.pkt_detail.offset.l3_offset-displ);
 
       if(((iphdr = ip_hdr(skb)) != NULL)
 	 && (iphdr->frag_off & htons(IP_MF | IP_OFFSET)))
@@ -1811,6 +1792,19 @@ static int ring_release(struct socket *sock)
       filtering_rule_element *rule;
 
       rule = list_entry(ptr, filtering_rule_element, list);
+
+      if(plugin_registration[rule->rule.plugin_action.plugin_id]
+	 && plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_free_ring_mem) {
+	/* Custom free function */
+	plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_free_ring_mem(rule);
+      } else {
+	printk("--> default_free [rule->rule.plugin_action.plugin_id=%d]\n",
+	       rule->rule.plugin_action.plugin_id);
+	if(rule->plugin_data_ptr != NULL) {
+	  kfree(rule->plugin_data_ptr);
+	  rule->plugin_data_ptr = NULL;
+	}
+      }
 
 #ifdef CONFIG_TEXTSEARCH
       if(rule->pattern) textsearch_destroy(rule->pattern);
@@ -2407,7 +2401,7 @@ static int ring_setsockopt(struct socket *sock,
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
-  u_int cluster_id, debug = 0;
+  u_int cluster_id, debug = 1;
   char devName[8];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
@@ -3028,6 +3022,7 @@ static void __exit ring_exit(void)
   set_unregister_pfring_plugin(NULL);
   set_skb_ring_handler(NULL);
   set_buffer_ring_handler(NULL);
+  set_handle_add_pkt_to_ring(NULL);
   sock_unregister(PF_RING);
   ring_proc_term();
   printk("[PF_RING] unloaded\n");
@@ -3048,6 +3043,7 @@ static int __init ring_init(void)
 
   set_skb_ring_handler(skb_ring_handler);
   set_buffer_ring_handler(buffer_ring_handler);
+  set_handle_add_pkt_to_ring(add_pkt_to_ring);
   set_register_pfring_plugin(register_plugin);
   set_unregister_pfring_plugin(unregister_plugin);
 
@@ -3056,6 +3052,7 @@ static int __init ring_init(void)
 
     set_skb_ring_handler(NULL);
     set_buffer_ring_handler(NULL);
+    set_handle_add_pkt_to_ring(NULL);
     sock_unregister(PF_RING);
     return -1;
   } else {

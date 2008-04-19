@@ -84,6 +84,10 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #define POLL_SLEEP_MAX        1000 /* ns */
 #define POLL_QUEUE_MIN_LEN     500 /* # packets */
 
+#ifndef max
+#define max(a, b) (a > b ? a : b)
+#endif
+
 #ifdef  __cplusplus
 extern "C" {
 #endif

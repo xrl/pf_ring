@@ -3,6 +3,7 @@
  *
  * 2004-08 Luca Deri <deri@ntop.org>
  */
+
 #ifndef __RING_H
 #define __RING_H
 
@@ -19,8 +20,8 @@
 #define RING_FLOWSLOT_VERSION           9
 
 /* Versioning */
-#define RING_VERSION                "3.7.8"
-#define RING_VERSION_NUM           0x030708
+#define RING_VERSION                "3.8.0"
+#define RING_VERSION_NUM           0x030800
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -42,16 +43,32 @@
 
 #define NO_VLAN ((u_int16_t)-1)
 
+struct pkt_aggregation_info {
+  u_int32_t num_pkts, num_bytes;
+  struct timeval first_seen, last_seen;
+};
+
+struct pkt_offset {
+  u_int16_t eth_offset;
+  u_int16_t vlan_offset;
+  u_int16_t l3_offset;
+  u_int16_t l4_offset;
+  u_int16_t payload_offset;
+};
+
 struct pkt_parsing_info {
-  /* core fields (also used by NetFlow) */
+  /* Core fields (also used by NetFlow) */
   u_int16_t eth_type;   /* Ethernet type */
   u_int16_t vlan_id;    /* VLAN Id or NO_VLAN */
   u_int8_t  l3_proto, ipv4_tos;   /* Layer 3 protocol/TOS */
   u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
   u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
-  /* Offsets of L3/L4/payload elements */
-  u_int16_t eth_offset, vlan_offset, l3_offset, l4_offset, payload_offset; 
+
+  union {
+    struct pkt_offset offset; /* Offsets of L3/L4/payload elements */
+    struct pkt_aggregation_info aggregation; /* Future or plugin use */
+  } pkt_detail;
 };
 
 struct pfring_pkthdr {
@@ -60,7 +77,7 @@ struct pfring_pkthdr {
   u_int32_t len;        /* length this packet (off wire) */
   struct pkt_parsing_info parsed_pkt; /* packet parsing info */
   u_int16_t parsed_header_len; /* Extra parsing data before packet */
-}; 
+};
 
 /* *********************************** */
 
@@ -79,7 +96,7 @@ typedef struct {
 				        and destination. This means that
 					(proto, sip, sport, dip, dport) matches the rule if
 					one in "sip & sport", "sip & dport" "dip & sport"
-					match. */  
+					match. */
 } filtering_rule_core_fields;
 
 /* ************************************************* */
@@ -91,7 +108,7 @@ typedef struct {
 				       must match the specified pattern */
   u_int16_t filter_plugin_id;       /* If > 0 identifies a plugin to which the datastructure
 				       below will be passed for matching */
-  char      filter_plugin_data[FILTER_PLUGIN_DATA_LEN]; 
+  char      filter_plugin_data[FILTER_PLUGIN_DATA_LEN];
                                     /* Opaque datastructure that is interpreted by the
 				       specified plugin and that specifies a filtering
 				       criteria to be checked for match. Usually this data
@@ -116,7 +133,7 @@ typedef struct {
   u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
   rule_action_behaviour rule_action; /* What to do in case of match */
   u_int8_t balance_id, balance_pool; /* If balance_pool > 0, then pass the packet above only if the
-					(hash(proto, sip, sport, dip, dport) % balance_pool) 
+					(hash(proto, sip, sport, dip, dport) % balance_pool)
 					= balance_id */
   filtering_rule_core_fields     core_fields;
   filtering_rule_extended_fields extended_fields;
@@ -138,7 +155,7 @@ typedef struct {
   u_int16_t port_peer_a, port_peer_b;
 
   rule_action_behaviour rule_action; /* What to do in case of match */
-  filtering_rule_plugin_action plugin_action;  
+  filtering_rule_plugin_action plugin_action;
 } hash_filtering_rule;
 
 /* ************************************************* */
@@ -146,77 +163,12 @@ typedef struct {
 typedef struct _filtering_hash_bucket {
   hash_filtering_rule           rule;
   void                          *plugin_data_ptr; /* ptr to a *continuous* memory area
-						     allocated by the plugin */  
+						     allocated by the plugin */
   u_int16_t                     plugin_data_ptr_len;
   struct _filtering_hash_bucket *next;
 } filtering_hash_bucket;
 
 /* ************************************************* */
-
-#ifdef __KERNEL__
-
-typedef struct {
-  filtering_rule rule;
-#ifdef CONFIG_TEXTSEARCH
-  struct ts_config *pattern;
-#endif
-  struct list_head list;
-  
-  /* Plugin action */
-  void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */  
-} filtering_rule_element;
-
-struct parse_buffer {
-  void      *mem;
-  u_int16_t  mem_len;
-};
-
-/* Plugins */
-/* Execute an action (e.g. update rule stats) */
-typedef int (*plugin_handle_skb)(filtering_rule_element *rule,       /* In case the match is on the list */
-				 filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
-				 struct pfring_pkthdr *hdr,
-				 struct sk_buff *skb,
-				 u_int16_t filter_plugin_id,
-				 struct parse_buffer *filter_rule_memory_storage);
-/* Return 1/0 in case of match/no match for the given skb */
-typedef int (*plugin_filter_skb)(filtering_rule_element *rule, 
-				 struct pfring_pkthdr *hdr,
-				 struct sk_buff *skb,
-				 struct parse_buffer **filter_rule_memory_storage);
-/* Get stats about the rule */
-typedef int (*plugin_get_stats)(filtering_rule_element *rule,
-				filtering_hash_bucket  *hash_bucket,
-				u_char* stats_buffer, u_int stats_buffer_len);
-
-struct pfring_plugin_registration {
-  u_int16_t plugin_id;
-  char name[16];          /* Unique plugin name (e.g. sip, udp) */
-  char description[64];   /* Short plugin description */
-  plugin_filter_skb pfring_plugin_filter_skb; /* Filter skb: 1=match, 0=no match */
-  plugin_handle_skb pfring_plugin_handle_skb;
-  plugin_get_stats  pfring_plugin_get_stats;
-};
-
-typedef int (*register_pfring_plugin)(struct pfring_plugin_registration *reg);
-typedef int (*unregister_pfring_plugin)(u_int16_t pfring_plugin_id);
-
-extern register_pfring_plugin get_register_pfring_plugin(void);
-extern unregister_pfring_plugin get_unregister_pfring_plugin(void);
-extern void set_register_pfring_plugin(register_pfring_plugin the_handler);
-extern void set_unregister_pfring_plugin(unregister_pfring_plugin the_handler);
-
-extern int do_register_pfring_plugin(struct pfring_plugin_registration *reg);
-extern int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id);
-
-#endif
-
-/* *********************************** */
-
-enum cluster_type {
-  cluster_per_flow = 0,
-  cluster_round_robin
-};
 
 /* *********************************** */
 
@@ -260,20 +212,7 @@ void deallocateRing(void);
 
 /* ************************* */
 
-typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet, u_char real_skb);
-extern handle_ring_skb get_skb_ring_handler(void);
-extern void set_skb_ring_handler(handle_ring_skb the_handler);
-extern void do_skb_ring_handler(struct sk_buff *skb,
-				u_char recv_packet, u_char real_skb);
-
-typedef int (*handle_ring_buffer)(struct net_device *dev,
-				  char *data, int len);
-extern handle_ring_buffer get_buffer_ring_handler(void);
-extern void set_buffer_ring_handler(handle_ring_buffer the_handler);
-extern int do_buffer_ring_handler(struct net_device *dev,
-				  char *data, int len);
-
-#endif /* __KERNEL__  */
+#endif /* __KERNEL__ */
 
 /* *********************************** */
 
@@ -282,6 +221,188 @@ extern int do_buffer_ring_handler(struct net_device *dev,
 
 /* ioctl() */
 #define SIORINGPOLL      0x8888
+
+/* ************************************************* */
+
+#ifdef __KERNEL__
+
+enum cluster_type {
+  cluster_per_flow = 0,
+  cluster_round_robin
+};
+
+#define CLUSTER_LEN       8
+
+/*
+ * A ring cluster is used group together rings used by various applications
+ * so that they look, from the PF_RING point of view, as a single ring.
+ * This means that developers can use clusters for sharing packets across
+ * applications using various policies as specified in the hashing_mode
+ * parameter.
+ */
+struct ring_cluster {
+  u_short             cluster_id; /* 0 = no cluster */
+  u_short             num_cluster_elements;
+  enum cluster_type   hashing_mode;
+  u_short             hashing_id;
+  struct sock         *sk[CLUSTER_LEN];
+};
+
+/*
+ * Linked-list of ring clusters.
+ */
+typedef struct {
+  struct ring_cluster cluster;
+  struct list_head list;
+} ring_cluster_element;
+
+/* ************************************************* */
+
+/*
+ * Linked-list of ring sockets.
+ */
+struct ring_element {
+  struct list_head  list;
+  struct sock      *sk;
+};
+
+/* ************************************************* */
+
+/*
+ * Ring options
+ */
+struct ring_opt {
+  u_int8_t ring_active;
+  struct net_device *ring_netdev;
+  u_short ring_pid;
+  u_int32_t ring_id;
+
+  /* Cluster */
+  u_short cluster_id; /* 0 = no cluster */
+
+  /* Reflector */
+  struct net_device *reflector_dev; /* Reflector device */
+
+  /* Packet buffers */
+  unsigned long order;
+
+  /* Ring Slots */
+  void * ring_memory;
+  FlowSlotInfo *slots_info; /* Points to ring_memory */
+  char *ring_slots;         /* Points to ring_memory+sizeof(FlowSlotInfo) */
+
+  /* Packet Sampling */
+  u_int32_t pktToSample, sample_rate;
+
+  /* BPF Filter */
+  struct sk_filter *bpfFilter;
+
+  /* Filtering Rules */
+  filtering_hash_bucket **filtering_hash;
+  u_int16_t num_filtering_rules;
+  u_int8_t rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
+  struct list_head rules;
+
+  /* Locks */
+  atomic_t num_ring_slots_waiters;
+  wait_queue_head_t ring_slots_waitqueue;
+  rwlock_t ring_index_lock, ring_rules_lock;
+
+  /* Indexes (Internal) */
+  u_int insert_page_id, insert_slot_id;
+};
+
+/* **************************************** */
+
+typedef struct {
+  filtering_rule rule;
+#ifdef CONFIG_TEXTSEARCH
+  struct ts_config *pattern;
+#endif
+  struct list_head list;
+
+  /* Plugin action */
+  void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */
+} filtering_rule_element;
+
+struct parse_buffer {
+  void      *mem;
+  u_int16_t  mem_len;
+};
+
+/* **************************************** */
+
+/* Plugins */
+/* Execute an action (e.g. update rule stats) */
+typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
+				 filtering_rule_element *rule,       /* In case the match is on the list */
+				 filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
+				 struct pfring_pkthdr *hdr,
+				 struct sk_buff *skb,
+				 u_int16_t filter_plugin_id,
+				 struct parse_buffer *filter_rule_memory_storage);
+/* Return 1/0 in case of match/no match for the given skb */
+typedef int (*plugin_filter_skb)(filtering_rule_element *rule,
+				 struct pfring_pkthdr *hdr,
+				 struct sk_buff *skb,
+				 struct parse_buffer **filter_rule_memory_storage);
+/* Get stats about the rule */
+typedef int (*plugin_get_stats)(filtering_rule_element *rule,
+				filtering_hash_bucket  *hash_bucket,
+				u_char* stats_buffer, u_int stats_buffer_len);
+
+/* Called when a ring is disposed */
+typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
+
+struct pfring_plugin_registration {
+  u_int16_t plugin_id;
+  char name[16];          /* Unique plugin name (e.g. sip, udp) */
+  char description[64];   /* Short plugin description */
+  plugin_filter_skb    pfring_plugin_filter_skb; /* Filter skb: 1=match, 0=no match */
+  plugin_handle_skb    pfring_plugin_handle_skb;
+  plugin_get_stats     pfring_plugin_get_stats;
+  plugin_free_ring_mem pfring_plugin_free_ring_mem;
+};
+
+typedef int (*register_pfring_plugin)(struct pfring_plugin_registration *reg);
+typedef int (*unregister_pfring_plugin)(u_int16_t pfring_plugin_id);
+
+extern register_pfring_plugin get_register_pfring_plugin(void);
+extern unregister_pfring_plugin get_unregister_pfring_plugin(void);
+extern void set_register_pfring_plugin(register_pfring_plugin the_handler);
+extern void set_unregister_pfring_plugin(unregister_pfring_plugin the_handler);
+
+extern int do_register_pfring_plugin(struct pfring_plugin_registration *reg);
+extern int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id);
+
+typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet, u_char real_skb);
+extern handle_ring_skb get_skb_ring_handler(void);
+extern void set_skb_ring_handler(handle_ring_skb the_handler);
+extern void do_skb_ring_handler(struct sk_buff *skb,
+				u_char recv_packet, u_char real_skb);
+
+typedef int (*handle_ring_buffer)(struct net_device *dev,
+				  char *data, int len);
+ 
+typedef void (*handle_add_pkt_to_ring)(struct sk_buff *skb,
+				       struct ring_opt *pfr,
+				       struct pfring_pkthdr *hdr,
+				       int is_ip_pkt, int displ);
+
+extern handle_ring_buffer get_buffer_ring_handler(void);
+extern void set_buffer_ring_handler(handle_ring_buffer the_handler);
+extern int do_buffer_ring_handler(struct net_device *dev,
+				  char *data, int len);
+
+extern handle_add_pkt_to_ring get_handle_add_pkt_to_ring(void);
+extern void set_handle_add_pkt_to_ring(handle_add_pkt_to_ring the_handler);
+extern int do_handle_add_pkt_to_ring(struct sk_buff *skb,
+				     struct ring_opt *pfr,
+				     struct pfring_pkthdr *hdr,
+				     int is_ip_pkt, int displ);
+
+#endif /* __KERNEL__  */
+
 
 /* *********************************** */
 

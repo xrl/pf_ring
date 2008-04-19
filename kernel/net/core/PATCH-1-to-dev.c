@@ -39,6 +39,29 @@ int do_buffer_ring_handler(struct net_device *dev, char *data, int len) {
     return(0);
 }
 
+/* ******************* */
+
+/* ******************* */
+
+static handle_add_pkt_to_ring buffer_handle_add_pkt_to_ring = NULL;
+
+handle_add_pkt_to_ring get_handle_add_pkt_to_ring() { return(buffer_handle_add_pkt_to_ring); }
+
+void set_handle_add_pkt_to_ring(handle_add_pkt_to_ring the_handler) {
+  buffer_handle_add_pkt_to_ring = the_handler;
+}
+
+int do_handle_add_pkt_to_ring(struct sk_buff *skb,
+			      struct ring_opt *pfr,
+			      struct pfring_pkthdr *hdr,
+			      int is_ip_pkt, int displ) {
+  if(buffer_handle_add_pkt_to_ring) {
+    buffer_handle_add_pkt_to_ring(skb, pfr, hdr, is_ip_pkt, displ);
+    return(1);
+  } else 
+    return(0);
+}
+
 /* ************************************************ */
 
 static register_pfring_plugin pfring_registration = NULL;
@@ -93,6 +116,10 @@ EXPORT_SYMBOL(do_register_pfring_plugin);
 EXPORT_SYMBOL(get_unregister_pfring_plugin);
 EXPORT_SYMBOL(set_unregister_pfring_plugin);
 EXPORT_SYMBOL(do_unregister_pfring_plugin);
+
+EXPORT_SYMBOL(get_handle_add_pkt_to_ring);
+EXPORT_SYMBOL(set_handle_add_pkt_to_ring);
+EXPORT_SYMBOL(do_handle_add_pkt_to_ring);
 #endif
 
 #endif
