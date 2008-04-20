@@ -2401,7 +2401,7 @@ static int ring_setsockopt(struct socket *sock,
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
-  u_int cluster_id, debug = 1;
+  u_int cluster_id, debug = 0;
   char devName[8];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
@@ -2824,7 +2824,8 @@ static int ring_getsockopt(struct socket *sock,
 		    printk("[PF_RING] Found rule but pluginId %d is not registered\n", rule.plugin_action.plugin_id);
 		    rc = -EFAULT;
 		  } else
-		    rc = plugin_registration[rule.plugin_action.plugin_id] ->pfring_plugin_get_stats(NULL, bucket, buffer, len);
+		    rc = plugin_registration[rule.plugin_action.plugin_id] ->pfring_plugin_get_stats(pfr, NULL, 
+												     bucket, buffer, len);
 
 		  if(rc > 0) {
 		    if(copy_to_user(optval, buffer, rc)) {
@@ -2880,7 +2881,7 @@ static int ring_getsockopt(struct socket *sock,
 		    rc = -EFAULT;
 		  } else
 		    rc = plugin_registration[rule->rule.plugin_action.plugin_id]
-		      ->pfring_plugin_get_stats(rule, NULL, buffer, len);
+		      ->pfring_plugin_get_stats(pfr, rule, NULL, buffer, len);
 
 		  if(rc > 0) {
 		    if(copy_to_user(optval, buffer, rc)) {

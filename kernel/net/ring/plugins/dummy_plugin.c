@@ -61,9 +61,10 @@ static u_int16_t plugin_id = 1;
 
 /* ************************************ */
 
-static int dummy_plugin_plugin_handle_skb(filtering_rule_element *rule,
+static int dummy_plugin_plugin_handle_skb(struct ring_opt *pfr,
+					  filtering_rule_element *rule,
 					  filtering_hash_bucket *hash_rule,
-					  struct pcap_pkthdr *hdr,
+					  struct pfring_pkthdr *hdr,
 					  struct sk_buff *skb,
 					  u_int16_t filter_plugin_id,
 					  struct parse_buffer *filter_rule_memory_storage)
@@ -98,7 +99,7 @@ struct dummy_filter {
 };
 
 static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
-					  struct pcap_pkthdr *hdr,
+					  struct pfring_pkthdr *hdr,
 					  struct sk_buff *skb,
 					  struct parse_buffer **parse_memory)
 {
@@ -126,7 +127,8 @@ static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
 
 /* ************************************ */
 
-static int dummy_plugin_plugin_get_stats(filtering_rule_element *rule,
+static int dummy_plugin_plugin_get_stats(struct ring_opt *pfr,
+					 filtering_rule_element *rule,
 					 filtering_hash_bucket  *hash_bucket,
 					 u_char* stats_buffer,
 					 u_int stats_buffer_len)

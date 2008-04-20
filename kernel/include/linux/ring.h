@@ -168,8 +168,6 @@ typedef struct _filtering_hash_bucket {
   struct _filtering_hash_bucket *next;
 } filtering_hash_bucket;
 
-/* ************************************************* */
-
 /* *********************************** */
 
 #define RING_MIN_SLOT_SIZE    (60+sizeof(struct pfring_pkthdr))
@@ -347,7 +345,8 @@ typedef int (*plugin_filter_skb)(filtering_rule_element *rule,
 				 struct sk_buff *skb,
 				 struct parse_buffer **filter_rule_memory_storage);
 /* Get stats about the rule */
-typedef int (*plugin_get_stats)(filtering_rule_element *rule,
+typedef int (*plugin_get_stats)(struct ring_opt *pfr,
+				filtering_rule_element *rule,
 				filtering_hash_bucket  *hash_bucket,
 				u_char* stats_buffer, u_int stats_buffer_len);
 
