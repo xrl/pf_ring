@@ -838,7 +838,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id] != NULL)
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb != NULL)
      ) {
-    int rc, debug = 1;
+    int rc, debug = 0;
 
     if(debug)
       printk("rule->plugin_id [rule_id=%d][filter_plugin_id=%d][plugin_action=%d][ptr=%p]\n",
@@ -1798,8 +1798,10 @@ static int ring_release(struct socket *sock)
 	/* Custom free function */
 	plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_free_ring_mem(rule);
       } else {
+#ifdef DEBUG
 	printk("--> default_free [rule->rule.plugin_action.plugin_id=%d]\n",
 	       rule->rule.plugin_action.plugin_id);
+#endif
 	if(rule->plugin_data_ptr != NULL) {
 	  kfree(rule->plugin_data_ptr);
 	  rule->plugin_data_ptr = NULL;
