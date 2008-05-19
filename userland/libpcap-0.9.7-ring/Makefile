@@ -43,8 +43,8 @@ srcdir = .
 
 CC = gcc
 CCOPT = -g -fPIC
-PF_RING_INCLUDES=-I ../../kernel/include -I ../libpfring
-PF_RING_LIBS=../libpfring/pfring.o
+PF_RING_INCLUDES=-I ../../kernel/include -I ../lib
+PF_RING_LIBS=../lib/pfring.o
 INCLS = -I.   $(PF_RING_INCLUDES)
 DEFS = -DHAVE_CONFIG_H  -D_U_="__attribute__((unused))"
 LIBS =   $(PF_RING_LIBS)

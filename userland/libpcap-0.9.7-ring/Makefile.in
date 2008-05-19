@@ -43,8 +43,8 @@ VPATH = @srcdir@
 
 CC = @CC@
 CCOPT = @V_CCOPT@
-PF_RING_INCLUDES=-I ../../kernel/include -I ../libpfring
-PF_RING_LIBS=../libpfring/pfring.o
+PF_RING_INCLUDES=-I ../../kernel/include -I ../lib
+PF_RING_LIBS=../lib/pfring.o
 INCLS = -I. @V_INCLS@ @CPPFLAGS@ $(PF_RING_INCLUDES)
 DEFS = @DEFS@ @V_DEFS@
 LIBS = @V_LIBS@ @LDFLAGS@ $(PF_RING_LIBS)

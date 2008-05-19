@@ -6,7 +6,7 @@ struct simple_stats {
 };
 
 int main(int argc, char *argv[]) {
-  char *device_name = "eth0";
+  char *device_name = (char*)"eth0";
   PFring *ring = new PFring(device_name, 128, 1);
   int rc;
   u_int16_t rule_id = 99;
