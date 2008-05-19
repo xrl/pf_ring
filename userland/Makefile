@@ -1,37 +1,37 @@
-all: lib pcap examples c++ perl
+all: libpfring pcap ring_examples lib_c++ mod_perl
 
 ###################
 
-lib:
+libpfring:
 	cd lib; make
 
 pcap:
 	cd libpcap-0.9.7-ring; ./configure;make
 
-examples:
+ring_examples:
 	cd examples; make
 
-c++:
+lib_c++:
 	cd c++; make
 
-perl:
+mod_perl:
 	cd perl; make
 
 ###################
 
-clean: lib_clean pcap_clean examples_clean c++_clean perl_clean
+clean: libpfring_clean pcap_clean ring_examples_clean lib_c++_clean mod_perl_clean
 
-lib_clean:
+libpfring_clean:
 	cd lib; make clean
 
 pcap_clean:
 	cd libpcap-0.9.7-ring; make clean
 
-examples_clean:
+ring_examples_clean:
 	cd examples; make clean
 
-c++_clean:
+lib_c++_clean:
 	cd c++; make clean
 
-perl_clean:
+mod_perl_clean:
 	cd perl; make clean
