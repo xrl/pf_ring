@@ -1,0 +1,4 @@
+The revision history of Net::Pfring, a perl extension for PF-Ring
+
+ 2008-05-18 - 0.01 - Rocco Carbone <rocco /at/ tecsiel /dot/ it>
+  o initial implementation using a template for z39.50 I mafe several years ago

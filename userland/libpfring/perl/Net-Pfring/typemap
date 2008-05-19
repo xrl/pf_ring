@@ -1,0 +1,5 @@
+#
+# Map C types to Perl types
+#
+
+pfring * T_PTROBJ
