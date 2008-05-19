@@ -3,8 +3,8 @@ CPP=g++ -g
 # Specify here the 
 KERNEL_VER=$(shell uname -r)
 KERNEL_DIR=/lib/modules/$(KERNEL_VER)/source/include
-LIBPCAP_DIR=../../libpcap-0.9.7-ring
-INCLUDE=-I$(KERNEL_DIR) -I$(LIBPCAP_DIR) -I..
+LIBPCAP_DIR=../libpcap-0.9.7-ring
+INCLUDE=-I$(KERNEL_DIR) -I$(LIBPCAP_DIR) -I../libpfring
 LIBPFRING_CPP=libpfring_cpp.a
 RANLIB=ranlib
 OBJ=PFring.o
