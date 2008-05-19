@@ -9,7 +9,7 @@ LIBPFRING=libpfring.a
 TARGET=pfcount
 F_TARGET=forwarder
 RANLIB=ranlib
-LIBS=-lpthread -lpcap
+LIBS=-L../libpcap-0.9.7-ring -lpthread -lpcap
 
 all: $(TARGET) $(F_TARGET)
 
