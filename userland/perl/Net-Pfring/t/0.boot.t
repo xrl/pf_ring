@@ -5,7 +5,7 @@
 #
 # Copyright (c) 2008 Rocco Carbone
 #
-# Rocco Carbone <rocco@tecsiel.it> 2Q 2008
+# Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #

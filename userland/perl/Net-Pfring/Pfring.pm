@@ -5,7 +5,7 @@
 #
 # Copyright (c) 2008 Rocco Carbone
 #
-# Rocco Carbone <rocco@tecsiel.it> 2Q 2008
+# Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
@@ -126,8 +126,10 @@ sub Version {
 sub Recv {
   my $pfring = shift;
 
+  my $payload;
+
   # Call the low-level routine
-#  ($major, $minor, $level) = Net::Pfring::_version ($pfring);
+  $payload = Net::Pfring::_recv ($pfring);
 }
 
 
@@ -197,7 +199,7 @@ No bugs are known at this time.
 
 =head1 AUTHORS
 
-Perl Pfring has been written by Rocco Carbone <rocco@tecsiel.it>
+Perl Pfring has been written by Rocco Carbone <rocco /at/ ntop /dot/ org>
 
 =head1 COPYRIGHT
 

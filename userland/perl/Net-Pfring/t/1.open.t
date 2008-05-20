@@ -5,7 +5,7 @@
 #
 # Copyright (c) 2008 Rocco Carbone
 #
-# Rocco Carbone <rocco@tecsiel.it> 2Q 2008
+# Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
@@ -22,7 +22,7 @@ use Net::Pfring;
 BEGIN { $| = 1; print "1..1\n"; }
 END {print "not ok 1\n" unless $ring;}
 
-my $device="eth0";
+my $device = "eth0";
 
 $ring = Net::Pfring::Open($device, 1);
 

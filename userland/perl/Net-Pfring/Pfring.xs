@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2008 Rocco Carbone
  *
- * Rocco Carbone <rocco@tecsiel.it> 2Q 2008
+ * Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
  *
  * -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
  *
@@ -117,7 +117,7 @@ PPCODE:
 
 
  #
- # Attempt to receive packets
+ # Attempt to receive data
  #
 void
 xs_pfring_recv (pfref)
@@ -126,16 +126,34 @@ PPCODE:
 {
   static unsigned int received;
 
-  char buffer [2048];
+  char packet [2048];
+  char payload [2048 * 2] = "";
+  char * s;
+  char * d;
   struct pfring_pkthdr header;
 
-  if (ring && pfring_recv (ring, buffer, sizeof (buffer), & header, 1) > 0)
+  unsigned short len = 0;
+
+  EXTEND (sp, 2);
+
+  if (ring && pfring_recv (ring, packet, sizeof (packet), & header, 1) > 0)
     {
-      struct pfring_pkthdr * h = & header;
-      int s = (h -> ts . tv_sec) % 86400;
-      printf ("[%4u] %02d:%02d:%02d.%06u\n",
-	      ++ received,
-	      s / 3600, (s % 3600) / 60, s % 60,
-	      (unsigned) h -> ts . tv_usec);
+      len = header . caplen -
+	header . parsed_pkt . pkt_detail . offset . payload_offset -
+	header . parsed_pkt . pkt_detail . offset . eth_offset;
+      if (len)
+	{
+	  s = packet + len;
+	  d = payload;
+	  while (len)
+	    {
+	      sprintf (d, "%02x", * s & 0x000000ff);
+	      s ++;
+	      d += 2;
+	      len --;
+	    }
+	  * d = '\0';
+	}
     }
+  PUSHs (sv_2mortal (newSVpv (payload, FALSE)));
 }

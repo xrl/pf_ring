@@ -5,7 +5,7 @@
 #
 # Copyright (c) 2008 Rocco Carbone
 #
-# Rocco Carbone <rocco@ntop.org> 2Q 2008
+# Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
@@ -48,7 +48,7 @@ chop($kernel);
 WriteMakefile(
     'NAME'         => 'Net::Pfring',
     'VERSION_FROM' => 'Pfring.pm',
-    'AUTHOR'       => 'Rocco Carbone <rocco@ntop.org>',
+    'AUTHOR'       => 'Rocco Carbone <rocco /at/ ntop /dot/ org>',
     'ABSTRACT'     => 'Perl binding for PF-Ring',
     'DISTNAME'     => 'Net-Pfring',
     'OBJECT'       => 'Pfring$(OBJ_EXT) ../../lib/libpfring.a',
