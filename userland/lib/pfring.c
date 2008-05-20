@@ -26,6 +26,7 @@
 
 // #define RING_DEBUG
 
+
 /* ******************************* */
 
 unsigned long long rdtsc() {
@@ -237,8 +238,10 @@ void pfring_close(pfring *ring) {
 
   free(ring->device_name);
   close(ring->fd);
+
   if(ring->reentrant)
     pthread_spin_destroy(&ring->spinlock);
+
   free(ring);
 #endif
 }
@@ -570,15 +573,18 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 /* **************************************************** */
 
 int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
-		struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet) {
+		struct pfring_pkthdr *hdr, 
+		u_char wait_for_incoming_packet) {
 #ifdef USE_PCAP
   pcap_t *pcapPtr = (pcap_t*)ring;
   const u_char *packet;
 
   packet = pcap_next(pcapPtr, (struct pcap_pkthdr*)hdr);
   if(hdr->caplen > 0) {
-    memcpy(buffer, packet, min(hdr->caplen, buffer_len));
-    parse_pkt(buffer, hdr);
+    if(buffer && (buffer_len > 0)) {
+      memcpy(buffer, packet, min(hdr->caplen, buffer_len));
+      parse_pkt(buffer, hdr);
+    }
     return(1);
   } else
     return(0);
@@ -606,7 +612,7 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
 
     if(bktLen > buffer_len) bktLen = buffer_len-1;
       
-    if(buffer) {
+    if(buffer && (bktLen > 0)) {
       memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
       bucket[bktLen] = '\0';
     }
@@ -662,3 +668,14 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
   return(-1); /* Not reached */
 #endif
 }
+
+/* ******************************* */
+
+int pfring_get_selectable_fd(pfring *ring) {
+#ifdef USE_PCAP
+  return(pcap_get_selectable_fd((pcap_t*)ring));
+#else
+  return(ring->fd);
+#endif
+}
+

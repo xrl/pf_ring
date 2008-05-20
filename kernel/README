@@ -10,8 +10,8 @@ First of all you need to patch your kernel. If you already have a patch file use
 3. ./mkpatch
    After running this tool you will finally have a patch file for your target kernel.
 
-4. (optional but very recommended) patch your kernel with this patch
-   http://people.redhat.com/mingo/realtime-preempt/
+4. (optional) patch your kernel with this patch
+   http://www.kernel.org/pub/linux/kernel/projects/rt/
 
 5. patch your kernel as follows:
    cd <spool dir>
