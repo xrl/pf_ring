@@ -12,7 +12,7 @@
 #include <stdlib.h>
 
 #define ALARM_SLEEP       1
-#define DEFAULT_SNAPLEN 128
+#define DEFAULT_SNAPLEN 256
 pcap_t  *pd;
 int verbose = 0;
 struct pcap_stat pcapStats;

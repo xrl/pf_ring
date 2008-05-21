@@ -120,7 +120,7 @@ extern "C" {
   int pfring_set_cluster(pfring *ring, u_int clusterId);
   int pfring_remove_from_cluster(pfring *ring);
   int pfring_set_reflector(pfring *ring, char *reflectorDevice);
-  pfring* pfring_open(char *device_name, u_int8_t promisc, u_int8_t reentrant);
+  pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int8_t reentrant);
   void pfring_close(pfring *ring);
   int pfring_stats(pfring *ring, pfring_stat *stats);
   int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 

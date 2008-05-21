@@ -19,8 +19,9 @@
 #define RING_MAGIC_VALUE             0x88
 #define RING_FLOWSLOT_VERSION           9
 
+#define DEFAULT_BUCKET_LEN            128
 /* Versioning */
-#define RING_VERSION                "3.8.0"
+#define RING_VERSION                "3.8.1"
 #define RING_VERSION_NUM           0x030800
 
 /* Set */
@@ -33,6 +34,7 @@
 #define SO_TOGGLE_FILTER_POLICY          105
 #define SO_SET_SAMPLING_RATE             106
 #define SO_ACTIVATE_RING                 107
+#define SO_RING_BUCKET_LEN               108
 
 /* Get */
 #define SO_GET_RING_VERSION              110
@@ -286,6 +288,7 @@ struct ring_opt {
 
   /* Ring Slots */
   void * ring_memory;
+  u_int32_t bucket_len;
   FlowSlotInfo *slots_info; /* Points to ring_memory */
   char *ring_slots;         /* Points to ring_memory+sizeof(FlowSlotInfo) */
 

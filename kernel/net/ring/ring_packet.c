@@ -145,27 +145,24 @@ ip_defrag(struct sk_buff *skb, u32 user);
 /* ********************************** */
 
 /* Defaults */
-static unsigned int bucket_len = 128 /* bytes */, num_slots = 4096;
+static unsigned int num_slots = 4096;
 static unsigned int enable_tx_capture = 1;
 static unsigned int enable_ip_defrag = 0;
 static unsigned int transparent_mode = 1;
 static u_int32_t ring_id_serial = 0;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
-module_param(bucket_len, uint, 0644);
 module_param(num_slots,  uint, 0644);
 module_param(transparent_mode, uint, 0644);
 module_param(enable_tx_capture, uint, 0644);
 module_param(enable_ip_defrag, uint, 0644);
 #else
-MODULE_PARM(bucket_len, "i");
 MODULE_PARM(num_slots, "i");
 MODULE_PARM(transparent_mode, "i");
 MODULE_PARM(enable_tx_capture, "i");
 MODULE_PARM(enable_ip_defrag, "i");
 #endif
 
-MODULE_PARM_DESC(bucket_len, "Size (in bytes) a ring bucket");
 MODULE_PARM_DESC(num_slots,  "Number of ring slots");
 MODULE_PARM_DESC(transparent_mode,
                  "Set to 1 to set transparent mode "
@@ -393,7 +390,6 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
   if(data == NULL) {
     /* /proc/net/pf_ring/info */
     rlen = sprintf(buf,         "Version             : %s\n", RING_VERSION);
-    rlen += sprintf(buf + rlen, "Bucket length       : %d bytes\n", bucket_len);
     rlen += sprintf(buf + rlen, "Ring slots          : %d\n", num_slots);
     rlen += sprintf(buf + rlen, "Slot version        : %d\n", RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen, "Capture TX          : %s\n",
@@ -420,8 +416,8 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen, "# Filt. Rules : %d\n",  pfr->num_filtering_rules);
 	rlen += sprintf(buf + rlen, "Cluster Id    : %d\n",  pfr->cluster_id);
 	rlen += sprintf(buf + rlen, "Tot Slots     : %d\n",  fsi->tot_slots);
-	rlen += sprintf(buf + rlen, "Slot Len      : %d\n",  fsi->slot_len);
-	rlen += sprintf(buf + rlen, "Data Len      : %d\n",  fsi->data_len);
+	rlen += sprintf(buf + rlen, "Bucket Len    : %d\n",  fsi->data_len);
+	rlen += sprintf(buf + rlen, "Slot Len      : %d [bucket+header]\n",  fsi->slot_len); 
 	rlen += sprintf(buf + rlen, "Tot Memory    : %d\n",  fsi->tot_mem);
 	rlen += sprintf(buf + rlen, "Tot Packets   : %lu\n", (unsigned long)fsi->tot_pkts);
 	rlen += sprintf(buf + rlen, "Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
@@ -921,7 +917,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   memcpy(ring_bucket, hdr, sizeof(struct pfring_pkthdr)); /* Copy extended packet header */
 
   if(skb != NULL) {
-    hdr->caplen = min(bucket_len-offset, hdr->caplen);
+    hdr->caplen = min(pfr->bucket_len-offset, hdr->caplen);
     
     if(hdr->caplen > 0) {
 #if defined(RING_DEBUG)
@@ -930,12 +926,12 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 #endif
       skb_copy_bits(skb, -displ, &ring_bucket[sizeof(struct pfring_pkthdr)+offset], hdr->caplen);
     } else {
-      if(hdr->parsed_header_len >= bucket_len) {
+      if(hdr->parsed_header_len >= pfr->bucket_len) {
 	static u_char print_once = 0;
 
 	if(!print_once) {
 	  printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
-	       bucket_len, hdr->parsed_header_len);
+	       pfr->bucket_len, hdr->parsed_header_len);
 	  print_once = 1;
 	}
       }
@@ -1237,7 +1233,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 		 last_matched_plugin, hdr->parsed_header_len);
 #endif
 
-	  if(offset > bucket_len) offset = hdr->parsed_header_len = bucket_len;
+	  if(offset > pfr->bucket_len) offset = hdr->parsed_header_len = pfr->bucket_len;
 
 	  memcpy(&ring_bucket[sizeof(struct pfring_pkthdr)],
 		 parse_memory_buffer[last_matched_plugin]->mem, offset);
@@ -1541,7 +1537,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
   hdr.len = hdr.caplen = skb->len+displ;
-  hdr.caplen = min(hdr.caplen, bucket_len);
 
   read_lock_bh(&ring_mgmt_lock);
 
@@ -1562,6 +1557,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	   || ((skb->dev->flags & IFF_SLAVE)
 	       && (pfr->ring_netdev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
+      hdr.caplen = min(hdr.caplen, pfr->bucket_len);
       add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ);
       rc = 1; /* Ring found: we've done our job */
     }
@@ -1731,6 +1727,7 @@ static int ring_create(
   }
   memset(pfr, 0, sizeof(*pfr));
   pfr->ring_active = 0; /* We activate as soon as somebody waits for packets */
+  pfr->bucket_len = DEFAULT_BUCKET_LEN;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
   rwlock_init(&pfr->ring_rules_lock);
@@ -1907,7 +1904,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     + sizeof(u_char)
 #endif
     + sizeof(struct pfring_pkthdr)
-    + bucket_len      /* flowSlot.bucket */;
+    + pfr->bucket_len      /* flowSlot.bucket */;
 
   tot_mem = sizeof(FlowSlotInfo) + num_slots*the_slot_len;
   if (tot_mem % PAGE_SIZE)
@@ -1929,7 +1926,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 
   pfr->slots_info->version     = RING_FLOWSLOT_VERSION;
   pfr->slots_info->slot_len    = the_slot_len;
-  pfr->slots_info->data_len    = bucket_len;
+  pfr->slots_info->data_len    = pfr->bucket_len;
   pfr->slots_info->tot_slots   = (tot_mem-sizeof(FlowSlotInfo))/the_slot_len;
   pfr->slots_info->tot_mem     = tot_mem;
   pfr->slots_info->sample_rate = 1;
@@ -2729,6 +2726,15 @@ static int ring_setsockopt(struct socket *sock,
       found = 1, pfr->ring_active = 1;
       break;
 
+    case SO_RING_BUCKET_LEN:
+      if(optlen != sizeof(u_int32_t))
+	return -EINVAL;
+      else {
+	if(copy_from_user(&pfr->bucket_len, optval, optlen))
+	  return -EFAULT;
+      }
+      break;
+
     default:
       found = 0;
       break;
@@ -3059,7 +3065,7 @@ static int __init ring_init(void)
     sock_unregister(PF_RING);
     return -1;
   } else {
-    printk("[PF_RING] Bucket length    %d bytes\n", bucket_len);
+   
     printk("[PF_RING] Ring slots       %d\n", num_slots);
     printk("[PF_RING] Slot version     %d\n", RING_FLOWSLOT_VERSION);
     printk("[PF_RING] Capture TX       %s\n",

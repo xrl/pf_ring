@@ -105,12 +105,12 @@ static int set_if_promisc(const char *device, int set_promisc) {
 
 /* **************************************************** */
 
-pfring* pfring_open(char *device_name, u_int8_t promisc, u_int8_t _reentrant) {
+pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int8_t _reentrant) {
 #ifdef USE_PCAP
   char ebuf[256];
 
   pcap_t *pcapPtr = pcap_open_live(device_name,
-				   1500,
+				   caplen,
 				   1 /* promiscuous mode */,
 				   1000 /* ms */,
 				   ebuf);
@@ -136,6 +136,8 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int8_t _reentrant) {
     struct sockaddr sa;
     int             rc;
     u_int memSlotsLen;
+
+    setsockopt(ring->fd, 0, SO_RING_BUCKET_LEN, &caplen, sizeof(caplen));
 
     sa.sa_family   = PF_RING;
     snprintf(sa.sa_data, sizeof(sa.sa_data), "%s", device_name);

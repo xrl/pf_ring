@@ -84,13 +84,13 @@ int main(int argc, char* argv[])
   }
 
   /* open devices */
-  if((pd = pfring_open(in_dev, promisc, 0)) == NULL) 
+  if((pd = pfring_open(in_dev, promisc, 1500, 0)) == NULL) 
   {
     printf("pfring_open error for %s\n", in_dev);
     return -1;
   } 
 
-  if ((td = pfring_open(out_dev, promisc, 0)) == NULL) {
+  if ((td = pfring_open(out_dev, promisc, 1500, 0)) == NULL) {
     printf("pfring_open error for %s\n", out_dev);
     return -1;
   }
