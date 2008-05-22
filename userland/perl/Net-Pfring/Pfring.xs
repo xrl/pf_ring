@@ -58,7 +58,7 @@ CODE:
 {
   if (! ring)
     {
-      ring = pfring_open (device, promisc, 0);
+      ring = pfring_open (device, promisc, 1500 /* caplen */, 0);
       if (ring)
 	RETVAL = ring;
       else
