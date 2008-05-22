@@ -22,7 +22,7 @@
 #define DEFAULT_BUCKET_LEN            128
 /* Versioning */
 #define RING_VERSION                "3.8.1"
-#define RING_VERSION_NUM           0x030800
+#define RING_VERSION_NUM           0x030801
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
