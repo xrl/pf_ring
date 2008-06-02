@@ -1,21 +1,21 @@
-AUTHORS          the "Artistic License" from the perl 8 distribution
-Artistic         all the people who got dirty fingers at their own keyboard
-Changes          history file
-examples/test.pl further test script for general Perl Pfring functionalities,
+Artistic         the "Artistic License" from the perl 5.8 distribution
+AUTHORS          all the people who got dirty fingers on this module
+Changes          revision history file
+examples/test.pl further test script for general Perl Net-Pfring functionalities,
                  also a valuable tutorial for the beginners
 FAQ              take a look at this file before posting
 GPL              GNU GENERAL PUBLIC LICENSE Version 3, June 2007
 Makefile.PL      Makefile generator
 MANIFEST         this file
 META.yml         Module meta-data (added by MakeMaker)
-NEWS             what's new in this package
-Pfring.pm        perl code for the Perl Pfring extension module
-Pfring.xs        xs code for the Perl Pfring extension module
+NEWS             what's new in this module
+Pfring.pm        perl code for the Perl Net-Pfring extension module
+Pfring.xs        xs code for the Perl Net-Pfring extension module
 README           the most important file in the package.  please read
 t/0.boot.t       test script
 t/1.open.t       test script
 t/2.close.t      test script
 t/3.version.t    test script
 t/4.recv.t       test script
-TODO             occasional notes about what is missing
+TODO             occasional notes about what is currently missing
 typemap          typemap file (see man perlapi)

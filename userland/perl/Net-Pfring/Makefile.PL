@@ -1,15 +1,13 @@
 #
+# Perl Net-Pfring - Perl binding for PF-RING
+#
 # Makefile.PL - Makefile generator for Perl Pfring
 #
-# Perl Net-Pfring - Perl binding for PF-Ring
-#
-# Copyright (c) 2008 Rocco Carbone
-#
-# Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
+# Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
-# This program is free software; you can redistribute it and/or modify 
+# This program is free software; you can redistribute it and/or modify
 # it under the same terms as Perl itself.
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -49,7 +47,7 @@ WriteMakefile(
     'NAME'         => 'Net::Pfring',
     'VERSION_FROM' => 'Pfring.pm',
     'AUTHOR'       => 'Rocco Carbone <rocco /at/ ntop /dot/ org>',
-    'ABSTRACT'     => 'Perl binding for PF-Ring',
+    'ABSTRACT'     => 'Perl binding for PF-RING',
     'DISTNAME'     => 'Net-Pfring',
     'OBJECT'       => 'Pfring$(OBJ_EXT) ../../lib/libpfring.a',
     'LIBS'         => '',

@@ -1,11 +1,9 @@
 /*
+ * Perl Net-Pfring - XS wrapper for PF-RING
+ *
  * Pfring.xs - "the meat" of the entire package
  *
- * Perl Pfring - XS warapper for PF-Ring
- *
- * Copyright (c) 2008 Rocco Carbone
- *
- * Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
+ * Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
  *
  * -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
  *
@@ -24,7 +22,7 @@
 
 /* Operating System header file(s) */
 
-/* PF-Ring header file(s) */
+/* PF-RING header file(s) */
 #include "pfring.h"
 
 
@@ -39,26 +37,18 @@ static pfring * ring = NULL;
 /* The name of the game! */
 MODULE = Net::Pfring  PACKAGE = Net::Pfring  PREFIX = xs_pfring
 
-# BOOT:
-# first blank line terminates bootstrap code
-
-
- ################################
- # Low Level exportable routines
- ################################
-
- #
- # Attempt to open a device for packet capturing and filtering
- #
-pfring *
-xs_pfring_open (device = NULL, promisc = 1)
- 	char * device
-	int promisc
+#
+# Attempt to open a device for packet capturing and filtering
+#
+pfring * xs_pfring_open (device = "eth0", promisc = 1, caplen = 1500)
+  char * device
+  int promisc
+  int caplen
 CODE:
 {
   if (! ring)
     {
-      ring = pfring_open (device, promisc, 1500 /* caplen */, 0);
+      ring = pfring_open (device, promisc, caplen, 0);
       if (ring)
 	RETVAL = ring;
       else
@@ -71,12 +61,11 @@ OUTPUT:
  RETVAL
 
 
- #
- # Attempt to close a device for packet capturing and filtering
- #
-void
-xs_pfring_close (pfref)
- 	pfring * pfref
+#
+# Attempt to close a device for packet capturing and filtering
+#
+void xs_pfring_close (pfref)
+      pfring * pfref
 CODE:
 {
   if (! ring)
@@ -87,12 +76,11 @@ CODE:
 }
 
 
- #
- # Attempt to obtain version information
- #
-void
-xs_pfring_version (pfref)
- 	pfring * pfref
+#
+# Attempt to obtain version information
+#
+void xs_pfring_version (pfref)
+     pfring * pfref
 PPCODE:
 {
   u_int32_t version;
@@ -116,12 +104,11 @@ PPCODE:
 }
 
 
- #
- # Attempt to receive data
- #
-void
-xs_pfring_recv (pfref)
- 	pfring * pfref
+#
+# Attempt to read next incoming packet on the interface when available
+#
+void xs_pfring_next (pfref)
+     pfring * pfref
 PPCODE:
 {
   static unsigned int received;
@@ -138,9 +125,13 @@ PPCODE:
 
   if (ring && pfring_recv (ring, packet, sizeof (packet), & header, 1) > 0)
     {
+#if defined(ROCCO)
       len = header . caplen -
 	header . parsed_pkt . pkt_detail . offset . payload_offset -
 	header . parsed_pkt . pkt_detail . offset . eth_offset;
+#else
+      len = header . caplen;
+#endif /* ROCCO */
       if (len)
 	{
 	  s = packet + len;

@@ -1,4 +1,4 @@
-The revision history of Net::Pfring, a perl extension for PF-Ring
+The revision history file for Net-Pfring, a perl extension of PF-RING
 
- 2008-05-18 - 0.01 - Rocco Carbone <rocco /at/ ntop /dot/ org>
+0.01    2008-05-18 - Rocco Carbone <rocco /at/ ntop /dot/ org>
   o initial implementation using a template for z39.50 I made several years ago

@@ -1,9 +1,10 @@
 
 use Net::Pfring;
 
-my $device = "eth0";
+my $device  = "eth0";
+my $snaplen = 1500;
 my $ring;
-my $payload;
+my $packet;
 my $packets = 10;
 my $got;
 
@@ -11,7 +12,7 @@ $| = 1;
 
 # Open
 print "Attempting to open $device ... ";
-$ring = Net::Pfring::Open($device, 1) || die "failed!\n";
+$ring = Net::Pfring::Open($device, 1, $snaplen) || die "failed!\n";
 print "ok\n";
 
 # Capturing
@@ -19,11 +20,11 @@ print "Attempting to receive packets ...\n";
 
 while (! $packets || $got < $packets)
   {
-    $payload = Net::Pfring::Recv($ring);
-    if ($payload)
+    $packet = Net::Pfring::Next($ring);
+    if ($packet)
       {
 	$got ++;
-	print "#$got => $payload\n";
+	print "#$got => $packet\n";
       }
   }
 
