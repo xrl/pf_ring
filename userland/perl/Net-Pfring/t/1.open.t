@@ -1,11 +1,9 @@
-#                                                                -*- perl -*-
-# 1.open.t - test of Perl Module for open PF-Ring devices
 #
-# Perl Pfring - Perl binding for PF-Ring
+# 1.open.t - test for open sequence on PF-RING aware devices
 #
-# Copyright (c) 2008 Rocco Carbone
+# Perl Net-Pfring - Perl binding for PF-RING
 #
-# Rocco Carbone <rocco /at/ ntop /dot/ org> 2Q 2008
+# Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
@@ -22,9 +20,10 @@ use Net::Pfring;
 BEGIN { $| = 1; print "1..1\n"; }
 END {print "not ok 1\n" unless $ring;}
 
-my $device = "eth0";
+my $device  = "eth0";
+my $snaplen = 1500;
 
-$ring = Net::Pfring::Open($device, 1);
+$ring = Net::Pfring::Open($device, 1, $snaplen);
 
 print "ok 1\n";
 
