@@ -1,7 +1,7 @@
 #
-# 06-next.t - test for open/next/close sequence on PF-RING aware devices
+# Perl Net-Pfring - Perl binding for PF_RING
 #
-# Perl Net-Pfring - Perl binding for PF-RING
+# 06-next.t - test for open/next/close sequence on PF_RING aware devices
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #

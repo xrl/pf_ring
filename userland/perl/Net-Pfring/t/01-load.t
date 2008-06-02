@@ -1,5 +1,5 @@
 #
-# Perl Net-Pfring - Perl binding for PF-RING
+# Perl Net-Pfring - Perl binding for PF_RING
 #
 # 01-load.t - simple test for Net-Pfring module availability
 #

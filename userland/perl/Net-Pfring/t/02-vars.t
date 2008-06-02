@@ -1,7 +1,7 @@
 #
 # Perl Net-Pfring - Perl binding for PF_RING
 #
-# 00-boot.t - simple test for Net-Pfring module availability
+# 02-vars.t - simple test for Net-Pfring variables availability
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
@@ -13,11 +13,12 @@
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
 
+use Test::More;
 use Net::Pfring;
 
-BEGIN { $| = 1; print "1..1\n"; }
-END {print "not ok 1\n" unless $loaded;}
+plan tests => 1;
 
-$loaded = 1;
-print "ok 1\n";
+# check that the following variables are available
+can_ok ('Net::Pfring', 'VERSION');
+
 

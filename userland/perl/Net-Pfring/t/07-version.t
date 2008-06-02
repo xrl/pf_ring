@@ -1,7 +1,7 @@
 #
-# 07-version.t - test for open/version/close on PF-RING aware devices
+# Perl Net-Pfring - Perl binding for PF_RING
 #
-# Perl Net-Pfring - Perl binding for PF-RING
+# 07-version.t - test for open/version/close on PF_RING aware devices
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #

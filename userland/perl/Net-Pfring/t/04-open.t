@@ -1,7 +1,7 @@
 #
-# 04-open.t - test for open sequence on PF-RING aware devices
+# Perl Net-Pfring - Perl binding for PF_RING
 #
-# Perl Net-Pfring - Perl binding for PF-RING
+# 04-open.t - test for open sequence on PF_RING aware devices
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
