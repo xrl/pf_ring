@@ -1,5 +1,5 @@
 #
-# 3.version.t - test for open/version/close on PF-RING aware devices
+# 05-close.t - test for open/close sequence on PF-RING aware devices
 #
 # Perl Net-Pfring - Perl binding for PF-RING
 #
@@ -15,21 +15,14 @@
 
 use Net::Pfring;
 
-# here is the main
-
 BEGIN { $| = 1; print "1..1\n"; }
 END {print "not ok 1\n" unless $ring;}
 
 my $device  = "eth0";
 my $snaplen = 1500;
 
-my $major;
-my $minor;
-my $patch;
-
 $ring = Net::Pfring::Open($device, 1, $snaplen);
-($major, $minor, $patch) = Net::Pfring::Version($ring);
 Net::Pfring::Close($ring);
 
-print "ok 1 using PF-Ring ver $minor.$major.$patch\n";
+print "ok 1\n";
 

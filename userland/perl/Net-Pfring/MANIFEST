@@ -12,10 +12,13 @@ NEWS             what's new in this module
 Pfring.pm        perl code for the Perl Net-Pfring extension module
 Pfring.xs        xs code for the Perl Net-Pfring extension module
 README           the most important file in the package.  please read
-t/0.boot.t       test script
-t/1.open.t       test script
-t/2.close.t      test script
-t/3.version.t    test script
-t/4.recv.t       test script
+t/00-boot.t      test script
+t/01-load.t      test script
+t/02-vars.t      test script
+t/03-api.t       test script
+t/04-open.t      test script
+t/05-close.t     test script
+t/06-next.t      test script
+t/07-version.t   test script
 TODO             occasional notes about what is currently missing
 typemap          typemap file (see man perlapi)

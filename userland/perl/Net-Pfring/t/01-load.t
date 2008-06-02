@@ -1,7 +1,7 @@
 #
-# 2.close.t - test for open/close sequence on PF-RING aware devices
-#
 # Perl Net-Pfring - Perl binding for PF-RING
+#
+# 01-load.t - simple test for Net-Pfring module availability
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
@@ -13,18 +13,7 @@
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
 
-use Net::Pfring;
+use Test::More tests => 1;
 
-# here is the main
-
-BEGIN { $| = 1; print "1..1\n"; }
-END {print "not ok 1\n" unless $ring;}
-
-my $device  = "eth0";
-my $snaplen = 1500;
-
-$ring = Net::Pfring::Open($device, 1, $snaplen);
-Net::Pfring::Close($ring);
-
-print "ok 1\n";
-
+use_ok ('Net::Pfring');
+diag ("Loading Net::Pfring $Net::Pfring::VERSION under Perl $]");
