@@ -19,6 +19,8 @@ t/03-api.t       test script
 t/04-open.t      test script
 t/05-close.t     test script
 t/06-next.t      test script
-t/07-version.t   test script
+t/07-stats.t      test script
+t/08-version.t   test script
+t/09-aliases.t   test script
 TODO             occasional notes about what is currently missing
 typemap          typemap file (see man perlapi)

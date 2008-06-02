@@ -15,16 +15,18 @@
 
 use Net::Pfring;
 
+my $device  = "eth0";
+my $snaplen = 1500;
+
+my $ring;
+my $packet;
+
 BEGIN { $| = 1; print "1..1\n"; }
 END {print "not ok 1\n" unless $ring;}
 
-my $device  = "eth0";
-my $snaplen = 1500;
-my $packet;
-
-$ring = Net::Pfring::Open($device, 1, $snaplen);
-$packet = Net::Pfring::Next($ring);
-Net::Pfring::Close($ring);
+$ring = Net::Pfring::open($device, 1, $snaplen);
+$packet = Net::Pfring::next($ring);
+Net::Pfring::close($ring);
 
 print "ok 1\n";
 

@@ -15,13 +15,15 @@
 
 use Net::Pfring;
 
-BEGIN { $| = 1; print "1..1\n"; }
-END {print "not ok 1\n" unless $ring;}
-
 my $device  = "eth0";
 my $snaplen = 1500;
 
-$ring = Net::Pfring::Open($device, 1, $snaplen);
+my $ring;
+
+BEGIN { $| = 1; print "1..1\n"; }
+END {print "not ok 1\n" unless $ring;}
+
+$ring = Net::Pfring::open($device, 1, $snaplen);
 
 print "ok 1\n";
 

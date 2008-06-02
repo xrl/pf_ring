@@ -14,14 +14,22 @@
 #
 
 use Test::More;
+
 use Net::Pfring;
 
-plan tests => 4;
+plan tests => 10;
 
 # check that the following functions are available
-can_ok ('Net::Pfring', 'Open');
-can_ok ('Net::Pfring', 'Close');
-can_ok ('Net::Pfring', 'Version');
-can_ok ('Net::Pfring', 'Next');
+can_ok ('Net::Pfring', 'open');
+can_ok ('Net::Pfring', 'close');
+can_ok ('Net::Pfring', 'next');
+can_ok ('Net::Pfring', 'stats');
+can_ok ('Net::Pfring', 'version');
+
+can_ok ('Net::Pfring', 'pfring_open');
+can_ok ('Net::Pfring', 'pfring_close');
+can_ok ('Net::Pfring', 'pfring_next');
+can_ok ('Net::Pfring', 'pfring_stats');
+can_ok ('Net::Pfring', 'pfring_version');
 
 

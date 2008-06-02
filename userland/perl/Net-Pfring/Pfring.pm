@@ -1,12 +1,12 @@
 #
-# Perl Net-Pfring - Perl binding for PF-RING
+# Perl Net-Pfring - Perl binding for PF_RING
 #
 # Pfring.pm - interface description file for perl writers
 #
 # The basic operations offered by Net-Pfring are provided
 # through the following calls:
 #
-# 'Open', 'Close', 'Next', 'Version'
+# 'open', 'close', 'next', 'stats', 'version'
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
@@ -24,8 +24,8 @@ package Net::Pfring;
 # What we need is...
 require 5.008;
 require Exporter;
-require DynaLoader;
-require AutoLoader;
+require DynaLoader;  # ROCCO: rework it
+require AutoLoader;  # ROCCO: rework it
 
 # What we use is...
 use strict;
@@ -33,10 +33,27 @@ use Carp;
 use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 
 # useful variables here
+
+# functions names and aliases (thanks to Net-Pcap)
+my @func_short_names = qw (open close next stats version);
+my @func_long_names = map { "pfring_$_" } @func_short_names;
+{
+  no strict "refs";
+  for my $func (@func_short_names) {
+    *{ __PACKAGE__ . "::pfring_$func" } = \&{ __PACKAGE__ . "::" . $func }
+  }
+}
+
+our %EXPORT_TAGS = (
+		    functions => [ @func_long_names ]
+		   );
+
 our $VERSION   = '0.01';
+# ROCCO: rework it
 our @ISA       = qw (Exporter DynaLoader AutoLoader);
 our @EXPORT    = qw ($VERSION);
-our @EXPORT_OK = qw ();
+our @EXPORT_OK = @{$EXPORT_TAGS{functions}};
+
 
 sub AUTOLOAD {
   # This AUTOLOAD is used to 'autoload' constants from the constant()
@@ -64,13 +81,12 @@ sub AUTOLOAD {
 bootstrap Net::Pfring $VERSION;
 
 
-# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #
-# Attempt to open a PF-RING aware device for packet capturing and filtering
+# Attempt to open a PF_RING aware device for packet capturing and filtering
 #
-sub Open {
+sub open {
   my $device  = shift;
   my $promisc = shift;
   my $caplen  = shift;
@@ -80,9 +96,9 @@ sub Open {
 }
 
 #
-# Attempt to close a PF-RING aware device
+# Attempt to close a PF_RING aware device
 #
-sub Close {
+sub close {
   my $pfring = shift;
 
   # Call the low-level routine
@@ -91,9 +107,37 @@ sub Close {
 
 
 #
-# Attempt to obtain PF-RING version information
+# Attempt to read next incoming packet from a PF_RING aware interface previuosly open.
+# The call always blocks until a packet is available.
 #
-sub Version {
+sub next {
+  my $pfring = shift;
+
+  my $packet;
+
+  # Call the low-level routine
+  $packet = Net::Pfring::_next ($pfring);
+}
+
+
+#
+# Attempt to obtain PF_RING statistics information
+#
+sub stats {
+  my $pfring = shift;
+
+  my $received = undef;
+  my $dropped  = undef;
+
+  # Call the low-level routine
+  ($received, $dropped) = Net::Pfring::_stats ($pfring);
+}
+
+
+#
+# Attempt to obtain PF_RING version information
+#
+sub version {
   my $pfring = shift;
 
   my $major = undef;
@@ -104,21 +148,8 @@ sub Version {
   ($major, $minor, $level) = Net::Pfring::_version ($pfring);
 }
 
-#
-# Attempt to read next incoming packet from the PF-RING aware interface.
-# The call is always blocked until a packet is available.
-#
-sub Next {
-  my $pfring = shift;
 
-  my $payload;
-
-  # Call the low-level routine
-  $payload = Net::Pfring::_next ($pfring);
-}
-
-
-# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 1;
 
@@ -127,7 +158,7 @@ __END__
 
 =head1 NAME
 
-Perl Net-Pfring - Perl interface to PF-RING(3) Linux High Speed Packet Capture library
+Perl Net-Pfring - Perl interface to PF_RING(3) Linux High Speed Packet Capture library
 
 
 =head1 VERSION
@@ -139,25 +170,33 @@ Version 0.01
 
   use Net::Pfring;
 
-  # Open a PF-RING aware device for packet capturing and filtering
-  my $ring = Net::Pfring::Open ($device, $promisc, $snaplen);
+  or for better usability
 
-  # Close a PF-RING aware device previously open
-  Net::Pfring::Close ($ring);
+  use Net::Pfring qw(:functions);
 
-  # Read next incoming packet from a PF-RING aware device previously open
-  $packet = Net::Pfring::Next ($ring);
 
-  # Get the major, minor and patch identifiers of a PF-RING aware device previously open
-  ($major, $minor, $patch) = Net::Pfring::Version ($ring);
+  # Open a PF_RING aware device for packet capturing and filtering
+  my $ring = Net::Pfring::open ($device, $promisc, $snaplen);
+
+  # Close a PF_RING aware device previously open
+  Net::Pfring::close ($ring);
+
+  # Read next incoming packet from a PF_RING aware device previously open
+  $packet = Net::Pfring::next ($ring);
+
+  # Get statistics information from a PF_RING aware device previously open
+  ($received, $dropped) = Net::Pfring::stats ($ring);
+
+  # Get the major, minor and patch identifiers of a PF_RING aware device previously open
+  ($major, $minor, $patch) = Net::Pfring::version ($ring);
 
 
 =head1 DESCRIPTION
 
-C<Net::Pfring> module implements a simple perl interface to PF-RING(3)
+C<Net::Pfring> module implements a simple perl interface to PF_RING(3)
 Linux High Speed Packet Capture library.
 
-The documentation for PF-RING describes itself as:
+The documentation for PF_RING describes itself as:
 
    "PF_RING is a high speed packet capture library that turns a commodity
     PC into an efficient and cheap network measurement box suitable for
@@ -165,7 +204,7 @@ The documentation for PF-RING describes itself as:
 
 This version of the C<Net::Pfring> module only provides few functions
 just to start basic opening, capturing and filtering packets from
-PF-RING aware devices, and they are implemented as simple wrappers
+PF_RING aware devices, and they are implemented as simple wrappers
 for the C functions with a little bit of extension to provide more
 perl-friendliness.
 
@@ -182,7 +221,7 @@ for more information.
 
 =over 4
 
-=item B<pfring_open($device, $snaplen, $promisc)>
+=item B<Net::Pfring::open($device, $snaplen, $promisc)>
 
 Returns a packet capture handle for looking at packets on a PF_RING
 aware device.  The C<$device> parameter specifies which network interface to
@@ -194,11 +233,20 @@ The packet handle will be undefined if an error occurs.
 
 B<Example>
 
-    my $ring = Net::Pfring::Open("eth0", 1, 1500) || die "failed!\n";
+    my $ring = Net::Pfring::open("eth0", 1, 1500) || die "failed!\n";
+    or
+    my $ring = pfring_open("eth0", 1, 1500) || die "failed!\n";
 
-=item B<pfring_close($ring)>
+=item B<Net::Pfring::close($ring)>
 
-Close the packet capture PF-RING aware device associated with the handle C<$ring> previously open.
+Close the packet capture PF_RING aware device associated with the handle C<$ring> previously open.
+
+B<Example>
+
+    Net::Pfring::close($ring);
+    or
+    pfring_close($ring);
+
 
 =item B<pfring_next($ring)>
 
@@ -207,12 +255,34 @@ packet handle C<$ring> previously open when available.
 
 B<Example>
 
-    my $packet = Net::Pfring::Next($ring);
+    my $packet = Net::Pfring::next($ring);
+    or
+    my $packet = pfring_next($ring);
 
-=item B<pfring_version()>
+
+=item B<Net::Pfring::stats()>
+
+Returns statistics information about the C<PF_RING> aware device associated with the handle C<$ring> previously open.
+The first returned value gives the number of packets received by the packet capture kernel driver, while the second
+value gives the number of packets dropped by the packet capture kernel driver.
+
+B<Example>
+
+   ($received, $dropped) = Net::Pfring::stats($ring);
+   or
+   ($received, $dropped) = pfring_stats($ring);
+
+
+=item B<Net::Pfring::version()>
 
 Returns the major, minor and patch identifiers of the Linux kernel module which current handles the
 C<PF_RING> aware device associated with the handle C<$ring> previously open.
+
+B<Example>
+
+   ($major, $minor, $patch) = Net::Pfring::version($ring);
+   or
+   ($major, $minor, $patch) = pfring_version($ring);
 
 =back
 
@@ -225,8 +295,8 @@ The following limitations apply to this version of C<Net::Pfring>.
 
 =item *
 
-At present, only one Net::Pfring::Open() function can be called
-at any time as the low level PF_RING identifier is stored in a global variable.
+At present, only one Net::Pfring::open() function can be called at any time
+as the low level PF_RING handle identifier is stored in a global variable.
 
 =back
 
@@ -291,7 +361,7 @@ at your option, any later version of Perl 5 you may have available.
 
 =head2 Documentation
 
-See the documentation for PF-RING Linux High Speed Packet Capture available at
+See the documentation for PF_RING Linux High Speed Packet Capture available at
 
 L<https://svn.ntop.org/trac/browser/trunk/PF_RING/doc/UsersGuide.pdf>
 
@@ -300,11 +370,12 @@ L<https://svn.ntop.org/trac/browser/trunk/PF_RING/doc/UsersGuide.pdf>
 L<pfring(3)>
 
 The source code for the C<pfring(3)> library is available from
-L<svn co https://svn.ntop.org/svn/ntop/trunk/PF_RING/>
+C<svn co https://svn.ntop.org/svn/ntop/trunk/PF_RING/>
 
 =head2 Perl Modules
 
-L<Net::Packet> or L<NetPacket> for decoding and creating network packets
+L<Net::Packet> for decoding and creating network packets
+L<Data::HexDump> for hexadecimal data dumper
 
 =cut
 

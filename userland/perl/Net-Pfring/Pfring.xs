@@ -1,5 +1,5 @@
 /*
- * Perl Net-Pfring - XS wrapper for PF-RING
+ * Perl Net-Pfring - XS wrapper for PF_RING
  *
  * Pfring.xs - "the meat" of the entire package
  *
@@ -22,7 +22,7 @@
 
 /* Operating System header file(s) */
 
-/* PF-RING header file(s) */
+/* PF_RING header file(s) */
 #include "pfring.h"
 
 
@@ -77,35 +77,7 @@ CODE:
 
 
 #
-# Attempt to obtain version information
-#
-void xs_pfring_version (pfref)
-     pfring * pfref
-PPCODE:
-{
-  u_int32_t version;
-
-  EXTEND (sp, 3);
-
-  if (ring)
-    {
-      pfring_version (ring, & version);
-
-      PUSHs (sv_2mortal (newSViv ((version & 0xFFFF0000) >> 16)));
-      PUSHs (sv_2mortal (newSViv ((version & 0x0000FF00) >> 8)));
-      PUSHs (sv_2mortal (newSViv (version & 0x000000FF)));
-    }
-  else
-    {
-      PUSHs (sv_2mortal (newSViv (0)));
-      PUSHs (sv_2mortal (newSViv (0)));
-      PUSHs (sv_2mortal (newSViv (0)));
-    }
-}
-
-
-#
-# Attempt to read next incoming packet on the interface when available
+# Attempt to read next incoming packet when available on the interface
 #
 void xs_pfring_next (pfref)
      pfring * pfref
@@ -148,3 +120,59 @@ PPCODE:
     }
   PUSHs (sv_2mortal (newSVpv (payload, FALSE)));
 }
+
+
+#
+# Attempt to obtain statistics information
+#
+void xs_pfring_stats (pfref)
+     pfring * pfref
+PPCODE:
+{
+  pfring_stat stats;
+
+  EXTEND (sp, 2);
+
+  if (ring)
+    {
+      pfring_stats (ring, & stats);
+
+      PUSHs (sv_2mortal (newSViv (stats . recv)));
+      PUSHs (sv_2mortal (newSViv (stats . drop)));
+    }
+  else
+    {
+      PUSHs (sv_2mortal (newSViv (0)));
+      PUSHs (sv_2mortal (newSViv (0)));
+    }
+}
+
+
+#
+# Attempt to obtain version information
+#
+void xs_pfring_version (pfref)
+     pfring * pfref
+PPCODE:
+{
+  u_int32_t version;
+
+  EXTEND (sp, 3);
+
+  if (ring)
+    {
+      pfring_version (ring, & version);
+
+      PUSHs (sv_2mortal (newSViv ((version & 0xFFFF0000) >> 16)));
+      PUSHs (sv_2mortal (newSViv ((version & 0x0000FF00) >> 8)));
+      PUSHs (sv_2mortal (newSViv (version & 0x000000FF)));
+    }
+  else
+    {
+      PUSHs (sv_2mortal (newSViv (0)));
+      PUSHs (sv_2mortal (newSViv (0)));
+      PUSHs (sv_2mortal (newSViv (0)));
+    }
+}
+
+

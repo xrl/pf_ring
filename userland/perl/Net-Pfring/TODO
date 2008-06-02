@@ -2,7 +2,9 @@ Occasional notes about what is still incomplete
 
 1. implement multi-rings
 
-2. check what it is better to use
-    eval { require XSLoader; XSLoader::load('Net::Pfring', $VERSION); 1 }
-    or do { require DynaLoader; push @ISA, 'DynaLoader'; bootstrap Net::Pfping $VERSION; };
+2. implement function aliases
+
+3. Attempt to use XSLoader if available, then falls back to DynaLoader
+   eval { require XSLoader; XSLoader::load('Net::Pfring', $VERSION); 1 }
+   or do { require DynaLoader; push @ISA, 'DynaLoader'; bootstrap Net::Pfping $VERSION; };
 
