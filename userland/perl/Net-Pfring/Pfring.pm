@@ -7,7 +7,7 @@
 # through the following calls:
 #
 # 'open', 'close', 'next', 'stats', 'version',
-# 'ethernet, 'l7_next'
+# 'ethernet, 'l7_next', 'l347_next'
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
@@ -36,7 +36,7 @@ use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 # useful variables here
 
 # functions names and aliases (thanks to Net-Pcap)
-my @func_short_names = qw (open close next stats version ethernet l7_next);
+my @func_short_names = qw (open close next stats version ethernet l7_next l347_next header);
 my @func_long_names = map { "pfring_$_" } @func_short_names;
 {
   no strict "refs";
@@ -180,6 +180,63 @@ sub l7_next {
 
   # Call the low-level routine
   ($srcmac, $dstmac, $srcip, $srcport, $dstip, $dstport, $payload) = Net::Pfring::_l7_next ($pfring);
+}
+
+
+#
+# Attempt to read next incoming packet from a PF_RING aware interface previuosly open,
+# and return all information relevant at the application level, including:
+# timestamp in microseconds
+# length of the portion of packet on the wire
+# length of the packet off the wire
+# ethernet type
+# vlan id
+# protocol
+# ipv4 tos
+# TCP flags
+# source IP addresses and port number
+# destination IP addresses and port number
+# Ethernet offset
+# vlan offset
+# IP offset
+# TCP offset
+# Layer 7 offset
+# the payload itsself
+#
+# The call always blocks until a packet is available.
+#
+sub l347_next {
+  my $pfring = shift;
+
+  my ($secs, $microsecs, $caplen, $len, $ethtype, $vlan, $protocol, $tos, $tcpflags,
+      $srcip, $srcport, $dstip, $dstport,
+      $ethoffset, $vlanoffset, $ipoffset, $tcpoffset, $l7offset,
+      $full, $packet);
+
+  # Call the low-level routine
+  ($secs, $microsecs, $caplen, $len, $ethtype, $vlan, $protocol, $tos, $tcpflags,
+   $srcip, $srcport, $dstip, $dstport,
+   $ethoffset, $vlanoffset, $ipoffset, $tcpoffset, $l7offset,
+   $full, $packet) = Net::Pfring::_l347_next ($pfring);
+}
+
+
+sub header {
+  my ($pfring) = shift;
+
+  my %header;
+  my $k;
+
+  # Call the low-level routine
+  Net::Pfring::_header ($pfring, \%header);
+
+  for $k (sort (keys (%header)))
+    {
+      print "Pfring.pm - $k => $header{$k}\n";
+    }
+  print "\n";
+
+  return %header;
 }
 
 
