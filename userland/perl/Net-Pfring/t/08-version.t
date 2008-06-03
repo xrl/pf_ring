@@ -28,5 +28,5 @@ $ring = Net::Pfring::open($device, 1, $snaplen) || die "not ok 1\n";
 ($major, $minor, $patch) = Net::Pfring::version($ring);
 Net::Pfring::close($ring);
 
-diag ("using PF_RING ver $minor.$major.$patch\n");
+diag ("using PF_RING ver $major.$minor.$patch\n");
 
