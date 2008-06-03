@@ -6,7 +6,8 @@
 # The basic operations offered by Net-Pfring are provided
 # through the following calls:
 #
-# 'open', 'close', 'next', 'stats', 'version'
+# 'open', 'close', 'next', 'stats', 'version',
+# 'ethernet, 'l7_next'
 #
 # Copyright (c) 2008 Rocco Carbone <rocco /at/ ntop /dot/ org>
 #
@@ -35,7 +36,7 @@ use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 # useful variables here
 
 # functions names and aliases (thanks to Net-Pcap)
-my @func_short_names = qw (open close next stats version ethernet);
+my @func_short_names = qw (open close next stats version ethernet l7_next);
 my @func_long_names = map { "pfring_$_" } @func_short_names;
 {
   no strict "refs";
@@ -44,9 +45,7 @@ my @func_long_names = map { "pfring_$_" } @func_short_names;
   }
 }
 
-our %EXPORT_TAGS = (
-		    functions => [ @func_long_names ]
-		   );
+our %EXPORT_TAGS = (functions => [ @func_long_names ]);
 
 our $VERSION   = '0.01';
 # ROCCO: rework it
@@ -164,13 +163,32 @@ sub ethernet {
 }
 
 
+#
+# Attempt to read next incoming packet from a PF_RING aware interface previuosly open,
+# and return all information relevant at the application level, including:
+# source and destination MAC addresses
+# source and destination IP addresses
+# source and destination port number
+# packet payload
+#
+# The call always blocks until a packet is available.
+#
+sub l7_next {
+  my $pfring = shift;
 
+  my ($srcmac, $dstmac, $srcip, $srcport, $dstip, $dstport, $payload);
 
-# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  # Call the low-level routine
+  ($srcmac, $dstmac, $srcip, $srcport, $dstip, $dstport, $payload) = Net::Pfring::_l7_next ($pfring);
+}
+
 
 1;
 
 __END__
+
+
+# -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 
 =head1 NAME
