@@ -35,7 +35,7 @@ use vars qw ($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 # useful variables here
 
 # functions names and aliases (thanks to Net-Pcap)
-my @func_short_names = qw (open close next stats version);
+my @func_short_names = qw (open close next stats version ethernet);
 my @func_long_names = map { "pfring_$_" } @func_short_names;
 {
   no strict "refs";
@@ -147,6 +147,23 @@ sub version {
   # Call the low-level routine
   ($major, $minor, $level) = Net::Pfring::_version ($pfring);
 }
+
+
+#
+# Attempt to read next incoming packet from a PF_RING aware interface previuosly open,
+# and return only the ethernet header.
+# The call always blocks until a packet is available.
+#
+sub ethernet {
+  my $pfring = shift;
+
+  my $eth;
+
+  # Call the low-level routine
+  $eth = Net::Pfring::_ethernet ($pfring);
+}
+
+
 
 
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

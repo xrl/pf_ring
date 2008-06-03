@@ -21,6 +21,7 @@
 #include "XSUB.h"
 
 /* Operating System header file(s) */
+#include <net/ethernet.h>
 
 /* PF_RING header file(s) */
 #include "pfring.h"
@@ -83,17 +84,14 @@ void xs_pfring_next (pfref)
      pfring * pfref
 PPCODE:
 {
-  static unsigned int received;
-
-  char packet [2048];
-  char payload [2048 * 2] = "";
+  char packet [2048];           /* the room for incoming packet data */
+  char payload [2048 * 2 + 1] = "";
+  struct pfring_pkthdr header;
   char * s;
   char * d;
-  struct pfring_pkthdr header;
+  unsigned short len;
 
-  unsigned short len = 0;
-
-  EXTEND (sp, 2);
+  EXTEND (sp, 1);
 
   if (ring && pfring_recv (ring, packet, sizeof (packet), & header, 1) > 0)
     {
@@ -176,3 +174,36 @@ PPCODE:
 }
 
 
+#
+# Attempt to read next incoming packet when available on the interface
+# and return only the ethernet header
+#
+void xs_pfring_ethernet (pfref)
+     pfring * pfref
+PPCODE:
+{
+  char packet [2048];           /* the room for incoming packet data */
+  char payload [2048 * 2 + 1] = "";
+  struct pfring_pkthdr header;
+  char * s;
+  char * d;
+  unsigned short len;
+
+  EXTEND (sp, 1);
+
+  if (ring && pfring_recv (ring, packet, sizeof (packet), & header, 1) > 0)
+    {
+      len = sizeof (struct ether_header);
+      s = packet;
+      d = payload;
+      while (len)
+	{
+	  sprintf (d, "%02x", * s & 0x000000ff);
+	  s ++;
+	  d += 2;
+	  len --;
+	}
+      * d = '\0';
+    }
+  PUSHs (sv_2mortal (newSVpv (payload, FALSE)));
+}

@@ -13,11 +13,9 @@
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
 
-use Test::More;
+use Test::More tests => 10;
 
 use Net::Pfring;
-
-plan tests => 10;
 
 # check that the following functions are available
 can_ok ('Net::Pfring', 'open');

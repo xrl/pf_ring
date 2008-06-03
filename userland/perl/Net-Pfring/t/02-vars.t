@@ -13,10 +13,8 @@
 # -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 #
 
-use Test::More;
+use Test::More tests => 1;
 use Net::Pfring;
-
-plan tests => 1;
 
 # check that the following variables are available
 can_ok ('Net::Pfring', 'VERSION');
