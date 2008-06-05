@@ -26,8 +26,6 @@ u_int32_t num_pkts=0;
 #include <netinet/ip.h>
 #include <net/ethernet.h>     /* the L2 protocols */
 
-static u_int64_t totPkts, totLost;
-static struct timeval startTime;
 unsigned long long numPkts = 0, numBytes = 0;
 
 #define DEFAULT_DEVICE "eth0"
@@ -61,10 +59,7 @@ void printHelp(void) {
 
 int main(int argc, char* argv[]) {
   char *device = NULL, c, *bpfFilter = NULL;
-  char errbuf[PCAP_ERRBUF_SIZE];
-  int i, promisc;
-  struct bpf_program fcode;
-  u_int clusterId = 0;
+  int promisc;
 
 #if 0  
   struct sched_param schedparam;

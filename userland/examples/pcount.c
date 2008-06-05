@@ -31,11 +31,14 @@ struct pcap_stat pcapStats;
 #include <netinet/ip.h>
 #include <net/ethernet.h>     /* the L2 protocols */
 
-static u_int64_t totPkts, totLost;
 static struct timeval startTime;
 unsigned long long numPkts = 0, numBytes = 0;
 
 #define DEFAULT_DEVICE "eth1" /* "e1000" */
+
+
+int pcap_set_cluster(pcap_t *ring, u_int clusterId);
+
 
 /* *************************************** */
 /*
@@ -295,7 +298,7 @@ void printHelp(void) {
 int main(int argc, char* argv[]) {
   char *device = NULL, c, *bpfFilter = NULL;
   char errbuf[PCAP_ERRBUF_SIZE];
-  int i, promisc;
+  int promisc;
   struct bpf_program fcode;
   u_int clusterId = 0;
 
@@ -381,10 +384,10 @@ int main(int argc, char* argv[]) {
 
   if(bpfFilter != NULL) {
     if(pcap_compile(pd, &fcode, bpfFilter, 1, 0xFFFFFF00) < 0) {
-      printf("pcap_compile error: '%s' [%s]\n", pcap_geterr(pd));
+      printf("pcap_compile error: '%s'\n", pcap_geterr(pd));
     } else {
       if(pcap_setfilter(pd, &fcode) < 0) {
-	printf("pcap_setfilter error: '%s' [%s]\n", pcap_geterr(pd));
+	printf("pcap_setfilter error: '%s'\n", pcap_geterr(pd));
       }
     }
   }
