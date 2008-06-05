@@ -3,9 +3,9 @@ This directory contains:
 
 kernel/				Kernel related patches
 userland/			User space code
-userland/libpfring/		user space library used to manpulate PF_RING
-userland/libpcap-0.9.4-ring/	Libpcap enhanced with PF_RING support
-userland/pcount/		P(acket)count application (use it for your tests)
+userland/lib/			User space library used to manpulate PF_RING
+userland/libpcap-0.9.7-ring/	Libpcap enhanced with PF_RING support
+userland/examples/		P(acket)count application (use it for your tests)
 
 See also:
 
@@ -17,4 +17,4 @@ http://bjou.homeunix.net/blog/2006/12/advanced-packet-capturing-howto-pf_ring-na
 
 ------------
 Luca Deri, Rocco Carbone
-April 2004-07
+April 2004-08
