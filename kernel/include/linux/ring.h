@@ -20,9 +20,10 @@
 #define RING_FLOWSLOT_VERSION           9
 
 #define DEFAULT_BUCKET_LEN            128
+
 /* Versioning */
-#define RING_VERSION                "3.8.1"
-#define RING_VERSION_NUM           0x030801
+#define RING_VERSION                "3.8.2"
+#define RING_VERSION_NUM           0x030802
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -51,7 +52,7 @@ struct pkt_aggregation_info {
 };
 
 struct pkt_offset {
-  u_int16_t eth_offset;
+  u_int16_t eth_offset; /* This offset *must* be added to all offsets below */
   u_int16_t vlan_offset;
   u_int16_t l3_offset;
   u_int16_t l4_offset;
@@ -103,7 +104,7 @@ typedef struct {
 
 /* ************************************************* */
 
-#define FILTER_PLUGIN_DATA_LEN   128
+#define FILTER_PLUGIN_DATA_LEN   256
 
 typedef struct {
   char payload_pattern[32];         /* If strlen(payload_pattern) > 0, the packet payload
