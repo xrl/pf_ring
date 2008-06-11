@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #
 # Rocco Carbone <rocco@ntop.org> - 1Q 2004 GPL
