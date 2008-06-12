@@ -83,7 +83,6 @@ static char __copyright__ [] = "Copyright (c) 2008";
 
 /* Public funtions in file time.c */
 time_t delta_time_in_milliseconds (struct timeval * t2, struct timeval * t1);
-time_t delta_time_in_microseconds (struct timeval * t2, struct timeval * t1);
 void print_time_in_secs (struct timeval * t, char * label);
 char * elapsed_time (struct timeval * start, struct timeval * stop);
 char * percentage (unsigned long partial, unsigned long total);
@@ -117,8 +116,8 @@ static void usage (char * progname)
   printf ("   -i interface   use 'interface' for packet capture. default '%s'\n", DEFAULT_INTERFACE);
   printf ("   -s len         snapshot length. default %d\n", DEFAULT_SNAPSHOT);
 
-  printf ("   -c count       # of ring(s) to open. default %d\n", DEFAULT_RINGS);
-  printf ("   -n count       # of packets to capture per ring. default %d - 0 means unlimited\n", DEFAULT_PACKETS);
+  printf ("   -n count       # of ring(s) to open. default %d\n", DEFAULT_RINGS);
+  printf ("   -c count       # of packets to capture per ring. default %d - 0 means unlimited\n", DEFAULT_PACKETS);
 
   printf ("   -b count       heartbeat in seconds to show intermediate results. default %d\n", DEFAULT_HB);
 }
@@ -146,9 +145,9 @@ int main (int argc, char * argv [])
   struct pfring_pkthdr header;
 
   /* How many packets */
-  unsigned long total   = DEFAULT_PACKETS;
-  unsigned long partial = 0;
-  unsigned long errors  = 0;
+  unsigned long maxcount = DEFAULT_PACKETS;
+  unsigned long partial  = 0;
+  unsigned long errors   = 0;
 
   int hb = -1;      /* heartbeat */
   int quiet = 0;
@@ -161,28 +160,28 @@ int main (int argc, char * argv [])
   char * progname = strrchr (argv [0], '/');
   progname = ! progname ? * argv : progname + 1;
 
-#define OPTSTRING "hvi:s:c:n:b:q"
+#define OPTSTRING "hvi:s:n:c:b:q"
   while ((option = getopt (argc, argv, OPTSTRING)) != EOF)
     {
       switch (option)
 	{
 	default: return -1;
 
-	case 'h': usage (progname);   return 0;
-        case 'v': version (progname); return 0;
+	case 'h': usage (progname);          return 0;
+        case 'v': version (progname);        return 0;
 
-	case 'i': interface = optarg;       break;
-	case 's': snapshot = atoi (optarg); break;
+	case 'i': interface = optarg;        break;
+	case 's': snapshot  = atoi (optarg); break;
 
-	case 'c': rings = atoi (optarg);
+	case 'n': rings = atoi (optarg);
 	  if (! rings)
 	    rings = 1;
 	  break;
 
-	case 'n': total = atoi (optarg); break;
+	case 'c': maxcount = atoi (optarg);  break;
 
-	case 'b': hb = atoi (optarg); break;
-	case 'q': quiet = 1; break;
+	case 'b': hb = atoi (optarg);        break;
+	case 'q': quiet = 1;                 break;
 	}
     }
 
@@ -208,7 +207,7 @@ int main (int argc, char * argv [])
     ringtable [r] = NULL;
   ringtable [r] = NULL;
 
-  /* Open the device for packet capturing */
+  /* Open the interface for packet capturing */
   for (r = 0; r < rings; r ++)
     if (! (ringtable [r] = pfring_open (interface, promiscuous, snapshot, 0)))
       {
@@ -224,20 +223,19 @@ int main (int argc, char * argv [])
   printf ("%s: listening from %s using PF_RING driver ver %d.%d.%d\n\n", progname, interface,
 	  (ringdriver & 0xFFFF0000) >> 16, (ringdriver & 0x0000FF00) >> 8, ringdriver & 0x000000FF);
 
-  /* =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- */
-
   if (hb == -1)
-    hb = total / DEFAULT_HB;
+    hb = maxcount / DEFAULT_HB;
   if (! hb)
     hb = 1;
 
-  printf ("%s: starting to capture #%lu pckts using #%d ring%s...\n", progname, total, rings, rings > 1 ? "s" : "");
+  /* Announce */
+  printf ("%s: starting to capture #%lu pckts using #%d ring%s...\n", progname, maxcount, rings, rings > 1 ? "s" : "");
 
   /* Set time the application started to capture packets */
   gettimeofday (& started, NULL);
 
   r = 0;
-  while ((partial + errors) < total)
+  while (! maxcount || (partial + errors) < maxcount)
     {
       /* Please give me just a packet at once from the ring */
       if (pfring_recv (ringtable [r], packet, snapshot, & header, 1) > 0)
@@ -256,7 +254,7 @@ int main (int argc, char * argv [])
 		  gettimeofday (& now, NULL);
 		  delta = delta_time_in_milliseconds (& now, & latest);
 
-		  printf ("%s: pkts rcvd #%lu of #%lu %s", progname, partial, total, percentage (partial, total));
+		  printf ("%s: pkts rcvd #%lu of #%lu %s", progname, partial, maxcount, percentage (partial, maxcount));
 		  if (previous && delta)
 		    printf (" [%8.2f pkts/sec => +%lu pkts in %s]",
 			    (double) (partial - previous) * 1000 / delta,
@@ -277,6 +275,14 @@ int main (int argc, char * argv [])
       r = (r + 1) % rings;
     }
 
+  /* Close the ring(s) */
+  for (r = 0; r < rings; r ++)
+    pfring_close (ringtable [r]);
+  free (ringtable);
+
+  /* Done! */
+  free (packet);
+
   gettimeofday (& stopped, NULL);
   delta = (double) delta_time_in_milliseconds (& stopped, & started);
 
@@ -292,14 +298,7 @@ int main (int argc, char * argv [])
   /* Print out test results */
   printf ("Great Totals:\n");
   printf ("=============\n");
-  printf ("pkts rcvd #%lu pckts of #%lu => %7.2f pkts/sec\n", partial, total, (double) partial * 1000 / delta);
-
-  /* Close the ring(s) */
-  for (r = 0; r < rings; r ++)
-    pfring_close (ringtable [r]);
-  free (ringtable);
-
-  free (packet);
+  printf ("pkts rcvd #%lu pckts of #%lu => %7.2f pkts/sec\n", partial, maxcount, (double) partial * 1000 / delta);
 
   return 0;
 }

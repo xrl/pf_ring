@@ -89,7 +89,6 @@ static char __copyright__ [] = "Copyright (c) 2008";
 
 /* Public funtions in file time.c */
 time_t delta_time_in_milliseconds (struct timeval * t2, struct timeval * t1);
-time_t delta_time_in_microseconds (struct timeval * t2, struct timeval * t1);
 void print_time_in_secs (struct timeval * t, char * label);
 char * elapsed_time (struct timeval * start, struct timeval * stop);
 char * percentage (unsigned long partial, unsigned long total);
@@ -125,8 +124,8 @@ static void usage (char * progname)
   printf ("   -i interface   use 'interface' for packet capture. default '%s'\n", DEFAULT_INTERFACE);
   printf ("   -s len         snapshot length. default %d\n", DEFAULT_SNAPSHOT);
 
-  printf ("   -c count       # of pcap-handle(s) to open. default %d\n", DEFAULT_HANDLES);
-  printf ("   -n count       # of packets to capture per pcap-handle. default %d - 0 means unlimited\n", DEFAULT_PACKETS);
+  printf ("   -n count       # of pcap-handle(s) to open. default %d\n", DEFAULT_HANDLES);
+  printf ("   -c count       # of packets to capture per pcap-handle. default %d - 0 means unlimited\n", DEFAULT_PACKETS);
 
   printf ("   -b count       heartbeat in seconds to show intermediate results. default %d\n", DEFAULT_HB);
 }
@@ -142,8 +141,8 @@ int main (int argc, char * argv [])
   int option;
 
   char * interface = DEFAULT_INTERFACE;    /* interface name */
-  int promiscuous = 1;
-  int snapshot = DEFAULT_SNAPSHOT;
+  int promiscuous  = 1;
+  int snapshot     = DEFAULT_SNAPSHOT;
 
   /* How many pcap-handles */
   int handles = DEFAULT_HANDLES;
@@ -154,9 +153,9 @@ int main (int argc, char * argv [])
   struct pcap_pkthdr header;
 
   /* How many packets */
-  unsigned long total   = DEFAULT_PACKETS;
-  unsigned long partial = 0;
-  unsigned long errors  = 0;
+  unsigned long maxcount = DEFAULT_PACKETS;
+  unsigned long partial  = 0;
+  unsigned long errors   = 0;
 
   int hb = -1;      /* heartbeat */
   int quiet = 0;
@@ -169,7 +168,7 @@ int main (int argc, char * argv [])
   char * progname = strrchr (argv [0], '/');
   progname = ! progname ? * argv : progname + 1;
 
-#define OPTSTRING "hvi:s:c:n:b:q"
+#define OPTSTRING "hvi:s:n:c:b:q"
   while ((option = getopt (argc, argv, OPTSTRING)) != EOF)
     {
       switch (option)
@@ -182,12 +181,12 @@ int main (int argc, char * argv [])
 	case 'i': interface = optarg;       break;
 	case 's': snapshot = atoi (optarg); break;
 
-	case 'c': handles = atoi (optarg);
+	case 'n': handles = atoi (optarg);
 	  if (! handles)
 	    handles = 1;
 	  break;
 
-	case 'n': total = atoi (optarg); break;
+	case 'c': maxcount = atoi (optarg); break;
 
 	case 'b': hb = atoi (optarg); break;
 	case 'q': quiet = 1; break;
@@ -236,16 +235,16 @@ int main (int argc, char * argv [])
   /* =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- */
 
   if (hb == -1)
-    hb = total / DEFAULT_HB;
+    hb = maxcount / DEFAULT_HB;
   if (! hb)
     hb = 1;
 
-  printf ("%s: starting to capture #%lu pckts using #%d pcap-handle%s...\n", progname, total, handles, handles > 1 ? "s" : "");
+  printf ("%s: starting to capture #%lu pckts using #%d pcap-handle%s...\n", progname, maxcount, handles, handles > 1 ? "s" : "");
 
   gettimeofday (& started, NULL);
 
   p = 0;
-  while ((partial + errors) < total)
+  while (! maxcount || (partial + errors) < maxcount)
     {
       /* Please give me just a packet at once from the interface */
       if ((packet = pcap_next (table [p], & header)))
@@ -264,7 +263,7 @@ int main (int argc, char * argv [])
 		  gettimeofday (& now, NULL);
 		  delta = delta_time_in_milliseconds (& now, & latest);
 
-		  printf ("%s: pkts rcvd #%lu of #%lu %s", progname, partial, total, percentage (partial, total));
+		  printf ("%s: pkts rcvd #%lu of #%lu %s", progname, partial, maxcount, percentage (partial, maxcount));
 		  if (previous && delta)
 		    printf (" [%8.2f pkts/sec => +%lu pkts in %s]",
 			    (double) (partial - previous) * 1000 / delta,
@@ -285,6 +284,11 @@ int main (int argc, char * argv [])
       p = (p + 1) % handles;
     }
 
+  /* Close the pcap-handle(s) */
+  for (p = 0; p < handles; p ++)
+    pcap_close (table [p]);
+  free (table);
+
   gettimeofday (& stopped, NULL);
   delta = (double) delta_time_in_milliseconds (& stopped, & started);
 
@@ -300,12 +304,7 @@ int main (int argc, char * argv [])
   /* Print out test results */
   printf ("Great Totals:\n");
   printf ("=============\n");
-  printf ("pkts rcvd #%lu pckts of #%lu => %7.2f pkts/sec\n", partial, total, (double) partial * 1000 / delta);
-
-  /* Close the pcap-handle(s) */
-  for (p = 0; p < handles; p ++)
-    pcap_close (table [p]);
-  free (table);
+  printf ("pkts rcvd #%lu pckts of #%lu => %7.2f pkts/sec\n", partial, maxcount, (double) partial * 1000 / delta);
 
   return 0;
 }

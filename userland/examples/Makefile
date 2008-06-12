@@ -53,12 +53,13 @@ LIBS       = ${LIBPFRING} -lpthread
 #
 # Main targets
 #
-PFPROGS   = ringc rings pcaps pfcount forwarder
+PFPROGS   = ringc rings ringm pcaps pfcount forwarder
 PCAPPROGS = pcount pwrite
 TARGETS   = ${PFPROGS} ${PCAPPROGS}
 
 RCOBJS    = ringc.o interval.o
 RSOBJS    = rings.o interval.o
+RMOBJS    = ringm.o interval.o
 RPOBJS    = pcaps.o interval.o
 
 all: ${TARGETS}
@@ -71,7 +72,11 @@ rings: ${RSOBJS} ${LIBPFRING}
 	@echo "=*= making program $@ =*="
 	@${CC} ${RSOBJS} ${LIBS} -o $@
 
-pcaps: ${RPOBJS} ${LIBPFRING}
+ringm: ${RMOBJS} ${LIBPFRING}
+	@echo "=*= making program $@ =*="
+	@${CC} ${RMOBJS} ${LIBS} -o $@
+
+pcaps: ${RPOBJS}
 	@echo "=*= making program $@ =*="
 	@${CC} ${RPOBJS} -lpcap -o $@
 

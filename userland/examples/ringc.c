@@ -170,7 +170,7 @@ static void usage (char * progname)
   printf ("   -i interface   use 'interface' for packet capture. default '%s'\n", DEFAULT_INTERFACE);
   printf ("   -s len         snapshot length. default %d\n", DEFAULT_SNAPSHOT);
 
-  printf ("   -n count       # of packets to capture. default %d that means unlimited\n", DEFAULT_PACKETS);
+  printf ("   -c count       # of packets to capture. default %d that means unlimited\n", DEFAULT_PACKETS);
 
   printf ("   -b count       heartbeat in seconds to show intermediate results. default %d\n", DEFAULT_HB);
 }
@@ -180,7 +180,7 @@ int main (int argc, char * argv [])
 {
   int option;
 
-  char * interface = DEFAULT_INTERFACE;    /* interface name */
+  char * interface = DEFAULT_INTERFACE;      /* interface name */
   int promiscuous = 1;
   int snapshot = DEFAULT_SNAPSHOT;
 
@@ -189,16 +189,16 @@ int main (int argc, char * argv [])
   struct pfring_pkthdr header;
 
   /* How many packets */
-  unsigned long total = DEFAULT_PACKETS;  /* total # of packets to capture */
+  unsigned long maxcount = DEFAULT_PACKETS;  /* total # of packets to capture */
 
-  struct timeval stopped;                 /* time the application was interrupted */
+  struct timeval stopped;                    /* time the application was interrupted */
   double delta;
 
   /* Notice the program name */
   char * progname = strrchr (argv [0], '/');
   progname = ! progname ? * argv : progname + 1;
 
-#define OPTSTRING "hvi:s:n:b:"
+#define OPTSTRING "hvi:s:c:b:"
   while ((option = getopt (argc, argv, OPTSTRING)) != -1)
     {
     switch (option)
@@ -211,7 +211,7 @@ int main (int argc, char * argv [])
       case 'i': interface = optarg;        break;
       case 's': snapshot  = atoi (optarg); break;
 
-      case 'n': total = atoi (optarg);     break;
+      case 'c': maxcount  = atoi (optarg); break;
 
       case 'b':	heartbeat = atoi (optarg); break;
       }
@@ -251,7 +251,7 @@ int main (int argc, char * argv [])
   printf ("%s: starting to capture (partial reports will be available every %d secs)\n", progname, heartbeat);
   printf (" [use ^C to interrupt]\n\n");
 
-  while (! done && (! total || partial < total))
+  while (! done && (! maxcount || partial < maxcount))
     /* Please give me just a packet at once from the ring */
     if (pfring_recv (ring, packet, sizeof (packet), & header, 1) > 0)
       partial ++,

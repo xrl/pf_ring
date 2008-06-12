@@ -236,14 +236,14 @@ char * percentage (unsigned long partial, unsigned long total)
 
 void showbar (unsigned long received)
 {
-  static int progress = 0;
+  static int bar = 0;
 
-  progress = received % 8;
-  if (progress == 0 || progress == 4) 
+  bar = received % 8;
+  if (bar == 0 || bar == 4) 
     printf (" %lu |\r", received);
-  else if (progress == 1 || progress == 5) 
+  else if (bar == 1 || bar == 5) 
     printf (" %lu /\r", received);
-  else if (progress == 2 || progress == 6) 
+  else if (bar == 2 || bar == 6) 
     printf (" %lu -\r", received);
   else
     printf (" %lu \\\r", received);
