@@ -1,22 +1,67 @@
-# Specify here the 
-KERNEL_VER=$(shell uname -r)
-KERNEL_DIR=/lib/modules/$(KERNEL_VER)/source/include
-INCLUDE=-I$(KERNEL_DIR)
-OBJ=pfring.o
-LIBPFRING=libpfring.a
-TARGET=pfcount
-F_TARGET=forwarder
-RANLIB=ranlib
-LIBS=-L../libpcap-0.9.7-ring -lpthread -lpcap
-CC=gcc -g -Wall -pthread $(INCLUDE)
+#
+# Makefile for both static and dynamic PF_RING user libraries
+#
+# Luca Deri <deri /at/ ntop /dot/ org> - 2005-2008 GPL
+# Rocco Carbone <rocco /at/ ntop /dot/ org> - 2Q 2008 GPL
+#
 
-$(LIBPFRING): $(OBJ)
-	@rm -f $@
-	ar rc $@ $(OBJ)
-	$(RANLIB) $@
+#
+# Installation directory
+#
+INSTDIR   = /usr/local
 
-install: $(LIBPFRING)
-	cp $(LIBPFRING) /usr/local/lib
-	cp pfring.h /usr/local/include
+#
+# Kernel
+#
+KERNELVER = ${shell uname -r}
+KERNELDIR = /lib/modules/${KERNELVER}/source/include
+
+#
+# Search directories
+#
+INCLUDE   = -I${KERNELDIR}
+
+#
+# Object files
+#
+OBJS      = pfring.o
+
+#
+# C compiler and flags
+#
+CC        = gcc
+CFLAGS    = -g -Wall ${INCLUDE}
+LDFLAGS   = -shared
+
+SYSLIBS   = -lpthread
+
+# How to make an object file
+%.o: %.c
+#	@echo "=*= making object $@ =*="
+	@${CC} ${CFLAGS} -c $< -o $@
+
+#
+# Main targets
+#
+STATICLIB  = libpfring.a
+DYNAMICLIB = libpfring.so
+TARGETS    = ${STATICLIB} ${DYNAMICLIB}
+
+all: ${TARGETS}
+
+${STATICLIB}: ${OBJS}
+	@echo "=*= making library $@ =*="
+	@ar rs $@ ${OBJS}
+	@ranlib $@
+
+${DYNAMICLIB}: ${OBJS}
+	@echo "=*= making library $@ =*="
+	@${CC} ${LDFLAGS} $< ${SYSLIBS} -o $@
+
+install: ${STATICLIB} ${DYNAMICLIB}
+	cp ${STATICLIB} ${INSTDIR}/lib/
+	cp ${DYNAMICLIB} ${INSTDIR}/lib/
+	cp pfring.h ${INSTDIR}/include/
+
 clean:
-	/bin/rm -f $(TARGET) *.o *~ $(LIBPFRING)
+	@rm -f ${TARGETS} *.o *~
