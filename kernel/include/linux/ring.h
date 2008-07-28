@@ -181,14 +181,15 @@ typedef struct _filtering_hash_bucket {
 #endif
 
 /* *********************************** */
+/* False sharing reference: http://en.wikipedia.org/wiki/False_sharing */
 
 typedef struct flowSlotInfo {
   u_int16_t version, sample_rate;
   u_int32_t tot_slots, slot_len, data_len, tot_mem;
-
-  u_int64_t tot_pkts, tot_lost;
-  u_int64_t tot_insert, tot_read;
-  u_int32_t insert_idx, remove_idx;
+  u_int64_t tot_pkts, tot_lost, tot_insert, tot_read;
+  u_int32_t insert_idx;
+  u_int8_t  padding2[16]; /* Used to avoid false sharing */
+  u_int32_t remove_idx;
 } FlowSlotInfo;
 
 /* *********************************** */
