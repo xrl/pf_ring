@@ -18,7 +18,7 @@ void set_skb_ring_handler(handle_ring_skb the_handler) {
 void do_skb_ring_handler(struct sk_buff *skb,
 			 u_char recv_packet, u_char real_skb) {
   if(ring_handler)
-    ring_handler(skb, recv_packet, real_skb);
+    ring_handler(skb, recv_packet, real_skb, -1 /* Unknown channel */);
 }
 
 /* ******************* */
@@ -54,9 +54,9 @@ void set_handle_add_pkt_to_ring(handle_add_pkt_to_ring the_handler) {
 int do_handle_add_pkt_to_ring(struct sk_buff *skb,
 			      struct ring_opt *pfr,
 			      struct pfring_pkthdr *hdr,
-			      int is_ip_pkt, int displ) {
+			      int is_ip_pkt, short channel_id, int displ) {
   if(buffer_handle_add_pkt_to_ring) {
-    buffer_handle_add_pkt_to_ring(skb, pfr, hdr, is_ip_pkt, displ);
+    buffer_handle_add_pkt_to_ring(skb, pfr, hdr, channel_id, is_ip_pkt, displ);
     return(1);
   } else 
     return(0);

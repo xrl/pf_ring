@@ -22,8 +22,8 @@
 #define DEFAULT_BUCKET_LEN            128
 
 /* Versioning */
-#define RING_VERSION                "3.8.2"
-#define RING_VERSION_NUM           0x030802
+#define RING_VERSION                "3.8.3"
+#define RING_VERSION_NUM           0x030803
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -36,6 +36,7 @@
 #define SO_SET_SAMPLING_RATE             106
 #define SO_ACTIVATE_RING                 107
 #define SO_RING_BUCKET_LEN               108
+#define SO_SET_CHANNEL_ID                109
 
 /* Get */
 #define SO_GET_RING_VERSION              110
@@ -188,7 +189,7 @@ typedef struct flowSlotInfo {
   u_int32_t tot_slots, slot_len, data_len, tot_mem;
   u_int64_t tot_pkts, tot_lost, tot_insert, tot_read;
   u_int32_t insert_idx;
-  u_int8_t  padding2[16]; /* Used to avoid false sharing */
+  u_int8_t  padding2[72]; /* Used to avoid false sharing */
   u_int32_t remove_idx;
 } FlowSlotInfo;
 
@@ -270,6 +271,8 @@ struct ring_element {
 
 /* ************************************************* */
 
+#define RING_ANY_CHANNEL  -1
+
 /*
  * Ring options
  */
@@ -281,6 +284,9 @@ struct ring_opt {
 
   /* Cluster */
   u_short cluster_id; /* 0 = no cluster */
+
+  /* Channel */
+  short channel_id;  /* -1 = any channel */
 
   /* Reflector */
   struct net_device *reflector_dev; /* Reflector device */
@@ -379,7 +385,7 @@ extern void set_unregister_pfring_plugin(unregister_pfring_plugin the_handler);
 extern int do_register_pfring_plugin(struct pfring_plugin_registration *reg);
 extern int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id);
 
-typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet, u_char real_skb);
+typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet, u_char real_skb, short channel_id);
 extern handle_ring_skb get_skb_ring_handler(void);
 extern void set_skb_ring_handler(handle_ring_skb the_handler);
 extern void do_skb_ring_handler(struct sk_buff *skb,
@@ -391,7 +397,8 @@ typedef int (*handle_ring_buffer)(struct net_device *dev,
 typedef void (*handle_add_pkt_to_ring)(struct sk_buff *skb,
 				       struct ring_opt *pfr,
 				       struct pfring_pkthdr *hdr,
-				       int is_ip_pkt, int displ);
+				       int is_ip_pkt, short channel_id,
+				       int displ);
 
 extern handle_ring_buffer get_buffer_ring_handler(void);
 extern void set_buffer_ring_handler(handle_ring_buffer the_handler);
@@ -403,7 +410,8 @@ extern void set_handle_add_pkt_to_ring(handle_add_pkt_to_ring the_handler);
 extern int do_handle_add_pkt_to_ring(struct sk_buff *skb,
 				     struct ring_opt *pfr,
 				     struct pfring_pkthdr *hdr,
-				     int is_ip_pkt, int displ);
+				     int is_ip_pkt, short channel_id, 
+				     int displ);
 
 #endif /* __KERNEL__  */
 

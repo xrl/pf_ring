@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2007 - Luca Deri <deri@ntop.org>
+ * (C) 2007-08 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -43,6 +43,10 @@ class PFring {
     { return((pcapPtr && pcapPtr->ring) ? pfring_set_cluster(pcapPtr->ring, clusterId) : -1); };
   inline int remove_from_cluster()               
     { return((pcapPtr && pcapPtr->ring) ? pfring_remove_from_cluster(pcapPtr->ring) : -1);    };
+
+  /* Channel */
+  inline int set_channel_id(short channelId)
+  { return((pcapPtr && pcapPtr->ring) ? pfring_set_channel_id(pcapPtr->ring, channelId) : -1); };
 
   /* Reflector */
   inline int set_reflector(char *reflectorDevice) 

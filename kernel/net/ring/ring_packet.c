@@ -129,7 +129,8 @@ static struct proto_ops ring_ops;
 static struct proto ring_proto;
 #endif
 
-static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet, u_char real_skb);
+static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
+			    u_char real_skb, short channel_id);
 static int buffer_ring_handler(struct net_device *dev, char *data, int len);
 static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 
@@ -888,7 +889,8 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 static void add_pkt_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    struct pfring_pkthdr *hdr,
-			    int displ, int offset) {
+			    int displ, short channel_id,
+			    int offset) {
   char *ring_bucket;
   int idx;
   FlowSlot *theSlot;
@@ -896,6 +898,11 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 #if defined(RING_DEBUG)
   printk("[PF_RING] --> add_pkt_to_ring(len=%d)\n", hdr->len);
 #endif
+  
+  if((pfr->channel_id != RING_ANY_CHANNEL)
+     && (channel_id != RING_ANY_CHANNEL)
+     && (pfr->channel_id != channel_id))
+    return; /* Wrong channel */
 
   idx = pfr->slots_info->insert_idx;
   idx++;
@@ -968,11 +975,12 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
-static void add_skb_to_ring(struct sk_buff *skb,
+static int add_skb_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    struct pfring_pkthdr *hdr,
 			    int is_ip_pkt,
-			    int displ)
+			    int displ,
+			    short channel_id)
 {
   FlowSlot *theSlot;
   int idx, initial_idx, fwd_pkt = 0;
@@ -986,7 +994,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
      has been handled
   */
 
-  if(!pfr->ring_active) return;
+  if(!pfr->ring_active) return(-1);
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] add_skb_to_ring: [displ=%d][len=%d][caplen=%d]"
@@ -1009,7 +1017,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	   (int)pfr->slots_info->tot_lost);
 #endif
     write_unlock_bh(&pfr->ring_index_lock);
-    return;
+    return(-1);
   }
 
   /* ************************** */
@@ -1035,7 +1043,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 #endif
 
       write_unlock_bh(&pfr->ring_index_lock);
-      return;
+      return(-1);
     }
   }
 
@@ -1154,7 +1162,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 #endif
 
 	  write_unlock_bh(&pfr->ring_index_lock);
-	  return;
+	  return(-1);
 	}
       }
 
@@ -1193,7 +1201,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 #endif
 
 		write_unlock_bh(&pfr->ring_index_lock);
-		return; /* OK */
+		return(-1); /* OK */
 	      }
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
@@ -1210,7 +1218,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 #endif
 	  skb->data += displ;
 	  write_unlock_bh(&pfr->ring_index_lock);
-	  return; /* -ENETDOWN */
+	  return(-ENETDOWN); /* -ENETDOWN */
 	}
 
       /* No reflector device: the packet needs to be queued */
@@ -1234,7 +1242,7 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	} else
 	  offset = 0, hdr->parsed_header_len = 0;
 	
-	add_pkt_to_ring(skb, pfr, hdr, displ, offset);
+	add_pkt_to_ring(skb, pfr, hdr, displ, channel_id, offset);
       }
     }
   } else {
@@ -1274,6 +1282,8 @@ static void add_skb_to_ring(struct sk_buff *skb,
 	kfree(parse_memory_buffer[i]);
       }
   }
+
+  return(0);
 }
 
 /* ********************************** */
@@ -1414,7 +1424,8 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
 
 static int skb_ring_handler(struct sk_buff *skb,
 			    u_char recv_packet,
-			    u_char real_skb /* 1=real skb, 0=faked skb */)
+			    u_char real_skb /* 1=real skb, 0=faked skb */,
+			    short channel_id)
 {
   struct sock *skElement;
   int rc = 0, is_ip_pkt;
@@ -1531,7 +1542,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
   hdr.len = hdr.caplen = skb->len+displ;
-
   read_lock_bh(&ring_mgmt_lock);
 
   /* [1] Check unclustered sockets */
@@ -1552,7 +1562,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	       && (pfr->ring_netdev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
       hdr.caplen = min(hdr.caplen, pfr->bucket_len);
-      add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ);
+      add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id);
       rc = 1; /* Ring found: we've done our job */
     }
   }
@@ -1578,7 +1588,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	       || ((skb->dev->flags & IFF_SLAVE)
 		   && (pfr->ring_netdev == skb->dev->master)))) {
 	  /* We've found the ring where the packet can be stored */
-	  add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ);
+	  add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id);
 	  rc = 1; /* Ring found: we've done our job */
 	}
       }
@@ -1647,7 +1657,7 @@ static int buffer_ring_handler(struct net_device *dev,
   skb.tstamp.tv64 = 0;
 #endif
 
-  return(skb_ring_handler(&skb, 1, 0 /* fake skb */));
+  return(skb_ring_handler(&skb, 1, 0 /* fake skb */, -1 /* Unknown channel */));
 }
 
 /* ********************************** */
@@ -1721,6 +1731,7 @@ static int ring_create(
   }
   memset(pfr, 0, sizeof(*pfr));
   pfr->ring_active = 0; /* We activate as soon as somebody waits for packets */
+  pfr->channel_id = RING_ANY_CHANNEL;
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
@@ -2395,6 +2406,7 @@ static int ring_setsockopt(struct socket *sock,
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
   u_int cluster_id, debug = 0;
+  short channel_id;
   char devName[8];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
@@ -2490,6 +2502,17 @@ static int ring_setsockopt(struct socket *sock,
       write_lock(&pfr->ring_rules_lock);
       ret = remove_from_cluster(sock->sk, pfr);
       write_unlock(&pfr->ring_rules_lock);
+      break;
+
+    case SO_SET_CHANNEL_ID:
+      if(optlen != sizeof(channel_id))
+	return -EINVAL;
+
+      if(copy_from_user(&channel_id, optval, sizeof(channel_id)))
+	return -EFAULT;
+
+      pfr->channel_id = channel_id;
+      ret = 0;
       break;
 
     case SO_SET_REFLECTOR:

@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-07 - Luca Deri <deri@ntop.org>
+ * (C) 2005-08 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -315,6 +315,7 @@ void printHelp(void) {
   printf("-i <device>     [Device name]\n");
   /* printf("-f <filter>     [pfring filter]\n"); */
   printf("-c <cluster id> [cluster id]\n");
+  printf("-e <channel id> [channel id]\n");
   printf("-s <string>     [String to search on packets]\n");
   printf("-a              [Active packet wait]\n");
   printf("-v              [Verbose]\n");
@@ -326,6 +327,7 @@ int main(int argc, char* argv[]) {
   char *device = NULL, c, *string = NULL;
   int promisc;
   u_int clusterId = 0;
+  short channelId = -1 /* RING_ANY_CHANNEL */;
   u_char wait_for_packet = 1;
 
 #if 0
@@ -365,7 +367,7 @@ int main(int argc, char* argv[]) {
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:vs:a" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:e:vs:a" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -376,6 +378,9 @@ int main(int argc, char* argv[]) {
       break;
     case 'c':
       clusterId = atoi(optarg);
+      break;
+    case 'e':
+      channelId = atoi(optarg);
       break;
     case 'i':
       device = strdup(optarg);
@@ -400,7 +405,7 @@ int main(int argc, char* argv[]) {
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
-  if((pd = pfring_open(device, promisc, 1500, 0 /* we don't use threads */)) == NULL) {
+  if((pd = pfring_open(device, promisc, DEFAULT_SNAPLEN, 0 /* we don't use threads */)) == NULL) {
     printf("pfring_open error\n");
     return(-1);
   } else {
@@ -417,6 +422,11 @@ int main(int argc, char* argv[]) {
   if(clusterId > 0) {
     int rc = pfring_set_cluster(pd, clusterId);
     printf("pfring_set_cluster returned %d\n", rc);
+  }
+
+  if(channelId != -1 /* RING_ANY_CHANNEL */) {
+    int rc = pfring_set_channel_id(pd, channelId);
+    printf("pfring_set_channel_id returned %d\n", rc);
   }
 
   if(0) {

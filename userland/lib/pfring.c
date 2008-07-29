@@ -48,6 +48,17 @@ int pfring_set_cluster(pfring *ring, u_int clusterId) {
 
 /* ******************************* */
 
+int pfring_set_channel_id(pfring *ring, short channel_id) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+  return(ring ? setsockopt(ring->fd, 0, SO_SET_CHANNEL_ID,
+			   &channel_id, sizeof(channel_id)): -1);
+#endif
+}
+
+/* ******************************* */
+
 int pfring_remove_from_cluster(pfring *ring) {
 #ifdef USE_PCAP
   return(-1);
