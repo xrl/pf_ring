@@ -128,6 +128,7 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
 
   return((pfring*)pcapPtr);
 #else
+  short channel_id = -1;
   int err = 0;
   pfring *ring = (pfring*)malloc(sizeof(pfring));
   
@@ -147,8 +148,15 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
     struct sockaddr sa;
     int             rc;
     u_int memSlotsLen;
+    char *dot;
 
     setsockopt(ring->fd, 0, SO_RING_BUCKET_LEN, &caplen, sizeof(caplen));
+
+    dot = strchr(device_name, '.');
+    if(dot != NULL) {
+      dot[0] = '\0';
+      channel_id = atoi(&dot[1]);
+    }
 
     sa.sa_family   = PF_RING;
     snprintf(sa.sa_data, sizeof(sa.sa_data), "%s", device_name);
@@ -227,6 +235,10 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
   if(err == 0) {
     if(ring->reentrant)
       pthread_spin_init(&ring->spinlock, PTHREAD_PROCESS_PRIVATE);    
+
+    if(channel_id != -1)
+      pfring_set_channel_id(ring, channel_id);
+    
     return(ring);
   } else    
     return(NULL);
