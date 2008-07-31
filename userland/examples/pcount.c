@@ -285,11 +285,12 @@ int32_t gmt2local(time_t t) {
 
 void printHelp(void) {
 
-  printf("pcount\n(C) 2003-05 Deri Luca <deri@ntop.org>\n");
+  printf("pcount\n(C) 2003-08 Deri Luca <deri@ntop.org>\n");
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name]\n");
   printf("-f <filter>     [pcap filter]\n");
   printf("-c <cluster id> [cluster id]\n");
+  printf("-l <len>        [Capture length]\n");
   printf("-v              [Verbose]\n");
 }
 
@@ -298,7 +299,7 @@ void printHelp(void) {
 int main(int argc, char* argv[]) {
   char *device = NULL, c, *bpfFilter = NULL;
   char errbuf[PCAP_ERRBUF_SIZE];
-  int promisc;
+  int promisc, snaplen = DEFAULT_SNAPLEN;;
   struct bpf_program fcode;
   u_int clusterId = 0;
 
@@ -339,7 +340,7 @@ int main(int argc, char* argv[]) {
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:vf:")) != -1) {
+  while((c = getopt(argc,argv,"hi:c:l:vf:")) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -350,6 +351,9 @@ int main(int argc, char* argv[]) {
       break;
     case 'i':
       device = strdup(optarg);
+      break;
+    case 'l':
+      snaplen = atoi(optarg);
       break;
     case 'v':
       verbose = 1;
@@ -370,7 +374,7 @@ int main(int argc, char* argv[]) {
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
-  if((pd = pcap_open_live(device, DEFAULT_SNAPLEN, 
+  if((pd = pcap_open_live(device, snaplen, 
 			  promisc, 500, errbuf)) == NULL) {
     printf("pcap_open_live: %s\n", errbuf);
     return(-1);

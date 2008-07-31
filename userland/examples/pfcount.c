@@ -310,13 +310,14 @@ int32_t gmt2local(time_t t) {
 /* *************************************** */
 
 void printHelp(void) {
-  printf("pfcount\n(C) 2005-07 Deri Luca <deri@ntop.org>\n");
+  printf("pfcount\n(C) 2005-08 Deri Luca <deri@ntop.org>\n");
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name]\n");
   /* printf("-f <filter>     [pfring filter]\n"); */
   printf("-c <cluster id> [cluster id]\n");
   printf("-e <channel id> [channel id]\n");
   printf("-s <string>     [String to search on packets]\n");
+  printf("-l <len>        [Capture length]\n");
   printf("-a              [Active packet wait]\n");
   printf("-v              [Verbose]\n");
 }
@@ -325,7 +326,7 @@ void printHelp(void) {
 
 int main(int argc, char* argv[]) {
   char *device = NULL, c, *string = NULL;
-  int promisc;
+  int promisc, snaplen = DEFAULT_SNAPLEN;
   u_int clusterId = 0;
   short channelId = -1 /* RING_ANY_CHANNEL */;
   u_char wait_for_packet = 1;
@@ -367,7 +368,7 @@ int main(int argc, char* argv[]) {
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:e:vs:a" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:e:l:vs:a" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -381,6 +382,9 @@ int main(int argc, char* argv[]) {
       break;
     case 'e':
       channelId = atoi(optarg);
+      break;
+    case 'l':
+      snaplen = atoi(optarg);
       break;
     case 'i':
       device = strdup(optarg);
@@ -405,7 +409,8 @@ int main(int argc, char* argv[]) {
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
-  if((pd = pfring_open(device, promisc, DEFAULT_SNAPLEN, 0 /* we don't use threads */)) == NULL) {
+  if((pd = pfring_open(device, promisc, 
+		       snaplen, 0 /* we don't use threads */)) == NULL) {
     printf("pfring_open error\n");
     return(-1);
   } else {

@@ -929,8 +929,8 @@ static void add_pkt_to_ring(struct sk_buff *skb,
     
     if(hdr->caplen > 0) {
 #if defined(RING_DEBUG)
-      printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d]\n",
-	     hdr->caplen, hdr->len, displ, hdr->parsed_header_len);
+      printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d][bucket_len=%d]\n",
+	     hdr->caplen, hdr->len, displ, hdr->parsed_header_len, pfr->bucket_len);
 #endif
       skb_copy_bits(skb, -displ, &ring_bucket[sizeof(struct pfring_pkthdr)+offset], hdr->caplen);
     } else {
@@ -1525,8 +1525,10 @@ static int skb_ring_handler(struct sk_buff *skb,
 	   || ((skb->dev->flags & IFF_SLAVE)
 	       && (pfr->ring_netdev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
+      int old_caplen = hdr.caplen; /* Keep old lenght */
       hdr.caplen = min(hdr.caplen, pfr->bucket_len);
       add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id);
+      hdr.caplen = old_caplen;
       rc = 1; /* Ring found: we've done our job */
     }
   }

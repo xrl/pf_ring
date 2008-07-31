@@ -48,7 +48,7 @@ LIBS       = ${LIBPFRING} -lpthread
 # How to make an object file
 %.o: %.c
 #	@echo "=*= making object $@ =*="
-	@${CC} ${CFLAGS} -c $< -o $@
+	${CC} ${CFLAGS} -c $< -o $@
 
 #
 # Main targets
@@ -66,35 +66,35 @@ all: ${TARGETS}
 
 ringc: ${RCOBJS} ${LIBPFRING}
 	@echo "=*= making program $@ =*="
-	@${CC} ${RCOBJS} ${LIBS} -o $@
+	${CC} ${RCOBJS} ${LIBS} -o $@
 
 rings: ${RSOBJS} ${LIBPFRING}
 	@echo "=*= making program $@ =*="
-	@${CC} ${RSOBJS} ${LIBS} -o $@
+	${CC} ${RSOBJS} ${LIBS} -o $@
 
 ringm: ${RMOBJS} ${LIBPFRING}
 	@echo "=*= making program $@ =*="
-	@${CC} ${RMOBJS} ${LIBS} -o $@
+	${CC} ${RMOBJS} ${LIBS} -o $@
 
 pcaps: ${RPOBJS}
 	@echo "=*= making program $@ =*="
-	@${CC} ${RPOBJS} -lpcap -o $@
+	${CC} ${RPOBJS} -lpcap -o $@
 
 pfcount: pfcount.o ${LIBPFRING}
 	@echo "=*= making program $@ =*="
-	@${CC} pfcount.o ${LIBS} -o $@
+	${CC} pfcount.o ${LIBS} -o $@
 
 forwarder: forwarder.o ${LIBPFRING}
 	@echo "=*= making program $@ =*="
-	@${CC} forwarder.o ${LIBS} -o $@
+	${CC} forwarder.o ${LIBS} -o $@
 
 pcount: pcount.o ${LIBPCAP} ${LIBPFRING}
 	@echo "=*= making program $@ =*="
-	@${CC} pcount.o ${LIBPCAP} ${LIBS} -o $@
+	${CC} pcount.o ${LIBPCAP} ${LIBS} -o $@
 
 pwrite: pwrite.o ${LIBPCAP} ${LIBPFRING}
 	@echo "=*= making program $@ =*="
-	@${CC} pwrite.o ${LIBPCAP} ${LIBS} -o $@
+	${CC} pwrite.o ${LIBPCAP} ${LIBS} -o $@
 
 clean:
 	@rm -f ${TARGETS} *.o *~
