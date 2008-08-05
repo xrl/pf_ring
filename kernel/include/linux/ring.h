@@ -22,8 +22,8 @@
 #define DEFAULT_BUCKET_LEN            128
 
 /* Versioning */
-#define RING_VERSION                "3.8.5"
-#define RING_VERSION_NUM           0x030805
+#define RING_VERSION                "3.8.6"
+#define RING_VERSION_NUM           0x030806
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -286,7 +286,7 @@ struct ring_opt {
   u_short cluster_id; /* 0 = no cluster */
 
   /* Channel */
-  short channel_id;  /* -1 = any channel */
+  int32_t channel_id;  /* -1 = any channel */
 
   /* Reflector */
   struct net_device *reflector_dev; /* Reflector device */

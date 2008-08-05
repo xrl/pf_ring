@@ -48,7 +48,7 @@ int pfring_set_cluster(pfring *ring, u_int clusterId) {
 
 /* ******************************* */
 
-int pfring_set_channel_id(pfring *ring, short channel_id) {
+int pfring_set_channel_id(pfring *ring, int32_t channel_id) {
 #ifdef USE_PCAP
   return(-1);
 #else
@@ -128,7 +128,7 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
 
   return((pfring*)pcapPtr);
 #else
-  short channel_id = -1;
+  int32_t channel_id = -1;
   int err = 0;
   pfring *ring = (pfring*)malloc(sizeof(pfring));
   
@@ -148,15 +148,45 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
     struct sockaddr sa;
     int             rc;
     u_int memSlotsLen;
-    char *dot;
+    char *at;
 
     setsockopt(ring->fd, 0, SO_RING_BUCKET_LEN, &caplen, sizeof(caplen));
 
-    dot = strchr(device_name, '.');
-    if(dot != NULL) {
-      dot[0] = '\0';
-      channel_id = atoi(&dot[1]);
+    at = strchr(device_name, '@');
+    if(at != NULL) {
+      char *tok, *pos;
+
+      at[0] = '\0';
+      
+      /* Syntax
+	  ethX@1,5       channel 1 and 5
+	  ethX@1-5       channel 1,2...5
+	  ethX@1-3,5-7   channel 1,2,3,5,6,7
+      */
+      
+      tok = strtok_r(&at[1], ",", &pos);
+      channel_id = 0;
+
+      while(tok != NULL) {
+	char *dash = strchr(tok, '-');
+	int32_t min_val, max_val, i;
+
+	if(dash) {
+	  dash[0] = '\0';
+	  min_val = atoi(tok);
+	  max_val = atoi(&dash[1]);
+
+	} else
+	  min_val = max_val = atoi(tok);
+	
+	for(i = min_val; i <= max_val; i++)
+	  channel_id |= 1 << i;
+      
+	tok = strtok_r(NULL, ",", &pos);
+      }
     }
+
+    /* printf("channel_id=%d\n", channel_id); */
 
     sa.sa_family   = PF_RING;
     snprintf(sa.sa_data, sizeof(sa.sa_data), "%s", device_name);
@@ -236,9 +266,13 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
     if(ring->reentrant)
       pthread_spin_init(&ring->spinlock, PTHREAD_PROCESS_PRIVATE);    
 
-    if(channel_id != -1)
-      pfring_set_channel_id(ring, channel_id);
-    
+    if(channel_id != -1) {
+      int rc = pfring_set_channel_id(ring, channel_id);
+
+      if(rc != 0)
+	printf("pfring_set_channel_id() failed: %d\n", rc);
+    }
+
     return(ring);
   } else    
     return(NULL);

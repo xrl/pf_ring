@@ -226,7 +226,7 @@ static void *rvmalloc(unsigned long size)
   unsigned long pages = 0;
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  rvmalloc: %lu bytes\n", size);
+  printk("[PF_RING] rvmalloc: %lu bytes\n", size);
 #endif
 
   size = PAGE_ALIGN(size);
@@ -896,14 +896,16 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   char *ring_bucket;
   int idx;
   FlowSlot *theSlot;
+  int32_t the_bit = 1 << channel_id;
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] --> add_pkt_to_ring(len=%d)\n", hdr->len);
+  printk("[PF_RING] --> add_pkt_to_ring(len=%d) [pfr->channel_id=%d][channel_id=%d]\n",
+	 hdr->len, pfr->channel_id, channel_id);
 #endif
-  
+    
   if((pfr->channel_id != RING_ANY_CHANNEL)
      && (channel_id != RING_ANY_CHANNEL)
-     && (pfr->channel_id != channel_id))
+     && ((pfr->channel_id & the_bit) != the_bit))
     return; /* Wrong channel */
 
   write_lock_bh(&pfr->ring_index_lock);
@@ -1423,6 +1425,13 @@ static int skb_ring_handler(struct sk_buff *skb,
   }
 #endif
 
+  if(channel_id == -1 /* Unknown channel */)
+    channel_id = skb->iif; /* Might have been set by the driver */
+
+#if defined (RING_DEBUG)
+  printk("[PF_RING] channel_id=%d\n", channel_id);
+#endif
+
 #ifdef PROFILING
   rdt1 = _rdtsc();
 #endif
@@ -1579,8 +1588,13 @@ static int skb_ring_handler(struct sk_buff *skb,
     if(transparent_mode) {
       rc = 0;
     } else {
-      if(recv_packet && real_skb) 
+      if(recv_packet && real_skb) {
+#if defined(RING_DEBUG)
+	printk("[PF_RING] kfree_skb()\n");
+#endif
+  
 	kfree_skb(orig_skb);
+      }
     }
   }
 
@@ -2372,7 +2386,7 @@ static int ring_setsockopt(struct socket *sock,
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
   u_int cluster_id, debug = 0;
-  short channel_id;
+  int32_t channel_id;
   char devName[8];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
@@ -2478,6 +2492,10 @@ static int ring_setsockopt(struct socket *sock,
 	return -EFAULT;
 
       pfr->channel_id = channel_id;
+#if defined(RING_DEBUG)
+      printk("[PF_RING] [pfr->channel_id=%d][channel_id=%d]\n",
+	     pfr->channel_id, channel_id);
+#endif
       ret = 0;
       break;
 
