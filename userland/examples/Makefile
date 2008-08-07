@@ -13,8 +13,13 @@
 #
 # Kernel
 #
-KERNELVER  = ${shell uname -r}
-KERNELDIR  = /lib/modules/${KERNELVER}/source/include
+#
+# Kernel
+#
+ifeq (,$(KERNELVER))
+KERNELVER=$(shell uname -r)
+endif
+KERNELDIR = /lib/modules/${KERNELVER}/source/include
 
 #
 # PF_RING
