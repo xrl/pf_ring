@@ -911,6 +911,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   write_lock_bh(&pfr->ring_index_lock);
   idx = pfr->slots_info->insert_idx;
   idx++, theSlot = get_insert_slot(pfr);
+  pfr->slots_info->tot_pkts++;
   
   if((theSlot == NULL) || (theSlot->slot_state != 0)) {
     /* No room left */
@@ -1019,24 +1020,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	 hdr->parsed_pkt.l4_dst_port);
 #endif
 
-#if 0
-  write_lock_bh(&pfr->ring_index_lock);
-  pfr->slots_info->tot_pkts++;
-  initial_idx = pfr->slots_info->insert_idx;
-  theSlot = get_insert_slot(pfr);
-
-  if((theSlot == NULL) || (theSlot->slot_state != 0)) {
-    /* No room left */
-    pfr->slots_info->tot_lost++;
-#if defined(RING_DEBUG)
-    printk("[PF_RING] add_skb_to_ring(skb): packet lost [tot_lost=%d]\n", 
-	   (int)pfr->slots_info->tot_lost);
-#endif
-    write_unlock_bh(&pfr->ring_index_lock);
-    return(-1);
-  }
-#endif
-
   /* ************************************* */
 
 #if defined(RING_DEBUG)
@@ -1131,6 +1114,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
     /* [3] Packet sampling */
     if(pfr->sample_rate > 1) {
       write_lock_bh(&pfr->ring_index_lock);
+      pfr->slots_info->tot_pkts++;
+
       if(pfr->pktToSample == 0) {
 	pfr->pktToSample = pfr->sample_rate;
       } else {
@@ -1425,8 +1410,10 @@ static int skb_ring_handler(struct sk_buff *skb,
   }
 #endif
 
-  if(channel_id == -1 /* Unknown channel */)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,21))
+  if(channel_id == RING_ANY_CHANNEL /* Unknown channel */)
     channel_id = skb->iif; /* Might have been set by the driver */
+#endif
 
 #if defined (RING_DEBUG)
   printk("[PF_RING] channel_id=%d\n", channel_id);
