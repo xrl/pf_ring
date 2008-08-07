@@ -13,7 +13,9 @@ INSTDIR   = /usr/local
 #
 # Kernel
 #
-KERNELVER = ${shell uname -r}
+ifeq (,$(KERNELVER))
+KERNELVER=$(shell uname -r)
+endif
 KERNELDIR = /lib/modules/${KERNELVER}/source/include
 
 #
@@ -30,7 +32,7 @@ OBJS      = pfring.o
 # C compiler and flags
 #
 CC        = gcc
-CFLAGS    = -g -Wall ${INCLUDE}
+CFLAGS    = -g -O2 -Wall ${INCLUDE}
 LDFLAGS   = -shared
 
 SYSLIBS   = -lpthread
