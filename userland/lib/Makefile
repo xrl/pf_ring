@@ -47,7 +47,7 @@ SYSLIBS   = -lpthread
 #
 STATICLIB  = libpfring.a
 DYNAMICLIB = libpfring.so
-TARGETS    = ${STATICLIB} ${DYNAMICLIB}
+TARGETS    = ${STATICLIB} #${DYNAMICLIB}
 
 all: ${TARGETS}
 
