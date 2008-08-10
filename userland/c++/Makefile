@@ -1,7 +1,8 @@
-CPP=g++ -g
+CPP=g++ -g -O2
 
-# Specify here the 
+ifeq (,$(KERNEL_VER))
 KERNEL_VER=$(shell uname -r)
+endif
 KERNEL_DIR=/lib/modules/$(KERNEL_VER)/source/include
 LIBPCAP_DIR=../libpcap-0.9.7-ring
 INCLUDE=-I$(KERNEL_DIR) -I$(LIBPCAP_DIR) -I../lib
