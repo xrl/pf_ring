@@ -22,8 +22,8 @@
 #define DEFAULT_BUCKET_LEN            128
 
 /* Versioning */
-#define RING_VERSION                "3.8.6"
-#define RING_VERSION_NUM           0x030806
+#define RING_VERSION                "3.8.7"
+#define RING_VERSION_NUM           0x030807
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99

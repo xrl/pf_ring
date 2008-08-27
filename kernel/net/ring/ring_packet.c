@@ -1446,45 +1446,52 @@ static int skb_ring_handler(struct sk_buff *skb,
 
       skb_reset_network_header(skb);
       skb_reset_transport_header(skb);
-      skb_set_network_header(skb, hdr.parsed_pkt.pkt_detail.offset.l3_offset-displ);
+      skb_set_network_header(skb, ETH_HLEN-displ);
 
-      if(((iphdr = ip_hdr(skb)) != NULL)
-	 && (iphdr->frag_off & htons(IP_MF | IP_OFFSET)))
-	{
-	  if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL)
-	    {
+      iphdr = ip_hdr(skb);
+      
+      if(iphdr) {
 #if defined (RING_DEBUG)
-	      int offset = ntohs(iphdr->frag_off);
-	      offset &= IP_OFFSET;
-	      offset <<= 3;
+	printk("[PF_RING] [version=%d] %X -> %X\n", iphdr->version, iphdr->saddr, iphdr->daddr);
+#endif
+	if (iphdr->frag_off & htons(IP_MF | IP_OFFSET))
+	  {
+	    if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL)
+	      {
+#if defined (RING_DEBUG)
+		int offset = ntohs(iphdr->frag_off);
+		offset &= IP_OFFSET;
+		offset <<= 3;
 
-	      printk("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u] [ip_id=%u]\n",
-		     iphdr->protocol, offset, ntohs(iphdr->id));
+		printk("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u] [ip_id=%u][network_header=%d][displ=%d]\n",
+		       iphdr->protocol, offset, ntohs(iphdr->id),
+		       hdr.parsed_pkt.pkt_detail.offset.l3_offset-displ, displ);
 #endif
-	      skk = ring_gather_frags(cloned);
+		skk = ring_gather_frags(cloned);
 
-	      if(skk != NULL)
-		{
+		if(skk != NULL)
+		  {
 #if defined (RING_DEBUG)
-		  printk("[PF_RING] IP reasm on new skb [skb_len=%d][head_len=%d][nr_frags=%d][frag_list=%p]\n",
-			 (int)skk->len, skb_headlen(skk),
-			 skb_shinfo(skk)->nr_frags, skb_shinfo(skk)->frag_list);
+		    printk("[PF_RING] IP reasm on new skb [skb_len=%d][head_len=%d][nr_frags=%d][frag_list=%p]\n",
+			   (int)skk->len, skb_headlen(skk),
+			   skb_shinfo(skk)->nr_frags, skb_shinfo(skk)->frag_list);
 #endif
-		  skb = skk;
-		  parse_pkt(skb, displ, &hdr);
-		  hdr.len = hdr.caplen = skb->len+displ;
-		} else {
-		  //printk("[PF_RING] Fragment queued \n");
-		  return(0); /* mask rcvd fragments */
-		}
-	    }
-	}
-      else
-	{
+		    skb = skk;
+		    parse_pkt(skb, displ, &hdr);
+		    hdr.len = hdr.caplen = skb->len+displ;
+		  } else {
+		    //printk("[PF_RING] Fragment queued \n");
+		    return(0); /* mask rcvd fragments */
+		  }
+	      }
+	  }      
+	else
+	  {
 #if defined (RING_DEBUG)
-	  printk("[PF_RING] Do not seems to be a fragmented ip_pkt[iphdr=%p]\n", iphdr);
+	    printk("[PF_RING] Do not seems to be a fragmented ip_pkt[iphdr=%p]\n", iphdr);
 #endif
-	}
+	  }
+      }
     }
 
   /* BD - API changed for time keeping */
