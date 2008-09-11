@@ -150,6 +150,7 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
     u_int memSlotsLen;
     char *at;
 
+    if(caplen > MAX_CAPLEN) caplen = MAX_CAPLEN;
     setsockopt(ring->fd, 0, SO_RING_BUCKET_LEN, &caplen, sizeof(caplen));
 
     at = strchr(device_name, '@');

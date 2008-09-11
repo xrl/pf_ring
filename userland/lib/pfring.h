@@ -77,6 +77,7 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <pthread.h>
 
 
+#define MAX_CAPLEN       16384
 #define PAGE_SIZE         4096
 
 #define POLL_SLEEP_STEP         10 /* ns = 0.1 ms */

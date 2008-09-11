@@ -671,10 +671,10 @@ static int parse_pkt(struct sk_buff *skb,
   if(hdr->parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */)
     {
       hdr->parsed_pkt.pkt_detail.offset.vlan_offset = hdr->parsed_pkt.pkt_detail.offset.eth_offset + sizeof(struct ethhdr);
-      hdr->parsed_pkt.vlan_id = (skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 14] & 15) * 256
-	+ skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 15];
-      hdr->parsed_pkt.eth_type = (skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 16]) * 256
-	+ skb->data[hdr->parsed_pkt.pkt_detail.offset.eth_offset + 17];
+      hdr->parsed_pkt.vlan_id = (skb->data[hdr->parsed_pkt.pkt_detail.offset.vlan_offset] & 15) * 256
+	+ skb->data[hdr->parsed_pkt.pkt_detail.offset.vlan_offset + 1];
+      hdr->parsed_pkt.eth_type = (skb->data[hdr->parsed_pkt.pkt_detail.offset.vlan_offset + 2]) * 256
+	+ skb->data[hdr->parsed_pkt.pkt_detail.offset.vlan_offset + 3];
       displ = 4;
     }
   else
