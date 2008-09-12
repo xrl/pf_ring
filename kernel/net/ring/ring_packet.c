@@ -21,6 +21,7 @@
  * - Noam Dev <noamdev@gmail.com>
  * - Siva Kollipara <siva@cs.arizona.edu>
  * - Vincent Carrier <vicarrier@wanadoo.fr>
+ * - Eugene Bogush <b_eugene@ukr.net>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -783,10 +784,10 @@ static int match_filtering_rule(struct ring_opt *the_ring,
   if((rule->rule.core_fields.proto > 0)   && (hdr->parsed_pkt.l3_proto != rule->rule.core_fields.proto))   return(0);
 
   if(rule->rule.core_fields.host_low > 0) {
-    if((hdr->parsed_pkt.ipv4_src < rule->rule.core_fields.host_low)
-       || (hdr->parsed_pkt.ipv4_src > rule->rule.core_fields.host_high)
-       || (hdr->parsed_pkt.ipv4_dst < rule->rule.core_fields.host_low)
-       || (hdr->parsed_pkt.ipv4_dst > rule->rule.core_fields.host_high))
+    if(((hdr->parsed_pkt.ipv4_src < rule->rule.core_fields.host_low)
+	|| (hdr->parsed_pkt.ipv4_src > rule->rule.core_fields.host_high))
+       && ((hdr->parsed_pkt.ipv4_dst < rule->rule.core_fields.host_low)
+	   || (hdr->parsed_pkt.ipv4_dst > rule->rule.core_fields.host_high)))
       return(0);
   }
 
