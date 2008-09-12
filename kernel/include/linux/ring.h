@@ -22,8 +22,8 @@
 #define DEFAULT_BUCKET_LEN            128
 
 /* Versioning */
-#define RING_VERSION                "3.8.7"
-#define RING_VERSION_NUM           0x030807
+#define RING_VERSION                "3.8.8"
+#define RING_VERSION_NUM           0x030808
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -52,12 +52,13 @@ struct pkt_aggregation_info {
   struct timeval first_seen, last_seen;
 };
 
+/* Note that as offsets can be negative, please do not change them to unsigned */
 struct pkt_offset {
-  u_int16_t eth_offset; /* This offset *must* be added to all offsets below */
-  u_int16_t vlan_offset;
-  u_int16_t l3_offset;
-  u_int16_t l4_offset;
-  u_int16_t payload_offset;
+  int16_t eth_offset; /* This offset *must* be added to all offsets below */
+  int16_t vlan_offset;
+  int16_t l3_offset;
+  int16_t l4_offset;
+  int16_t payload_offset;
 };
 
 struct pkt_parsing_info {

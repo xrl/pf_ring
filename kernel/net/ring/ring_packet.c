@@ -22,6 +22,7 @@
  * - Siva Kollipara <siva@cs.arizona.edu>
  * - Vincent Carrier <vicarrier@wanadoo.fr>
  * - Eugene Bogush <b_eugene@ukr.net>
+ * - Samir Chang <coobyhb@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
