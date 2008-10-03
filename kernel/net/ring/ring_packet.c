@@ -2650,6 +2650,7 @@ static int ring_setsockopt(struct socket *sock,
 
 	write_lock(&pfr->ring_rules_lock);
 	rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */);
+	pfr->num_filtering_rules++;
 	write_unlock(&pfr->ring_rules_lock);
 	if(rc != 0) return(rc);
       } else {
@@ -2704,6 +2705,7 @@ static int ring_setsockopt(struct socket *sock,
 
 	  write_lock(&pfr->ring_rules_lock);
 	  rc = handle_filtering_hash_bucket(pfr, &rule, 0 /* delete */);
+	  pfr->num_filtering_rules--;
 	  write_unlock(&pfr->ring_rules_lock);
 	  if(rc != 0) return(rc);
 	} else
