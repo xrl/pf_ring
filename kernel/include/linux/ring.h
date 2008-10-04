@@ -22,8 +22,8 @@
 #define DEFAULT_BUCKET_LEN            128
 
 /* Versioning */
-#define RING_VERSION                "3.8.8"
-#define RING_VERSION_NUM           0x030808
+#define RING_VERSION                "3.8.9"
+#define RING_VERSION_NUM           0x030809
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -391,14 +391,19 @@ extern handle_ring_skb get_skb_ring_handler(void);
 extern void set_skb_ring_handler(handle_ring_skb the_handler);
 extern void do_skb_ring_handler(struct sk_buff *skb,
 				u_char recv_packet, u_char real_skb);
-
+ 
 typedef int (*handle_ring_buffer)(struct net_device *dev,
 				  char *data, int len);
- 
 extern handle_ring_buffer get_buffer_ring_handler(void);
 extern void set_buffer_ring_handler(handle_ring_buffer the_handler);
 extern int do_buffer_ring_handler(struct net_device *dev,
 				  char *data, int len);
+
+typedef int (*handle_add_hdr_to_ring)(struct ring_opt *pfr,
+				      struct pfring_pkthdr *hdr);
+extern handle_add_hdr_to_ring get_add_hdr_to_ring(void);
+extern void set_add_hdr_to_ring(handle_add_hdr_to_ring the_handler);
+extern int do_add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr);
 
 #endif /* __KERNEL__  */
 

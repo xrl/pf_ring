@@ -73,28 +73,32 @@ void print_stats() {
   u_int64_t diff;
   static struct timeval lastTime;
 
+  if(startTime.tv_sec == 0) {
+    gettimeofday(&startTime, NULL);
+    return;
+  }
   gettimeofday(&endTime, NULL);
   deltaSec = (double)delta_time(&endTime, &startTime)/1000000;
 
-  if(pcap_stats(pd, &pcapStat) >= 0)
+  if(pcap_stats(pd, &pcapStat) >= 0) {
     fprintf(stderr, "=========================\n"
-	"Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
-        "Total Pkts=%d/Dropped=%.1f %%\n",
-	 pcapStat.ps_recv, pcapStat.ps_drop, pcapStat.ps_recv-pcapStat.ps_drop,
-	 pcapStat.ps_recv == 0 ? 0 : (double)(pcapStat.ps_drop*100)/(double)pcapStat.ps_recv);
-  fprintf(stderr, "%llu pkts [%.1f pkt/sec] - %llu bytes [%.2f Mbit/sec]\n",
-	  numPkts, (double)numPkts/deltaSec,
-	  numBytes, (double)8*numBytes/(double)(deltaSec*1000000));
+	    "Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
+	    "Total Pkts=%d/Dropped=%.1f %%\n",
+	    pcapStat.ps_recv, pcapStat.ps_drop, pcapStat.ps_recv-pcapStat.ps_drop,
+	    pcapStat.ps_recv == 0 ? 0 : (double)(pcapStat.ps_drop*100)/(double)pcapStat.ps_recv);
+    fprintf(stderr, "%llu pkts [%.1f pkt/sec] - %llu bytes [%.2f Mbit/sec]\n",
+	    numPkts, (double)numPkts/deltaSec,
+	    numBytes, (double)8*numBytes/(double)(deltaSec*1000000));
 
-  deltaSec = (double)delta_time(&endTime, &lastTime)/1000000;
-  diff = pcapStat.ps_recv-lastPkts;
-  fprintf(stderr, "=========================\n"
-	  "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
-	  diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
-  lastPkts = pcapStat.ps_recv;
+    deltaSec = (double)delta_time(&endTime, &lastTime)/1000000;
+    diff = pcapStat.ps_recv-lastPkts;
+    fprintf(stderr, "=========================\n"
+	    "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
+	    diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
+    lastPkts = pcapStat.ps_recv;
+  }
   
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
-
 
   fprintf(stderr, "=========================\n");
 }
@@ -338,6 +342,7 @@ int main(int argc, char* argv[]) {
 #endif
 #endif
 
+  startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
   while((c = getopt(argc,argv,"hi:c:l:vf:")) != -1) {

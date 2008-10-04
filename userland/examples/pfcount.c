@@ -86,31 +86,37 @@ void print_stats() {
   u_int64_t diff;
   static struct timeval lastTime;
 
-  if(startTime.tv_sec == 0) return;
+  if(startTime.tv_sec == 0) {
+    gettimeofday(&startTime, NULL);
+    return;
+  }
 
   gettimeofday(&endTime, NULL);
   deltaMillisec = delta_time(&endTime, &startTime);
+  
+  if(pfring_stats(pd, &pfringStat) >= 0) {
+    double thpt = ((double)8*numBytes)/(deltaMillisec*1000);
 
-  if(pfring_stats(pd, &pfringStat) >= 0)
     fprintf(stderr, "=========================\n"
 	    "Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
 	    "Total Pkts=%u/Dropped=%.1f %%\n",
 	    (unsigned int)pfringStat.recv, (unsigned int)pfringStat.drop,
 	    (unsigned int)(pfringStat.recv-pfringStat.drop),
 	    pfringStat.recv == 0 ? 0 : (double)(pfringStat.drop*100)/(double)pfringStat.recv);
-  fprintf(stderr, "%llu pkts [%.1f pkt/sec] - %llu bytes [%.2f Mbit/sec]\n",
-	  numPkts, (double)(numPkts*1000)/deltaMillisec,
-	  numBytes, (double)8*numBytes/(double)(deltaMillisec));
+    fprintf(stderr, "%llu pkts - %llu bytes", numPkts, numBytes);
+    fprintf(stderr, " [%.1f pkt/sec - %.2f Mbit/sec]\n",
+	    (double)(numPkts*1000)/deltaMillisec, thpt);
 
-  if(lastTime.tv_sec > 0) {
-    deltaMillisec = delta_time(&endTime, &lastTime);
-    diff = pfringStat.recv-lastPkts;
-    fprintf(stderr, "=========================\n"
-	    "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
-	    diff, deltaMillisec, ((double)diff/(double)(deltaMillisec/1000)));
+    if(lastTime.tv_sec > 0) {
+      deltaMillisec = delta_time(&endTime, &lastTime);
+      diff = pfringStat.recv-lastPkts;
+      fprintf(stderr, "=========================\n"
+	      "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
+	      diff, deltaMillisec, ((double)diff/(double)(deltaMillisec/1000)));
+    }
+
+    lastPkts = pfringStat.recv;
   }
-
-  lastPkts = pfringStat.recv;
 
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
@@ -274,8 +280,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
 	   h->parsed_pkt.pkt_detail.offset.l4_offset,
 	   h->parsed_pkt.pkt_detail.offset.payload_offset);
   }
-
-  if(numPkts == 0) gettimeofday(&startTime, NULL);
+ 
   numPkts++, numBytes += h->len;
 }
 
@@ -364,6 +369,7 @@ int main(int argc, char* argv[]) {
 #endif
 #endif
 
+  startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
   while((c = getopt(argc,argv,"hi:c:l:vs:a" /* "f:" */)) != -1) {

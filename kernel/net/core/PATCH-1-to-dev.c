@@ -5,22 +5,6 @@
 #include <linux/ring.h>
 #include <linux/version.h>
 
-/* ************************************************ */
-
-static handle_ring_skb ring_handler = NULL;
-
-handle_ring_skb get_skb_ring_handler() { return(ring_handler); }
-
-void set_skb_ring_handler(handle_ring_skb the_handler) {
-  ring_handler = the_handler;
-}
-
-void do_skb_ring_handler(struct sk_buff *skb,
-			 u_char recv_packet, u_char real_skb) {
-  if(ring_handler)
-    ring_handler(skb, recv_packet, real_skb, -1 /* Unknown channel */);
-}
-
 /* ******************* */
 
 static handle_ring_buffer buffer_ring_handler = NULL;
@@ -34,6 +18,24 @@ void set_buffer_ring_handler(handle_ring_buffer the_handler) {
 int do_buffer_ring_handler(struct net_device *dev, char *data, int len) {
   if(buffer_ring_handler) {
     buffer_ring_handler(dev, data, len);
+    return(1);
+  } else 
+    return(0);
+}
+
+/* ******************* */
+
+static handle_add_hdr_to_ring buffer_add_hdr_to_ring = NULL;
+
+handle_add_hdr_to_ring get_add_hdr_to_ring() { return(buffer_add_hdr_to_ring); }
+
+void set_add_hdr_to_ring(handle_add_hdr_to_ring the_handler) {
+  buffer_add_hdr_to_ring = the_handler;
+}
+
+int do_add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr) {
+  if(buffer_add_hdr_to_ring) {
+    buffer_add_hdr_to_ring(pfr, hdr);
     return(1);
   } else 
     return(0);
@@ -85,6 +87,10 @@ EXPORT_SYMBOL(do_skb_ring_handler);
 EXPORT_SYMBOL(get_buffer_ring_handler);
 EXPORT_SYMBOL(set_buffer_ring_handler);
 EXPORT_SYMBOL(do_buffer_ring_handler);
+
+EXPORT_SYMBOL(get_add_hdr_to_ring);
+EXPORT_SYMBOL(set_add_hdr_to_ring);
+EXPORT_SYMBOL(do_add_hdr_to_ring);
 
 EXPORT_SYMBOL(get_register_pfring_plugin);
 EXPORT_SYMBOL(set_register_pfring_plugin);

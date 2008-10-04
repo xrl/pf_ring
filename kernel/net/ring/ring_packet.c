@@ -886,9 +886,6 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
 /* ********************************** */
 
-/*
-  NOTE: This function does *not* lock (pfr->ring_index_lock) the ring
-*/
 static void add_pkt_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    struct pfring_pkthdr *hdr,
@@ -967,6 +964,16 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   /* wakeup in case of poll() */
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
     wake_up_interruptible(&pfr->ring_slots_waitqueue);
+}
+
+/* ********************************** */
+
+static int add_hdr_to_ring(struct ring_opt *pfr,
+			   struct pfring_pkthdr *hdr) {
+  read_lock_bh(&ring_mgmt_lock);
+  add_pkt_to_ring(NULL, pfr, hdr, 0, 0, 0, NULL);
+  read_unlock_bh(&ring_mgmt_lock);
+  return(0);
 }
 
 /* ********************************** */
@@ -1465,7 +1472,8 @@ static int skb_ring_handler(struct sk_buff *skb,
 		offset &= IP_OFFSET;
 		offset <<= 3;
 
-		printk("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u] [ip_id=%u][network_header=%d][displ=%d]\n",
+		printk("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u]"
+		       "[ip_id=%u][network_header=%d][displ=%d]\n",
 		       iphdr->protocol, offset, ntohs(iphdr->id),
 		       hdr.parsed_pkt.pkt_detail.offset.l3_offset-displ, displ);
 #endif
@@ -3029,6 +3037,7 @@ static void __exit ring_exit(void)
   set_register_pfring_plugin(NULL);
   set_unregister_pfring_plugin(NULL);
   set_skb_ring_handler(NULL);
+  set_add_hdr_to_ring(NULL);
   set_buffer_ring_handler(NULL);
     sock_unregister(PF_RING);
   ring_proc_term();
@@ -3049,6 +3058,7 @@ static int __init ring_init(void)
   sock_register(&ring_family_ops);
 
   set_skb_ring_handler(skb_ring_handler);
+  set_add_hdr_to_ring(add_hdr_to_ring);
   set_buffer_ring_handler(buffer_ring_handler);
   set_register_pfring_plugin(register_plugin);
   set_unregister_pfring_plugin(unregister_plugin);
