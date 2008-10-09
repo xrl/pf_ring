@@ -21,6 +21,7 @@
  *
  */
 
+#define _GNU_SOURCE
 #include <signal.h>
 #include <sched.h>
 #include <sys/types.h>
@@ -334,7 +335,7 @@ int main(int argc, char* argv[]) {
   u_int clusterId = 0;
   u_char wait_for_packet = 1;
 
-#if 0
+#if 1
   struct sched_param schedparam;
 
   schedparam.sched_priority = 99;
@@ -345,7 +346,7 @@ int main(int argc, char* argv[]) {
 
   mlockall(MCL_CURRENT|MCL_FUTURE);
 
-#define TEST_PROCESSOR_AFFINITY
+#undef TEST_PROCESSOR_AFFINITY
 #ifdef TEST_PROCESSOR_AFFINITY
   {
     unsigned long new_mask = 1;

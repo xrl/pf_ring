@@ -93,9 +93,9 @@ forwarder: forwarder.o ${LIBPFRING}
 	@echo "=*= making program $@ =*="
 	${CC} forwarder.o ${LIBS} -o $@
 
-pcount: pcount.o ${LIBPCAP} ${LIBPFRING}
+pcount: pcount.o ${LIBPCAP}
 	@echo "=*= making program $@ =*="
-	${CC} pcount.o ${LIBPCAP} ${LIBS} -o $@
+	${CC} pcount.o ${LIBPCAP} -o $@
 
 pwrite: pwrite.o ${LIBPCAP} ${LIBPFRING}
 	@echo "=*= making program $@ =*="

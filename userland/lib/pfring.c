@@ -155,7 +155,7 @@ pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int
 
     at = strchr(device_name, '@');
     if(at != NULL) {
-      char *tok, *pos;
+      char *tok, *pos = NULL;
 
       at[0] = '\0';
       

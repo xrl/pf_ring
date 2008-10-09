@@ -72,12 +72,13 @@ static const char rcsid[] _U_ =
  *     shorter, on the wire, than the IP header said it should have been.
  */
 
-#define HAVE_PF_RING
+//#define HAVE_PF_RING
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
+#undef HAVE_PF_RING
 #include "pcap-int.h"
 #include "sll.h"
 
@@ -871,7 +872,7 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	 */
 	if (getsockopt(handle->fd,
 #ifdef HAVE_PF_RING
-		       0,
+		       (handle->ring == NULL) ? SOL_SOCKET : 0,
 #else
 		       SOL_SOCKET, 
 #endif
@@ -922,13 +923,8 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 		 *    getsockopt(handle->fd, SOL_PACKET, PACKET_STATISTICS, ....
 		 * resets the counters to zero.
 		 */
-#ifdef HAVE_PF_RING
-		handle->md.stat.ps_recv = kstats.tp_packets;
-		handle->md.stat.ps_drop = kstats.tp_drops;
-#else
 		handle->md.stat.ps_recv += kstats.tp_packets;
 		handle->md.stat.ps_drop += kstats.tp_drops;
-#endif
 		*stats = handle->md.stat;
 		return 0;
 	}
@@ -2230,7 +2226,7 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 	 */
 	if (setsockopt(handle->fd,
 #ifdef HAVE_PF_RING
-		       0,
+		       (handle->ring == NULL) ? SOL_SOCKET : 0,
 #else
 		       SOL_SOCKET, 
 #endif
@@ -2275,9 +2271,9 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 	 */
 	ret = setsockopt(handle->fd, 
 #ifdef HAVE_PF_RING
-		       0,
+			 (handle->ring == NULL) ? SOL_SOCKET : 0,
 #else
-		       SOL_SOCKET, 
+			 SOL_SOCKET, 
 #endif
 			 SO_ATTACH_FILTER,
 			 fcode, sizeof(*fcode));

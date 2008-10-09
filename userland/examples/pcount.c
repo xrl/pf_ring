@@ -77,6 +77,7 @@ void print_stats() {
     gettimeofday(&startTime, NULL);
     return;
   }
+
   gettimeofday(&endTime, NULL);
   deltaSec = (double)delta_time(&endTime, &startTime)/1000000;
 
@@ -96,11 +97,11 @@ void print_stats() {
 	    "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
 	    diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
     lastPkts = pcapStat.ps_recv;
+
+    fprintf(stderr, "=========================\n");
   }
   
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
-
-  fprintf(stderr, "=========================\n");
 }
 
 /* ******************************** */
@@ -119,7 +120,6 @@ void sigproc(int sig) {
 
 void my_sigalarm(int sig) {
   print_stats();
-  printf("\n");
   alarm(ALARM_SLEEP);
   signal(SIGALRM, my_sigalarm);
 }
@@ -293,7 +293,6 @@ void printHelp(void) {
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name]\n");
   printf("-f <filter>     [pcap filter]\n");
-  printf("-c <cluster id> [cluster id]\n");
   printf("-l <len>        [Capture length]\n");
   printf("-v              [Verbose]\n");
 }
@@ -305,7 +304,6 @@ int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
   int promisc, snaplen = DEFAULT_SNAPLEN;;
   struct bpf_program fcode;
-  u_int clusterId = 0;
 
 #if 0  
   struct sched_param schedparam;
@@ -345,14 +343,11 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:l:vf:")) != -1) {
+  while((c = getopt(argc,argv,"hi:l:vf:")) != -1) {
     switch(c) {
     case 'h':
       printHelp();
       return(0);
-      break;
-    case 'c':
-      clusterId = atoi(optarg);
       break;
     case 'i':
       device = strdup(optarg);
@@ -385,12 +380,6 @@ int main(int argc, char* argv[]) {
     return(-1);
   }
 
-  if(clusterId > 0) {
-    int rc = pcap_set_cluster(pd, clusterId);
-    
-    printf("pcap_set_cluster returned %d\n", rc);
-  }
-
   if(bpfFilter != NULL) {
     if(pcap_compile(pd, &fcode, bpfFilter, 1, 0xFFFFFF00) < 0) {
       printf("pcap_compile error: '%s'\n", pcap_geterr(pd));
@@ -402,10 +391,11 @@ int main(int argc, char* argv[]) {
   }
   
   signal(SIGINT, sigproc);
-  /*
+
+  if(!verbose) {
     signal(SIGALRM, my_sigalarm);
     alarm(ALARM_SLEEP);
-  */
+  }
 
   pcap_loop(pd, -1, dummyProcesssPacket, NULL);
   pcap_close(pd);
