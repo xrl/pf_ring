@@ -98,7 +98,8 @@ struct dummy_filter {
   u_int32_t src_host;
 };
 
-static int dummy_plugin_plugin_filter_skb(filtering_rule_element *rule,
+static int dummy_plugin_plugin_filter_skb(struct ring_opt *the_ring,
+					  filtering_rule_element *rule,
 					  struct pfring_pkthdr *hdr,
 					  struct sk_buff *skb,
 					  struct parse_buffer **parse_memory)

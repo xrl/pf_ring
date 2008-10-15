@@ -77,7 +77,7 @@
 #endif
 #include <net/ip.h>
 
-/* #define RING_DEBUG  */
+/* #define RING_DEBUG */
 
 /* ************************************************* */
 
@@ -842,7 +842,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 	     plugin_registration[rule->rule.plugin_action.plugin_id]);
 
     rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]
-      ->pfring_plugin_filter_skb(rule, hdr, skb,
+      ->pfring_plugin_filter_skb(the_ring, rule, hdr, skb,
 				 &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
 
     if(rc <= 0) {
@@ -1223,8 +1223,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   }   
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] [pfr->slots_info->insert_idx=%d][initial_idx=%d]\n",
-	 pfr->slots_info->insert_idx, initial_idx);
+  printk("[PF_RING] [pfr->slots_info->insert_idx=%d]\n", pfr->slots_info->insert_idx);
 #endif
 
   if(!hash_found) {
@@ -1615,6 +1614,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 #endif
 
+  //printk("[PF_RING] Returned %d\n", rc);
   return(rc); /*  0 = packet not handled */
 }
 
@@ -1642,6 +1642,102 @@ static int buffer_ring_handler(struct net_device *dev,
 #endif
 
   return(skb_ring_handler(&skb, 1, 0 /* fake skb */, -1 /* Unknown channel */));
+}
+
+/* ************************************* */
+
+static int handle_filtering_hash_bucket(struct ring_opt *pfr,
+					filtering_hash_bucket* rule,
+					u_char add_rule)
+{
+  u_int32_t hash_value = hash_pkt(rule->rule.vlan_id, rule->rule.proto,
+				  rule->rule.host_peer_a, rule->rule.host_peer_b,
+				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
+  int rc = -1, debug = 0;
+
+  if(debug) printk("[PF_RING] handle_filtering_hash_bucket(vlan=%u, proto=%u, "
+		   "sip=%d.%d.%d.%d, sport=%u, dip=%d.%d.%d.%d, dport=%u, "
+		   "hash_value=%u, add_rule=%d) called\n",
+		   rule->rule.vlan_id, rule->rule.proto,
+		   ((rule->rule.host_peer_a >> 24) & 0xff),
+		   ((rule->rule.host_peer_a >> 16) & 0xff),
+		   ((rule->rule.host_peer_a >> 8) & 0xff),
+		   ((rule->rule.host_peer_a >> 0) & 0xff),
+		   rule->rule.port_peer_a,
+		   ((rule->rule.host_peer_b >> 24) & 0xff),
+		   ((rule->rule.host_peer_b >> 16) & 0xff),
+		   ((rule->rule.host_peer_b >> 8) & 0xff),
+		   ((rule->rule.host_peer_b >> 0) & 0xff),
+		   rule->rule.port_peer_b,
+		   hash_value, add_rule);
+
+  if(add_rule) {
+    if(pfr->filtering_hash == NULL)
+      pfr->filtering_hash = (filtering_hash_bucket**)kcalloc(DEFAULT_RING_HASH_SIZE,
+							     sizeof(filtering_hash_bucket*),
+							     GFP_KERNEL);
+    if(pfr->filtering_hash == NULL) {
+      kfree(rule);
+      if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [0]\n", -EFAULT);
+      return(-EFAULT);
+    }
+  }
+
+  if(pfr->filtering_hash == NULL) {
+    /* We're trying to delete a hash rule from an empty hash */
+    return(-EFAULT);
+  }
+
+  if(pfr->filtering_hash[hash_value] == NULL) {
+    if(add_rule)
+      pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
+    else {
+      if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [1]\n", -1);
+      return(-1); /* Unable to find the specified rule */
+    }
+  } else {
+    filtering_hash_bucket *prev = NULL, *bucket = pfr->filtering_hash[hash_value];
+
+    while(bucket != NULL) {
+      if(memcmp(&bucket->rule, &rule->rule, sizeof(hash_filtering_rule)) == 0) {
+	if(add_rule) {
+	  if(debug) printk("[PF_RING] Duplicate found while adding rule: discarded\n");
+	  kfree(rule);
+	  return(-EFAULT);
+	} else {
+	  /* We've found the bucket to delete */
+
+	  if(prev == NULL)
+	    pfr->filtering_hash[hash_value] = bucket->next;
+	  else
+	    prev->next = bucket->next;
+
+	  /* Free the bucket */
+	  if(bucket->plugin_data_ptr) kfree(bucket->plugin_data_ptr);
+	  kfree(bucket);
+	  if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [2]\n", 0);
+	  return(0);
+	}
+      } else {
+	prev = bucket;
+	bucket = bucket->next;
+      }
+    }
+
+    if(add_rule) {
+      /* If the flow arrived until here, then this rule is unique */
+      rule->next = pfr->filtering_hash[hash_value];
+      pfr->filtering_hash[hash_value] = rule;
+      rc = 0;
+    } else {
+      /* The rule we searched for has not been found */
+      rc = -1;
+    }
+  }
+
+  if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [3]\n", rc);
+
+  return(rc);
 }
 
 /* ********************************** */
@@ -1717,6 +1813,7 @@ static int ring_create(
   pfr->ring_active = 0; /* We activate as soon as somebody waits for packets */
   pfr->channel_id = RING_ANY_CHANNEL;
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
+  pfr->handle_hash_rule = handle_filtering_hash_bucket;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
   rwlock_init(&pfr->ring_rules_lock);
@@ -2287,101 +2384,6 @@ static int add_to_cluster(struct sock *sock,
 
 /* ************************************* */
 
-static int handle_filtering_hash_bucket(struct ring_opt *pfr,
-					filtering_hash_bucket* rule,
-					u_char add_rule)
-{
-  u_int32_t hash_value = hash_pkt(rule->rule.vlan_id, rule->rule.proto,
-				  rule->rule.host_peer_a, rule->rule.host_peer_b,
-				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
-  int rc = -1, debug = 0;
-
-  if(debug) printk("[PF_RING] handle_filtering_hash_bucket(vlan=%u, proto=%u, sip=%d.%d.%d.%d, sport=%u, dip=%d.%d.%d.%d, dport=%u, "
-		   "hash_value=%u, add_rule=%d) called\n",
-		   rule->rule.vlan_id, rule->rule.proto,
-		   ((rule->rule.host_peer_a >> 24) & 0xff),
-		   ((rule->rule.host_peer_a >> 16) & 0xff),
-		   ((rule->rule.host_peer_a >> 8) & 0xff),
-		   ((rule->rule.host_peer_a >> 0) & 0xff),
-		   rule->rule.port_peer_a,
-		   ((rule->rule.host_peer_b >> 24) & 0xff),
-		   ((rule->rule.host_peer_b >> 16) & 0xff),
-		   ((rule->rule.host_peer_b >> 8) & 0xff),
-		   ((rule->rule.host_peer_b >> 0) & 0xff),
-		   rule->rule.port_peer_b,
-		   hash_value, add_rule);
-
-  if(add_rule) {
-    if(pfr->filtering_hash == NULL)
-      pfr->filtering_hash = (filtering_hash_bucket**)kcalloc(DEFAULT_RING_HASH_SIZE,
-							     sizeof(filtering_hash_bucket*),
-							     GFP_KERNEL);
-    if(pfr->filtering_hash == NULL) {
-      kfree(rule);
-      if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [0]\n", -EFAULT);
-      return(-EFAULT);
-    }
-  }
-
-  if(pfr->filtering_hash == NULL) {
-    /* We're trying to delete a hash rule from an empty hash */
-    return(-EFAULT);
-  }
-
-  if(pfr->filtering_hash[hash_value] == NULL) {
-    if(add_rule)
-      pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
-    else {
-      if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [1]\n", -1);
-      return(-1); /* Unable to find the specified rule */
-    }
-  } else {
-    filtering_hash_bucket *prev = NULL, *bucket = pfr->filtering_hash[hash_value];
-
-    while(bucket != NULL) {
-      if(memcmp(&bucket->rule, &rule->rule, sizeof(hash_filtering_rule)) == 0) {
-	if(add_rule) {
-	  if(debug) printk("[PF_RING] Duplicate found while adding rule: discarded\n");
-	  kfree(rule);
-	  return(-EFAULT);
-	} else {
-	  /* We've found the bucket to delete */
-
-	  if(prev == NULL)
-	    pfr->filtering_hash[hash_value] = bucket->next;
-	  else
-	    prev->next = bucket->next;
-
-	  /* Free the bucket */
-	  if(bucket->plugin_data_ptr) kfree(bucket->plugin_data_ptr);
-	  kfree(bucket);
-	  if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [2]\n", 0);
-	  return(0);
-	}
-      } else {
-	prev = bucket;
-	bucket = bucket->next;
-      }
-    }
-
-    if(add_rule) {
-      /* If the flow arrived until here, then this rule is unique */
-      rule->next = pfr->filtering_hash[hash_value];
-      pfr->filtering_hash[hash_value] = rule;
-      rc = 0;
-    } else {
-      /* The rule we searched for has not been found */
-      rc = -1;
-    }
-  }
-
-  if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [3]\n", rc);
-
-  return(rc);
-}
-
-/* ************************************* */
-
 /* Code taken/inspired from core/sock.c */
 static int ring_setsockopt(struct socket *sock,
 			   int level, int optname,
@@ -2660,7 +2662,11 @@ static int ring_setsockopt(struct socket *sock,
 	rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */);
 	pfr->num_filtering_rules++;
 	write_unlock(&pfr->ring_rules_lock);
-	if(rc != 0) return(rc);
+
+	if(rc != 0) {
+	  kfree(rule);
+	  return(rc);
+	}
       } else {
 	printk("[PF_RING] Bad rule length (%d): discarded\n", optlen);
 	return -EFAULT;

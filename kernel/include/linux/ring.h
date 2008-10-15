@@ -22,8 +22,8 @@
 #define DEFAULT_BUCKET_LEN            128
 
 /* Versioning */
-#define RING_VERSION                "3.8.9"
-#define RING_VERSION_NUM           0x030809
+#define RING_VERSION                "3.8.10"
+#define RING_VERSION_NUM           0x030810
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -273,6 +273,14 @@ struct ring_element {
 
 /* ************************************************* */
 
+struct ring_opt *pfr; /* Forward */
+
+typedef int (*do_handle_filtering_hash_bucket)(struct ring_opt *pfr,
+					       filtering_hash_bucket* rule,
+					       u_char add_rule);
+
+/* ************************************************* */
+
 #define RING_ANY_CHANNEL  -1
 
 /*
@@ -321,6 +329,9 @@ struct ring_opt {
 
   /* Indexes (Internal) */
   u_int insert_page_id, insert_slot_id;
+
+  /* Function pointer */
+  do_handle_filtering_hash_bucket handle_hash_rule;
 };
 
 /* **************************************** */
@@ -353,7 +364,8 @@ typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
 				 u_int16_t filter_plugin_id,
 				 struct parse_buffer *filter_rule_memory_storage);
 /* Return 1/0 in case of match/no match for the given skb */
-typedef int (*plugin_filter_skb)(filtering_rule_element *rule,
+typedef int (*plugin_filter_skb)(struct ring_opt *the_ring,
+				 filtering_rule_element *rule,
 				 struct pfring_pkthdr *hdr,
 				 struct sk_buff *skb,
 				 struct parse_buffer **filter_rule_memory_storage);
