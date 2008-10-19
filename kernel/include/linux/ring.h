@@ -20,10 +20,11 @@
 #define RING_FLOWSLOT_VERSION           9
 
 #define DEFAULT_BUCKET_LEN            128
+#define MAX_NUM_DEVICES               256
 
 /* Versioning */
 #define RING_VERSION                "3.8.10"
-#define RING_VERSION_NUM           0x030810
+#define RING_VERSION_NUM           0x03080A
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -336,6 +337,16 @@ struct ring_opt {
 
 /* **************************************** */
 
+/*
+ * Linked-list of device rings
+ */
+typedef struct {
+  struct ring_opt *the_ring;
+  struct list_head list;
+} device_ring_list_element;
+
+/* **************************************** */
+
 typedef struct {
   filtering_rule rule;
 #ifdef CONFIG_TEXTSEARCH
@@ -388,16 +399,21 @@ struct pfring_plugin_registration {
   plugin_free_ring_mem pfring_plugin_free_ring_mem;
 };
 
-typedef int (*register_pfring_plugin)(struct pfring_plugin_registration *reg);
-typedef int (*unregister_pfring_plugin)(u_int16_t pfring_plugin_id);
+typedef int   (*register_pfring_plugin)(struct pfring_plugin_registration *reg);
+typedef int   (*unregister_pfring_plugin)(u_int16_t pfring_plugin_id);
+typedef u_int (*read_device_pfring_free_slots)(int ifindex);
 
 extern register_pfring_plugin get_register_pfring_plugin(void);
 extern unregister_pfring_plugin get_unregister_pfring_plugin(void);
+extern read_device_pfring_free_slots get_read_device_pfring_free_slots(void);
+
 extern void set_register_pfring_plugin(register_pfring_plugin the_handler);
 extern void set_unregister_pfring_plugin(unregister_pfring_plugin the_handler);
+extern void set_read_device_pfring_free_slots(read_device_pfring_free_slots the_handler);
 
 extern int do_register_pfring_plugin(struct pfring_plugin_registration *reg);
 extern int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id);
+extern int do_read_device_pfring_free_slots(int deviceidx);
 
 typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet, u_char real_skb, short channel_id);
 extern handle_ring_skb get_skb_ring_handler(void);

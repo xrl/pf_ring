@@ -99,6 +99,14 @@
 static struct list_head ring_table;
 static u_int ring_table_size;
 
+/*
+  For each device, pf_ring keeps a list of the number of
+  available ring socket slots. So that a caller knows in advance whether
+  there are slots available (for rings bound to such device)
+  that can potentially host the packet
+ */
+struct list_head device_ring_list[MAX_NUM_DEVICES];
+
 /* List of all clusters */
 struct list_head ring_cluster_list;
 
@@ -311,6 +319,8 @@ static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
 
 static void ring_sock_destruct(struct sock *sk)
 {
+  struct ring_opt *pfr;
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
   skb_queue_purge(&sk->sk_receive_queue);
 
@@ -335,7 +345,9 @@ static void ring_sock_destruct(struct sock *sk)
   }
 #endif
 
-  kfree(ring_sk(sk));
+  pfr = ring_sk(sk);
+								
+  if(pfr) kfree(pfr);
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0))
   MOD_DEC_USE_COUNT;
@@ -357,9 +369,9 @@ static void ring_proc_add(struct ring_opt *pfr, struct net_device *dev)
     else
       snprintf(name, sizeof(name), "%d.%d", pfr->ring_pid, pfr->ring_id);
 
-    create_proc_read_entry(name, 0, ring_proc_dir,
-			   ring_proc_get_info, pfr);
+    create_proc_read_entry(name, 0, ring_proc_dir, ring_proc_get_info, pfr);
     /* printk("[PF_RING]  added /proc/net/pf_ring/%s\n", name); */
+    /* printk("[PF_RING] %s has index %d\n", dev->name, dev->ifindex); */
   }
 }
 
@@ -379,6 +391,33 @@ static void ring_proc_remove(struct ring_opt *pfr)
     remove_proc_entry(name, ring_proc_dir);
     printk("[PF_RING]  removed /proc/net/pf_ring/%s\n", name);
   }
+}
+
+/* ********************************** */
+
+static u_int32_t num_queued_pkts(struct ring_opt *pfr)
+{
+  if(pfr->ring_slots != NULL) {
+    u_int32_t tot_insert = pfr->slots_info->tot_insert, tot_read = pfr->slots_info->tot_read;
+
+    if(tot_insert >= tot_read) {
+      return(tot_insert-tot_read);
+    } else {
+      return(((u_int32_t)-1)+tot_insert-tot_read);
+    }
+
+#if defined(RING_DEBUG)
+    printk("[PF_RING] -> num_queued_pkts=%d [tot_insert=%d][tot_read=%d]\n",
+	   tot_pkts, tot_insert, tot_read);
+#endif
+  } else
+    return(0);
+}
+
+/* ************************************* */
+
+inline u_int get_num_ring_free_slots(struct ring_opt *pfr) {
+  return(pfr->slots_info->tot_slots - num_queued_pkts(pfr));
 }
 
 /* ********************************** */
@@ -427,6 +466,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen, "Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
 	rlen += sprintf(buf + rlen, "Tot Insert    : %lu\n", (unsigned long)fsi->tot_insert);
 	rlen += sprintf(buf + rlen, "Tot Read      : %lu\n", (unsigned long)fsi->tot_read);
+	rlen += sprintf(buf + rlen, "Num Free Slots: %u\n",  get_num_ring_free_slots(pfr));
       } else
 	rlen = sprintf(buf, "WARNING fsi == NULL\n");
     } else
@@ -584,39 +624,6 @@ static inline void ring_remove(struct sock *sk)
 #if defined(RING_DEBUG)
   printk("[PF_RING]  leaving ring_remove()\n");
 #endif
-}
-
-/* ********************************** */
-
-static u_int32_t num_queued_pkts(struct ring_opt *pfr)
-{
-  if(pfr->ring_slots != NULL) {
-    u_int32_t tot_insert = pfr->slots_info->insert_idx,
-#if defined(RING_DEBUG)
-      tot_read = pfr->slots_info->tot_read, tot_pkts;
-#else
-    tot_read = pfr->slots_info->tot_read;
-#endif
-
-    if(tot_insert >= tot_read) {
-#if defined(RING_DEBUG)
-      tot_pkts = tot_insert-tot_read;
-#endif
-      return(tot_insert-tot_read);
-    } else {
-#if defined(RING_DEBUG)
-      tot_pkts = ((u_int32_t)-1)+tot_insert-tot_read;
-#endif
-      return(((u_int32_t)-1)+tot_insert-tot_read);
-    }
-
-#if defined(RING_DEBUG)
-    printk("[PF_RING] -> num_queued_pkts=%d [tot_insert=%d][tot_read=%d]\n",
-	   tot_pkts, tot_insert, tot_read);
-#endif
-
-  } else
-    return(0);
 }
 
 /* ********************************** */
@@ -1865,6 +1872,21 @@ static int ring_release(struct socket *sock)
   sock_orphan(sk);
   ring_proc_remove(ring_sk(sk));
 
+  if(pfr->ring_netdev && (pfr->ring_netdev->ifindex < MAX_NUM_DEVICES)) {
+    struct list_head *ptr, *tmp_ptr;
+    device_ring_list_element *entry;
+    
+    list_for_each_safe(ptr, tmp_ptr, &device_ring_list[pfr->ring_netdev->ifindex]) {
+      entry = list_entry(ptr, device_ring_list_element, list);
+      
+      if(entry->the_ring == pfr) {
+	list_del(ptr);
+	kfree(ptr);
+	break;
+      }
+    }
+  }
+
   write_lock_bh(&ring_mgmt_lock);
   ring_remove(sk);
   sock->sk = NULL;
@@ -1951,6 +1973,7 @@ static int ring_release(struct socket *sock)
 }
 
 /* ********************************** */
+
 /*
  * We create a ring for this socket and bind it to the specified device
  */
@@ -1999,7 +2022,8 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->ring_memory = rvmalloc(tot_mem);
 
   if (pfr->ring_memory != NULL) {
-    printk("[PF_RING]  successfully allocated %lu bytes at 0x%08lx\n", (unsigned long) tot_mem, (unsigned long) pfr->ring_memory);
+    printk("[PF_RING]  successfully allocated %lu bytes at 0x%08lx\n", 
+	   (unsigned long) tot_mem, (unsigned long) pfr->ring_memory);
   } else {
     printk("[PF_RING]  ERROR: not enough memory for ring\n");
     return(-1);
@@ -2038,13 +2062,27 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->rules_default_accept_policy = 1, pfr->num_filtering_rules = 0;
   ring_proc_add(ring_sk(sk), dev);
 
+  if(dev->ifindex < MAX_NUM_DEVICES) {
+    device_ring_list_element *elem;
+    
+    /* printk("[PF_RING] Adding ring to device index %d\n", dev->ifindex); */
+
+    elem = kmalloc(sizeof(device_ring_list_element), GFP_ATOMIC);
+    if(elem != NULL) {
+      elem->the_ring = pfr;
+      INIT_LIST_HEAD(&elem->list);
+      list_add(&elem->list, &device_ring_list[dev->ifindex]); 
+      /* printk("[PF_RING] Added ring to device index %d\n", dev->ifindex); */
+    }   
+  }
+
   /*
     IMPORTANT
     Leave this statement here as last one. In fact when
     the ring_netdev != NULL the socket is ready to be used.
   */
   pfr->ring_netdev = dev;
-
+  
   return(0);
 }
 
@@ -2574,6 +2612,34 @@ static int ring_setsockopt(struct socket *sock,
 
 	INIT_LIST_HEAD(&rule->list);
 
+	if(rule->rule.extended_fields.filter_plugin_id > 0) {
+	  int ret = 0;
+	  
+	  if(rule->rule.extended_fields.filter_plugin_id >= MAX_PLUGIN_ID)
+	    ret = -EFAULT;
+	  else if(plugin_registration[rule->rule.extended_fields.filter_plugin_id] == NULL)
+	    ret = -EFAULT;
+	  
+	  if(ret != 0) {
+	    kfree(rule);
+	    return(ret);
+	  }
+	}
+
+	if(rule->rule.plugin_action.plugin_id > 0) {
+	  int ret = 0;
+	  
+	  if(rule->rule.plugin_action.plugin_id >= MAX_PLUGIN_ID)
+	    ret = -EFAULT;
+	  else if(plugin_registration[rule->rule.plugin_action.plugin_id] == NULL)
+	    ret = -EFAULT;
+
+	  if(ret != 0) {
+	    kfree(rule);
+	    return(ret);
+	  }
+	}
+
 #ifdef CONFIG_TEXTSEARCH
 	/* Compile pattern if present */
 	if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
@@ -2591,6 +2657,7 @@ static int ring_setsockopt(struct socket *sock,
 	  } else
 	    rule->pattern = NULL;
 #endif
+
 	write_lock(&pfr->ring_rules_lock);
 	if(debug) printk("[PF_RING] SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
 
@@ -2934,6 +3001,36 @@ static int ring_getsockopt(struct socket *sock,
 
 /* ************************************* */
 
+u_int get_num_device_free_slots(int ifindex) {
+  int num = 0;
+
+  if((ifindex >= 0) && (ifindex < MAX_NUM_DEVICES)) {
+    struct list_head *ptr, *tmp_ptr;
+    device_ring_list_element *entry;
+    
+    list_for_each_safe(ptr, tmp_ptr, &device_ring_list[ifindex]) {
+      int num_free_slots;
+      
+      entry = list_entry(ptr, device_ring_list_element, list);
+      
+      num_free_slots = get_num_ring_free_slots(entry->the_ring);
+
+      if(num_free_slots == 0) 
+	return(0);
+      else {
+	if(num == 0)
+	  num = num_free_slots;
+	else if(num > num_free_slots)
+	  num = num_free_slots;
+      }
+    }
+  }
+
+  return(num);
+}
+
+/* ************************************* */
+
 static int ring_ioctl(struct socket *sock,
 		      unsigned int cmd, unsigned long arg)
 {
@@ -3045,7 +3142,8 @@ static void __exit ring_exit(void)
   set_skb_ring_handler(NULL);
   set_add_hdr_to_ring(NULL);
   set_buffer_ring_handler(NULL);
-    sock_unregister(PF_RING);
+  set_read_device_pfring_free_slots(NULL);
+  sock_unregister(PF_RING);
   ring_proc_term();
   printk("[PF_RING]  unloaded\n");
 }
@@ -3054,12 +3152,17 @@ static void __exit ring_exit(void)
 
 static int __init ring_init(void)
 {
+  int i;
+  
   printk("[PF_RING] Welcome to PF_RING %s\n"
 	 "(C) 2004-08 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION);
 
   INIT_LIST_HEAD(&ring_table);
   INIT_LIST_HEAD(&ring_cluster_list);
+
+  for(i=0; i<MAX_NUM_DEVICES; i++)
+    INIT_LIST_HEAD(&device_ring_list[i]);
 
   sock_register(&ring_family_ops);
 
@@ -3068,6 +3171,7 @@ static int __init ring_init(void)
   set_buffer_ring_handler(buffer_ring_handler);
   set_register_pfring_plugin(register_plugin);
   set_unregister_pfring_plugin(unregister_plugin);
+  set_read_device_pfring_free_slots(get_num_device_free_slots);
 
   if(get_buffer_ring_handler() != buffer_ring_handler) {
     printk("[PF_RING]  set_buffer_ring_handler FAILED\n");
@@ -3077,13 +3181,11 @@ static int __init ring_init(void)
     sock_unregister(PF_RING);
     return -1;
   } else {
-   
     printk("[PF_RING]  Ring slots       %d\n", num_slots);
     printk("[PF_RING]  Slot version     %d\n", RING_FLOWSLOT_VERSION);
     printk("[PF_RING]  Capture TX       %s\n",
 	   enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
     printk("[PF_RING]  IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
-
     printk("[PF_RING]  Initialized correctly\n");
 
     ring_proc_init();

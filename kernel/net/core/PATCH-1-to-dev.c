@@ -5,7 +5,23 @@
 #include <linux/ring.h>
 #include <linux/version.h>
 
-/* ******************* */
+/* ************************************************ */
+
+static handle_ring_skb ring_handler = NULL;
+
+handle_ring_skb get_skb_ring_handler() { return(ring_handler); }
+
+void set_skb_ring_handler(handle_ring_skb the_handler) {
+  ring_handler = the_handler;
+}
+
+void do_skb_ring_handler(struct sk_buff *skb,
+			 u_char recv_packet, u_char real_skb) {
+  if(ring_handler)
+    ring_handler(skb, recv_packet, real_skb, -1 /* Unknown channel */);
+}
+
+/* ************************************************ */
 
 static handle_ring_buffer buffer_ring_handler = NULL;
 
@@ -79,6 +95,23 @@ int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id) {
 
 /* ************************************************ */
 
+static read_device_pfring_free_slots pfring_free_device_slots = NULL;
+
+read_device_pfring_free_slots get_read_device_pfring_free_slots() { return(pfring_free_device_slots); }
+
+void set_read_device_pfring_free_slots(read_device_pfring_free_slots the_handler) {
+  pfring_free_device_slots = the_handler;
+}
+
+int do_read_device_pfring_free_slots(int deviceidx) {
+  if(pfring_free_device_slots) {    
+    return(pfring_free_device_slots(deviceidx));
+  } else
+    return(0);
+}
+
+/* ************************************************ */
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
 EXPORT_SYMBOL(get_skb_ring_handler);
 EXPORT_SYMBOL(set_skb_ring_handler);
@@ -99,6 +132,11 @@ EXPORT_SYMBOL(do_register_pfring_plugin);
 EXPORT_SYMBOL(get_unregister_pfring_plugin);
 EXPORT_SYMBOL(set_unregister_pfring_plugin);
 EXPORT_SYMBOL(do_unregister_pfring_plugin);
+
+EXPORT_SYMBOL(get_read_device_pfring_free_slots);
+EXPORT_SYMBOL(set_read_device_pfring_free_slots);
+EXPORT_SYMBOL(do_read_device_pfring_free_slots);
+
 #endif
 
 #endif
