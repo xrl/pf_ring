@@ -72,13 +72,12 @@ static const char rcsid[] _U_ =
  *     shorter, on the wire, than the IP header said it should have been.
  */
 
-//#define HAVE_PF_RING
+#define HAVE_PF_RING
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
-#undef HAVE_PF_RING
 #include "pcap-int.h"
 #include "sll.h"
 
