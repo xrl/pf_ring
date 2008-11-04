@@ -95,6 +95,47 @@ int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id) {
 
 /* ************************************************ */
 
+static handle_ring_dna_device ring_dna_device_handler = NULL;
+
+handle_ring_dna_device get_ring_dna_device_handler() { return(ring_dna_device_handler); }
+
+void set_ring_dna_device_handler(handle_ring_dna_device the_dna_device_handler) {
+  ring_dna_device_handler = the_dna_device_handler;
+}
+
+void do_ring_dna_device_handler(dna_device_operation operation,
+				unsigned long packet_memory,
+				u_int packet_memory_num_slots,
+				u_int packet_memory_slot_len,
+				u_int packet_memory_tot_len,
+				void *descr_packet_memory,
+				u_int descr_packet_memory_num_slots,
+				u_int descr_packet_memory_slot_len,
+				u_int descr_packet_memory_tot_len,
+				u_int channel_id,
+				void *phys_card_memory,
+				u_int phys_card_memory_len,
+				struct net_device *netdev,
+				dna_device_model device_model,
+				wait_queue_head_t *packet_waitqueue,
+				u_int8_t *interrupt_received) {
+  if(ring_dna_device_handler)
+    ring_dna_device_handler(operation,
+			    packet_memory,
+			    packet_memory_num_slots,
+			    packet_memory_slot_len,
+			    packet_memory_tot_len,
+			    descr_packet_memory,
+			    descr_packet_memory_num_slots,
+			    descr_packet_memory_slot_len,
+			    descr_packet_memory_tot_len, channel_id,
+			    phys_card_memory, phys_card_memory_len,
+			    netdev, device_model, packet_waitqueue,
+			    interrupt_received);
+}
+
+/* ************************************************ */
+
 static read_device_pfring_free_slots pfring_free_device_slots = NULL;
 
 read_device_pfring_free_slots get_read_device_pfring_free_slots() { return(pfring_free_device_slots); }
@@ -132,6 +173,10 @@ EXPORT_SYMBOL(do_register_pfring_plugin);
 EXPORT_SYMBOL(get_unregister_pfring_plugin);
 EXPORT_SYMBOL(set_unregister_pfring_plugin);
 EXPORT_SYMBOL(do_unregister_pfring_plugin);
+
+EXPORT_SYMBOL(get_ring_dna_device_handler);
+EXPORT_SYMBOL(set_ring_dna_device_handler);
+EXPORT_SYMBOL(do_ring_dna_device_handler);
 
 EXPORT_SYMBOL(get_read_device_pfring_free_slots);
 EXPORT_SYMBOL(set_read_device_pfring_free_slots);

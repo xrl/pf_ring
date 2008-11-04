@@ -14,7 +14,6 @@
  * - Jeff Randall <jrandall@nexvu.com>
  * - Kevin Wormington <kworm@sofnet.com>
  * - Mahdi Dashtbozorgi <rdfm2000@gmail.com>
- * - Mahdi <rdfm2000@gmail.com>
  * - Marketakis Yannis <marketak@ics.forth.gr>
  * - Matthew J. Roth <mroth@imminc.com>
  * - Michael Stiller <ms@2scale.net> (VM memory support)
@@ -105,10 +104,14 @@ static u_int ring_table_size;
   there are slots available (for rings bound to such device)
   that can potentially host the packet
  */
-struct list_head device_ring_list[MAX_NUM_DEVICES];
+static struct list_head device_ring_list[MAX_NUM_DEVICES];
 
 /* List of all clusters */
-struct list_head ring_cluster_list;
+static struct list_head ring_cluster_list;
+
+/* List of all dna (direct nic access) devices */
+static struct list_head ring_dna_devices_list;
+static u_int dna_devices_list_size = 0;
 
 /* List of all plugins */
 static u_int plugin_registration_size = 0;
@@ -150,7 +153,7 @@ extern
 struct sk_buff*
 #else
 int
-#endif        
+#endif
 ip_defrag(struct sk_buff *skb, u32 user);
 
 /* ********************************** */
@@ -302,7 +305,7 @@ static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
 {
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,23))
   skb = ip_defrag(skb, IP_DEFRAG_RING);
-  
+
   if(skb)
     ip_send_check(ip_hdr(skb));
 #else
@@ -310,7 +313,7 @@ static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
     skb = NULL;
   else
     ip_send_check(ip_hdr(skb));
-#endif    
+#endif
 
   return(skb);
 }
@@ -346,7 +349,7 @@ static void ring_sock_destruct(struct sock *sk)
 #endif
 
   pfr = ring_sk(sk);
-								
+
   if(pfr) kfree(pfr);
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0))
@@ -460,7 +463,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen, "Channel Id    : %d\n",  pfr->channel_id);
 	rlen += sprintf(buf + rlen, "Tot Slots     : %d\n",  fsi->tot_slots);
 	rlen += sprintf(buf + rlen, "Bucket Len    : %d\n",  fsi->data_len);
-	rlen += sprintf(buf + rlen, "Slot Len      : %d [bucket+header]\n",  fsi->slot_len); 
+	rlen += sprintf(buf + rlen, "Slot Len      : %d [bucket+header]\n",  fsi->slot_len);
 	rlen += sprintf(buf + rlen, "Tot Memory    : %d\n",  fsi->tot_mem);
 	rlen += sprintf(buf + rlen, "Tot Packets   : %lu\n", (unsigned long)fsi->tot_pkts);
 	rlen += sprintf(buf + rlen, "Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
@@ -506,17 +509,17 @@ static int ring_proc_get_plugin_info(char *buf, char **start, off_t offset,
 
 static void ring_proc_init(void)
 {
-  ring_proc_dir = proc_mkdir("pf_ring", 
+  ring_proc_dir = proc_mkdir("pf_ring",
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 			     init_net.
-#endif			    
+#endif
 			     proc_net);
-  
+
   if(ring_proc_dir) {
     ring_proc_dir->owner = THIS_MODULE;
     ring_proc = create_proc_read_entry(PROC_INFO, 0,
 				       ring_proc_dir,
-				       ring_proc_get_info, 
+				       ring_proc_get_info,
 				       NULL);
     ring_proc_plugins_info = create_proc_read_entry(PROC_PLUGINS_INFO, 0,
 						    ring_proc_dir,
@@ -545,10 +548,10 @@ static void ring_proc_term(void)
     printk("[PF_RING]  removed /proc/net/pf_ring/%s\n", PROC_PLUGINS_INFO);
 
     if(ring_proc_dir != NULL) {
-      remove_proc_entry("pf_ring", 
+      remove_proc_entry("pf_ring",
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 			init_net.
-#endif			    
+#endif
     			proc_net);
       printk("[PF_RING]  deregistered /proc/net/pf_ring\n");
     }
@@ -580,7 +583,7 @@ static inline void ring_insert(struct sock *sk)
     write_unlock_bh(&ring_mgmt_lock);
   } else {
     if(net_ratelimit())
-      printk("[PF_RING]  could not kmalloc slot!!\n");
+      printk("[PF_RING]  net_ratelimit() failure\n");
   }
 
   ring_table_size++;
@@ -634,7 +637,7 @@ static inline FlowSlot* get_insert_slot(struct ring_opt *pfr)
     FlowSlot *slot = (FlowSlot*)&(pfr->ring_slots[pfr->slots_info->insert_idx
 						  *pfr->slots_info->slot_len]);
 #if defined(RING_DEBUG)
-    printk("[PF_RING] get_insert_slot(%d): returned slot [slot_state=%d]\n", 
+    printk("[PF_RING] get_insert_slot(%d): returned slot [slot_state=%d]\n",
 	   pfr->slots_info->insert_idx, slot->slot_state);
 #endif
     return(slot);
@@ -676,7 +679,7 @@ static int parse_pkt(struct sk_buff *skb,
 
   hdr->parsed_pkt.eth_type   = ntohs(eh->h_proto);
   hdr->parsed_pkt.pkt_detail.offset.eth_offset = -skb_displ;
-  
+
   if(hdr->parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */)
     {
       hdr->parsed_pkt.pkt_detail.offset.vlan_offset = hdr->parsed_pkt.pkt_detail.offset.eth_offset + sizeof(struct ethhdr);
@@ -800,7 +803,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
   }
 
   if((rule->rule.core_fields.port_high > 0)
-     && (!((hdr->parsed_pkt.l4_src_port >= rule->rule.core_fields.port_low) 
+     && (!((hdr->parsed_pkt.l4_src_port >= rule->rule.core_fields.port_low)
 	   && (hdr->parsed_pkt.l4_src_port <= rule->rule.core_fields.port_high)))
      && (!((hdr->parsed_pkt.l4_dst_port >= rule->rule.core_fields.port_low)
 	   && (hdr->parsed_pkt.l4_dst_port <= rule->rule.core_fields.port_high))))
@@ -813,7 +816,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
 #ifdef CONFIG_TEXTSEARCH
   if(rule->pattern != NULL) {
-    if((hdr->parsed_pkt.pkt_detail.offset.payload_offset > 0) 
+    if((hdr->parsed_pkt.pkt_detail.offset.payload_offset > 0)
        && (hdr->caplen > hdr->parsed_pkt.pkt_detail.offset.payload_offset)) {
       struct ts_state state;
       char *payload = (char*)&(skb->data[hdr->parsed_pkt.pkt_detail.offset.payload_offset-displ]);
@@ -897,7 +900,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    struct pfring_pkthdr *hdr,
 			    int displ, short channel_id,
-			    int offset, void* plugin_mem) 
+			    int offset, void* plugin_mem)
 {
   char *ring_bucket;
   int idx;
@@ -908,7 +911,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   printk("[PF_RING] --> add_pkt_to_ring(len=%d) [pfr->channel_id=%d][channel_id=%d]\n",
 	 hdr->len, pfr->channel_id, channel_id);
 #endif
-    
+
   if((pfr->channel_id != RING_ANY_CHANNEL)
      && (channel_id != RING_ANY_CHANNEL)
      && ((pfr->channel_id & the_bit) != the_bit))
@@ -918,7 +921,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   idx = pfr->slots_info->insert_idx;
   idx++, theSlot = get_insert_slot(pfr);
   pfr->slots_info->tot_pkts++;
-  
+
   if((theSlot == NULL) || (theSlot->slot_state != 0)) {
     /* No room left */
     pfr->slots_info->tot_lost++;
@@ -928,14 +931,14 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
   ring_bucket = &theSlot->bucket;
   memcpy(ring_bucket, hdr, sizeof(struct pfring_pkthdr)); /* Copy extended packet header */
-  
+
   if((plugin_mem != NULL) && (offset > 0)) {
     memcpy(&ring_bucket[sizeof(struct pfring_pkthdr)], plugin_mem, offset);
   }
 
   if(skb != NULL) {
     hdr->caplen = min(pfr->bucket_len-offset, hdr->caplen);
-    
+
     if(hdr->caplen > 0) {
 #if defined(RING_DEBUG)
       printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d][bucket_len=%d]\n",
@@ -954,7 +957,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
       }
     }
   }
-	
+
   if(idx == pfr->slots_info->tot_slots)
     pfr->slots_info->insert_idx = 0;
   else
@@ -963,7 +966,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 #if defined(RING_DEBUG)
   printk("[PF_RING] ==> insert_idx=%d\n",  pfr->slots_info->insert_idx);
 #endif
-	
+
   pfr->slots_info->tot_insert++;
   theSlot->slot_state = 1;
   write_unlock_bh(&pfr->ring_index_lock);
@@ -991,12 +994,12 @@ static int add_skb_to_ring(struct sk_buff *skb,
 			    int is_ip_pkt,
 			    int displ,
 			    short channel_id)
-{  
+{
   int fwd_pkt = 0;
   struct list_head *ptr, *tmp_ptr;
   u_int last_matched_plugin = 0;
   u_char hash_found = 0;
-  struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL }; 
+  struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
   /* This is a memory holder
      for storing parsed packet information
      that will then be freed when the packet
@@ -1032,7 +1035,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   printk("[PF_RING] add_skb_to_ring: [displ=%d][len=%d][caplen=%d]"
 	 "[is_ip_pkt=%d][%d -> %d]\n",
 	 displ, hdr->len, hdr->caplen,
-	 is_ip_pkt, hdr->parsed_pkt.l4_src_port, 
+	 is_ip_pkt, hdr->parsed_pkt.l4_src_port,
 	 hdr->parsed_pkt.l4_dst_port);
 #endif
 
@@ -1224,10 +1227,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	mem = parse_memory_buffer[last_matched_plugin]->mem;
       } else
 	offset = 0, hdr->parsed_header_len = 0, mem = NULL;
-	
+
       add_pkt_to_ring(skb, pfr, hdr, displ, channel_id, offset, mem);
     }
-  }   
+  }
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] [pfr->slots_info->insert_idx=%d]\n", pfr->slots_info->insert_idx);
@@ -1464,7 +1467,7 @@ static int skb_ring_handler(struct sk_buff *skb,
       skb_set_network_header(skb, ETH_HLEN-displ);
 
       iphdr = ip_hdr(skb);
-      
+
       if(iphdr) {
 #if defined (RING_DEBUG)
 	printk("[PF_RING] [version=%d] %X -> %X\n", iphdr->version, iphdr->saddr, iphdr->daddr);
@@ -1500,7 +1503,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 		    return(0); /* mask rcvd fragments */
 		  }
 	      }
-	  }      
+	  }
 	else
 	  {
 #if defined (RING_DEBUG)
@@ -1602,7 +1605,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 #if defined(RING_DEBUG)
 	printk("[PF_RING] kfree_skb()\n");
 #endif
-  
+
 	kfree_skb(orig_skb);
       }
     }
@@ -1875,10 +1878,10 @@ static int ring_release(struct socket *sock)
   if(pfr->ring_netdev && (pfr->ring_netdev->ifindex < MAX_NUM_DEVICES)) {
     struct list_head *ptr, *tmp_ptr;
     device_ring_list_element *entry;
-    
+
     list_for_each_safe(ptr, tmp_ptr, &device_ring_list[pfr->ring_netdev->ifindex]) {
       entry = list_entry(ptr, device_ring_list_element, list);
-      
+
       if(entry->the_ring == pfr) {
 	list_del(ptr);
 	kfree(ptr);
@@ -2022,7 +2025,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->ring_memory = rvmalloc(tot_mem);
 
   if (pfr->ring_memory != NULL) {
-    printk("[PF_RING]  successfully allocated %lu bytes at 0x%08lx\n", 
+    printk("[PF_RING]  successfully allocated %lu bytes at 0x%08lx\n",
 	   (unsigned long) tot_mem, (unsigned long) pfr->ring_memory);
   } else {
     printk("[PF_RING]  ERROR: not enough memory for ring\n");
@@ -2064,16 +2067,16 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 
   if(dev->ifindex < MAX_NUM_DEVICES) {
     device_ring_list_element *elem;
-    
+
     /* printk("[PF_RING] Adding ring to device index %d\n", dev->ifindex); */
 
     elem = kmalloc(sizeof(device_ring_list_element), GFP_ATOMIC);
     if(elem != NULL) {
       elem->the_ring = pfr;
       INIT_LIST_HEAD(&elem->list);
-      list_add(&elem->list, &device_ring_list[dev->ifindex]); 
+      list_add(&elem->list, &device_ring_list[dev->ifindex]);
       /* printk("[PF_RING] Added ring to device index %d\n", dev->ifindex); */
-    }   
+    }
   }
 
   /*
@@ -2082,7 +2085,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     the ring_netdev != NULL the socket is ready to be used.
   */
   pfr->ring_netdev = dev;
-  
+
   return(0);
 }
 
@@ -2146,76 +2149,46 @@ unsigned long kvirt_to_pa(unsigned long adr)
 
 /* ************************************* */
 
-static int ring_mmap(struct file *file,
-		     struct socket *sock,
-		     struct vm_area_struct *vma)
-{
-  struct sock *sk = sock->sk;
-  struct ring_opt *pfr = ring_sk(sk);
-
-  unsigned long size, start;
+static int do_memory_mmap(struct vm_area_struct *vma,
+			  unsigned long size, char *ptr,
+			  u_int flags, int mode) {
+  unsigned long start;
   unsigned long page;
-  char *ptr;
-
-  size = (unsigned long)(vma->vm_end - vma->vm_start);
-
-#if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_mmap() called, size: %ld bytes\n", size);
-#endif
-
-  if(pfr->ring_memory == NULL) {
-#if defined(RING_DEBUG)
-    printk("[PF_RING]  ring_mmap() failed: mapping area to an unbound socket\n");
-#endif
-    return -EINVAL;
-  }
-
-  if(size % PAGE_SIZE) {
-#if defined(RING_DEBUG)
-    printk("[PF_RING]  ring_mmap() failed: len is not multiple of PAGE_SIZE\n");
-#endif
-    return(-EINVAL);
-  }
-
-  /* if userspace tries to mmap beyond end of our buffer, fail */
-  if(size > pfr->slots_info->tot_mem) {
-#if defined(RING_DEBUG)
-    printk("[PF_RING]  ring_mmap() failed: area too large [%ld > %d]\n", size, pfr->slots_info->tot_mem);
-#endif
-    return(-EINVAL);
-  }
-
-#if defined(RING_DEBUG)
-  printk("[PF_RING]  mmap [slot_len=%d][tot_slots=%d] for ring on device %s\n",
-	 pfr->slots_info->slot_len, pfr->slots_info->tot_slots,
-	 pfr->ring_netdev->name);
-#endif
 
   /* we do not want to have this area swapped out, lock it */
-  vma->vm_flags |= VM_LOCKED;
+  vma->vm_flags |= flags;
   start = vma->vm_start;
-
-  /* Ring slots start from page 1 (page 0 is reserved for FlowSlotInfo) */
-  ptr = (char *)(pfr->ring_memory);
 
   while(size > 0)
     {
       int rc;
 
+      if(mode == 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
-      page = vmalloc_to_pfn(ptr);
-      rc =remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
+	page = vmalloc_to_pfn(ptr);
+	rc   = remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
 #else
-      page = vmalloc_to_page(ptr);
-      page = kvirt_to_pa(ptr);
-      rc = remap_page_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
+	page = vmalloc_to_page(ptr);
+	page = kvirt_to_pa(ptr);
+	rc   = remap_page_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
 #endif
+      } else if(mode == 1) {
+	rc   = remap_pfn_range(vma, start,
+			       __pa(ptr) >> PAGE_SHIFT,
+			       PAGE_SIZE, PAGE_SHARED);
+      } else {
+	rc   = remap_pfn_range(vma, start,
+			       ((unsigned long)ptr) >> PAGE_SHIFT,
+			       PAGE_SIZE, PAGE_SHARED);
+      }
+
       if(rc) {
 #if defined(RING_DEBUG)
 	printk("[PF_RING]  remap_pfn_range() failed\n");
 #endif
 	return(-EAGAIN);
       }
+
       start += PAGE_SIZE;
       ptr   += PAGE_SIZE;
       if (size > PAGE_SIZE) {
@@ -2224,6 +2197,93 @@ static int ring_mmap(struct file *file,
 	size = 0;
       }
     }
+
+  return(0);
+}
+
+/* ************************************* */
+
+static int ring_mmap(struct file *file,
+		     struct socket *sock,
+		     struct vm_area_struct *vma)
+{
+  struct sock *sk = sock->sk;
+  struct ring_opt *pfr = ring_sk(sk);
+  int rc;
+  unsigned long size = (unsigned long)(vma->vm_end - vma->vm_start);
+
+  if(size % PAGE_SIZE) {
+#if defined(RING_DEBUG)
+    printk("[PF_RING]  ring_mmap() failed: "
+	   "len is not multiple of PAGE_SIZE\n");
+#endif
+    return(-EINVAL);
+  }
+
+#if defined(RING_DEBUG)
+  printk("[PF_RING]  ring_mmap() called, size: %ld bytes\n", size);
+#endif
+
+  if((pfr->dna_device == NULL) && (pfr->ring_memory == NULL)) {
+#if defined(RING_DEBUG)
+    printk("[PF_RING]  ring_mmap() failed: "
+	   "mapping area to an unbound socket\n");
+#endif
+    return -EINVAL;
+  }
+
+  if(pfr->dna_device == NULL) {
+    /* if userspace tries to mmap beyond end of our buffer, fail */
+    if(size > pfr->slots_info->tot_mem) {
+#if defined(RING_DEBUG)
+      printk("[PF_RING]  ring_mmap() failed: "
+	     "area too large [%ld > %d]\n",
+	     size, pfr->slots_info->tot_mem);
+#endif
+      return(-EINVAL);
+    }
+
+#if defined(RING_DEBUG)
+    printk("[PF_RING]  mmap [slot_len=%d]"
+	   "[tot_slots=%d] for ring on device %s\n",
+	   pfr->slots_info->slot_len, pfr->slots_info->tot_slots,
+	   pfr->ring_netdev->name);
+#endif
+
+    if((rc = do_memory_mmap(vma, size, pfr->ring_memory, VM_LOCKED, 0)) < 0)
+      return(rc);
+  } else {
+    /* DNA Device */
+    if(pfr->dna_device == NULL) return(-EAGAIN);
+
+    switch(pfr->mmap_count) {
+    case 0:
+      if((rc = do_memory_mmap(vma, size,
+			      (void*)pfr->dna_device->packet_memory,
+			      VM_LOCKED, 1)) < 0)
+	return(rc);
+      break;
+
+    case 1:
+      if((rc = do_memory_mmap(vma, size,
+			      (void*)pfr->dna_device->descr_packet_memory,
+			      VM_LOCKED, 1)) < 0)
+	return(rc);
+      break;
+
+    case 2:
+      if((rc = do_memory_mmap(vma, size,
+			      (void*)pfr->dna_device->phys_card_memory,
+			      (VM_RESERVED | VM_IO), 2)) < 0)
+	return(rc);
+      break;
+
+    default:
+      return(-EAGAIN);
+    }
+
+    pfr->mmap_count++;
+  }
 
 #if defined(RING_DEBUG)
   printk("[PF_RING]  ring_mmap succeeded\n");
@@ -2284,24 +2344,51 @@ unsigned int ring_poll(struct file * file,
   FlowSlot* slot;
   struct ring_opt *pfr = ring_sk(sock->sk);
 
-#if defined(RING_DEBUG)
-  printk("[PF_RING] poll called\n");
-#endif
+  printk("[PF_RING] -- poll called\n");
 
-  pfr->ring_active = 1;
-  slot = get_remove_slot(pfr);
-
-  if((slot != NULL) && (slot->slot_state == 0))
-    poll_wait(file, &pfr->ring_slots_waitqueue, wait);
+  if(pfr->dna_device == NULL) {
+    /* PF_RING mode */
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] poll returning %d\n", slot->slot_state);
+    printk("[PF_RING] poll called\n");
 #endif
 
-  if((slot != NULL) && (slot->slot_state == 1))
-    return(POLLIN | POLLRDNORM);
-  else
-    return(0);
+    pfr->ring_active = 1;
+    slot = get_remove_slot(pfr);
+
+    if((slot != NULL) && (slot->slot_state == 0))
+      poll_wait(file, &pfr->ring_slots_waitqueue, wait);
+
+#if defined(RING_DEBUG)
+    printk("[PF_RING] poll returning %d\n", slot->slot_state);
+#endif
+
+    if((slot != NULL) && (slot->slot_state == 1))
+      return(POLLIN | POLLRDNORM);
+    else
+      return(0);
+  } else {
+    /* DNA mode */
+
+#if defined(RING_DEBUG)
+    printk("[PF_RING] poll called [%d]\n", *pfr->dna_device->interrupt_received);
+#endif
+
+    if(*pfr->dna_device->interrupt_received == 0)
+      poll_wait(file, pfr->dna_device->packet_waitqueue, wait);
+
+#if defined(RING_DEBUG)
+    printk("[PF_RING] poll %s return [%d]\n", 
+	   pfr->ring_netdev->name,
+	   *pfr->dna_device->interrupt_received);
+#endif
+
+    if(*pfr->dna_device->interrupt_received) {
+      *pfr->dna_device->interrupt_received = 0;
+      return(POLLIN | POLLRDNORM);
+    } else
+      return(0);
+  }
 }
 
 /* ************************************* */
@@ -2399,25 +2486,59 @@ static int add_to_cluster(struct sock *sock,
     }
   }
 
-
   /* There's no existing cluster. We need to create one */
-  if((cluster_ptr = kmalloc(sizeof(ring_cluster_element), GFP_KERNEL)) == NULL)
+  if((cluster_ptr = kmalloc(sizeof(ring_cluster_element),
+			    GFP_KERNEL)) == NULL)
     return(-ENOMEM);
 
   INIT_LIST_HEAD(&cluster_ptr->list);
 
-  cluster_ptr->cluster.cluster_id = cluster_id;
+  cluster_ptr->cluster.cluster_id           = cluster_id;
   cluster_ptr->cluster.num_cluster_elements = 1;
   cluster_ptr->cluster.hashing_mode = cluster_per_flow; /* Default */
   cluster_ptr->cluster.hashing_id   = 0;
 
   memset(cluster_ptr->cluster.sk, 0, sizeof(cluster_ptr->cluster.sk));
   cluster_ptr->cluster.sk[0] = sock;
-  pfr->cluster_id = cluster_id;
+  pfr->cluster_id            = cluster_id;
 
   list_add(&cluster_ptr->list, &ring_cluster_list); /* Add as first entry */
 
   return(0); /* 0 = OK */
+}
+
+/* ************************************* */
+
+static int ring_map_dna_device(struct ring_opt *pfr,
+			       dna_device_mapping *mapping) {
+
+  if(mapping->operation == remove_device_mapping) {
+    pfr->dna_device = NULL;
+    printk("[RING] ring_map_dna_device(%s): removed mapping\n",
+	   mapping->device_name);
+    return(0);
+  } else {
+    struct list_head *ptr, *tmp_ptr;
+    dna_device_list *entry;
+
+    list_for_each_safe(ptr, tmp_ptr, &ring_dna_devices_list) {
+      entry = list_entry(ptr, dna_device_list, list);
+
+      if((!strcmp(entry->dev.netdev->name, mapping->device_name))
+	 && (entry->dev.channel_id == mapping->channel_id)) {
+	pfr->dna_device = &entry->dev, pfr->ring_netdev = entry->dev.netdev;
+	printk("[RING] ring_map_dna_device(%s): added mapping\n",
+	       mapping->device_name);
+
+	return(0);
+      }
+    }
+  }
+
+  printk("[RING] ring_map_dna_device(%s): mapping failed\n",
+	 mapping->device_name);
+
+  return(-1);
 }
 
 /* ************************************* */
@@ -2614,12 +2735,12 @@ static int ring_setsockopt(struct socket *sock,
 
 	if(rule->rule.extended_fields.filter_plugin_id > 0) {
 	  int ret = 0;
-	  
+
 	  if(rule->rule.extended_fields.filter_plugin_id >= MAX_PLUGIN_ID)
 	    ret = -EFAULT;
 	  else if(plugin_registration[rule->rule.extended_fields.filter_plugin_id] == NULL)
 	    ret = -EFAULT;
-	  
+
 	  if(ret != 0) {
 	    kfree(rule);
 	    return(ret);
@@ -2628,7 +2749,7 @@ static int ring_setsockopt(struct socket *sock,
 
 	if(rule->rule.plugin_action.plugin_id > 0) {
 	  int ret = 0;
-	  
+
 	  if(rule->rule.plugin_action.plugin_id >= MAX_PLUGIN_ID)
 	    ret = -EFAULT;
 	  else if(plugin_registration[rule->rule.plugin_action.plugin_id] == NULL)
@@ -2815,6 +2936,20 @@ static int ring_setsockopt(struct socket *sock,
       }
       break;
 
+    case SO_MAP_DNA_DEVICE:
+      if(optlen != sizeof(dna_device_mapping))
+	return -EINVAL;
+      else {
+	dna_device_mapping mapping;
+
+	if(copy_from_user(&mapping, optval, optlen))
+	  return -EFAULT;
+	else {
+	  ret = ring_map_dna_device(pfr, &mapping), found = 1;
+	}
+      }
+      break;
+
     default:
       found = 0;
       break;
@@ -2912,7 +3047,7 @@ static int ring_getsockopt(struct socket *sock,
 		    printk("[PF_RING]  Found rule but pluginId %d is not registered\n", rule.plugin_action.plugin_id);
 		    rc = -EFAULT;
 		  } else
-		    rc = plugin_registration[rule.plugin_action.plugin_id] ->pfring_plugin_get_stats(pfr, NULL, 
+		    rc = plugin_registration[rule.plugin_action.plugin_id] ->pfring_plugin_get_stats(pfr, NULL,
 												     bucket, buffer, len);
 
 		  if(rc > 0) {
@@ -2989,6 +3124,20 @@ static int ring_getsockopt(struct socket *sock,
 	break;
       }
 
+    case SO_GET_MAPPED_DNA_DEVICE:
+      {
+	if(pfr->dna_device == NULL)
+	  return -EFAULT;
+
+	if (len > sizeof(dna_device))
+	  len = sizeof(dna_device);
+
+	if (copy_to_user(optval, pfr->dna_device, len))
+	  return -EFAULT;
+
+	break;
+      }
+
     default:
       return -ENOPROTOOPT;
     }
@@ -3007,15 +3156,15 @@ u_int get_num_device_free_slots(int ifindex) {
   if((ifindex >= 0) && (ifindex < MAX_NUM_DEVICES)) {
     struct list_head *ptr, *tmp_ptr;
     device_ring_list_element *entry;
-    
+
     list_for_each_safe(ptr, tmp_ptr, &device_ring_list[ifindex]) {
       int num_free_slots;
-      
+
       entry = list_entry(ptr, device_ring_list_element, list);
-      
+
       num_free_slots = get_num_ring_free_slots(entry->the_ring);
 
-      if(num_free_slots == 0) 
+      if(num_free_slots == 0)
 	return(0);
       else {
 	if(num == 0)
@@ -3027,6 +3176,72 @@ u_int get_num_device_free_slots(int ifindex) {
   }
 
   return(num);
+}
+
+/* ************************************* */
+
+void dna_device_handler(dna_device_operation operation,
+			unsigned long packet_memory,
+			u_int packet_memory_num_slots,
+			u_int packet_memory_slot_len,
+			u_int packet_memory_tot_len,
+			void *descr_packet_memory,
+			u_int descr_packet_memory_num_slots,
+			u_int descr_packet_memory_slot_len,
+			u_int descr_packet_memory_tot_len,
+			u_int channel_id,
+			void *phys_card_memory,
+			u_int phys_card_memory_len,
+			struct net_device *netdev,
+			dna_device_model device_model,
+			wait_queue_head_t *packet_waitqueue,
+			u_int8_t *interrupt_received) {
+  printk("[RING] dna_device_handler(%s)\n", netdev->name);
+
+  if(operation == add_device_mapping) {
+    dna_device_list *next;
+
+    next = kmalloc(sizeof(dna_device_list), GFP_ATOMIC);
+    if(next != NULL) {
+      next->dev.packet_memory = packet_memory;
+      next->dev.packet_memory_num_slots = packet_memory_num_slots;
+      next->dev.packet_memory_slot_len = packet_memory_slot_len;
+      next->dev.packet_memory_tot_len = packet_memory_tot_len;
+      next->dev.descr_packet_memory = descr_packet_memory;
+      next->dev.descr_packet_memory_num_slots = descr_packet_memory_num_slots;
+      next->dev.descr_packet_memory_slot_len = descr_packet_memory_slot_len;
+      next->dev.descr_packet_memory_tot_len = descr_packet_memory_tot_len;
+      next->dev.phys_card_memory = phys_card_memory;
+      next->dev.phys_card_memory_len = phys_card_memory_len;
+      next->dev.channel_id = channel_id;
+      next->dev.netdev = netdev;
+      next->dev.device_model = device_model;
+      next->dev.packet_waitqueue = packet_waitqueue;
+      next->dev.interrupt_received = interrupt_received;
+      list_add(&next->list, &ring_dna_devices_list);
+      dna_devices_list_size++;
+    } else {
+	printk("[PF_RING]  could not kmalloc slot!!\n");
+    }
+  } else {
+    struct list_head *ptr, *tmp_ptr;
+    dna_device_list *entry;
+
+    list_for_each_safe(ptr, tmp_ptr, &ring_dna_devices_list) {
+      entry = list_entry(ptr, dna_device_list, list);
+
+      if((entry->dev.netdev == netdev)
+	 && (entry->dev.channel_id == channel_id)) {
+	list_del(ptr);
+	kfree(ptr);
+	dna_devices_list_size--;
+	break;
+      }
+    }
+  }
+
+  printk("[RING] dna_device_handler(%s): [dna_devices_list_size=%d]\n",
+	 netdev->name, dna_devices_list_size);
 }
 
 /* ************************************* */
@@ -3137,12 +3352,22 @@ static void __exit ring_exit(void)
     kfree(cluster_ptr);
   }
 
+  list_for_each_safe(ptr, tmp_ptr, &ring_dna_devices_list) {
+    dna_device_list *elem;
+
+    elem = list_entry(ptr, dna_device_list, list);
+
+    list_del(ptr);
+    kfree(elem);
+  }
+
   set_register_pfring_plugin(NULL);
   set_unregister_pfring_plugin(NULL);
   set_skb_ring_handler(NULL);
   set_add_hdr_to_ring(NULL);
   set_buffer_ring_handler(NULL);
   set_read_device_pfring_free_slots(NULL);
+  set_ring_dna_device_handler(NULL);
   sock_unregister(PF_RING);
   ring_proc_term();
   printk("[PF_RING]  unloaded\n");
@@ -3153,13 +3378,14 @@ static void __exit ring_exit(void)
 static int __init ring_init(void)
 {
   int i;
-  
+
   printk("[PF_RING] Welcome to PF_RING %s\n"
 	 "(C) 2004-08 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION);
 
   INIT_LIST_HEAD(&ring_table);
   INIT_LIST_HEAD(&ring_cluster_list);
+  INIT_LIST_HEAD(&ring_dna_devices_list);
 
   for(i=0; i<MAX_NUM_DEVICES; i++)
     INIT_LIST_HEAD(&device_ring_list[i]);
@@ -3172,6 +3398,7 @@ static int __init ring_init(void)
   set_register_pfring_plugin(register_plugin);
   set_unregister_pfring_plugin(unregister_plugin);
   set_read_device_pfring_free_slots(get_num_device_free_slots);
+  set_ring_dna_device_handler(dna_device_handler);
 
   if(get_buffer_ring_handler() != buffer_ring_handler) {
     printk("[PF_RING]  set_buffer_ring_handler FAILED\n");

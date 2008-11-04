@@ -23,8 +23,8 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.8.10"
-#define RING_VERSION_NUM           0x03080A
+#define RING_VERSION                "3.9.0"
+#define RING_VERSION_NUM           0x030900
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -40,9 +40,13 @@
 #define SO_SET_CHANNEL_ID                109
 
 /* Get */
-#define SO_GET_RING_VERSION              110
-#define SO_GET_FILTERING_RULE_STATS      111
-#define SO_GET_HASH_FILTERING_RULE_STATS 112
+#define SO_GET_RING_VERSION              120
+#define SO_GET_FILTERING_RULE_STATS      121
+#define SO_GET_HASH_FILTERING_RULE_STATS 122
+#define SO_GET_MAPPED_DNA_DEVICE         123
+
+/* Map */
+#define SO_MAP_DNA_DEVICE                130
 
 /* *********************************** */
 
@@ -53,7 +57,10 @@ struct pkt_aggregation_info {
   struct timeval first_seen, last_seen;
 };
 
-/* Note that as offsets can be negative, please do not change them to unsigned */
+/*
+  Note that as offsets *can* be negative,
+  please do not change them to unsigned 
+*/
 struct pkt_offset {
   int16_t eth_offset; /* This offset *must* be added to all offsets below */
   int16_t vlan_offset;
@@ -230,6 +237,44 @@ void deallocateRing(void);
 
 /* ************************************************* */
 
+typedef enum {
+  add_device_mapping = 0, remove_device_mapping
+} dna_device_operation;
+
+typedef enum {
+  intel_e1000 = 0, intel_igb, intel_ixgbe
+} dna_device_model;
+
+typedef struct {
+  unsigned long packet_memory;  /* Invalid in userland */
+  u_int packet_memory_num_slots;
+  u_int packet_memory_slot_len;
+  u_int packet_memory_tot_len;
+  void *descr_packet_memory;  /* Invalid in userland */
+  u_int descr_packet_memory_num_slots;
+  u_int descr_packet_memory_slot_len;
+  u_int descr_packet_memory_tot_len;
+  u_int channel_id;
+  char *phys_card_memory; /* Invalid in userland */
+  u_int phys_card_memory_len;
+  struct net_device *netdev; /* Invalid in userland */
+  dna_device_model device_model;
+#ifdef __KERNEL__
+  wait_queue_head_t *packet_waitqueue;
+#else
+  void *packet_waitqueue;
+#endif
+  u_int8_t *interrupt_received;
+} dna_device;
+
+typedef struct {
+  dna_device_operation operation;
+  char device_name[8];
+  int32_t channel_id;
+} dna_device_mapping;
+
+/* ************************************************* */
+
 #ifdef __KERNEL__
 
 enum cluster_type {
@@ -262,6 +307,11 @@ typedef struct {
   struct list_head list;
 } ring_cluster_element;
 
+typedef struct {
+  dna_device dev;
+  struct list_head list;
+} dna_device_list;
+
 /* ************************************************* */
 
 /*
@@ -279,7 +329,6 @@ struct ring_opt *pfr; /* Forward */
 typedef int (*do_handle_filtering_hash_bucket)(struct ring_opt *pfr,
 					       filtering_hash_bucket* rule,
 					       u_char add_rule);
-
 /* ************************************************* */
 
 #define RING_ANY_CHANNEL  -1
@@ -292,6 +341,10 @@ struct ring_opt {
   struct net_device *ring_netdev;
   u_short ring_pid;
   u_int32_t ring_id;
+
+  /* Direct NIC Access */
+  u_int8_t mmap_count;
+  dna_device *dna_device;
 
   /* Cluster */
   u_short cluster_id; /* 0 = no cluster */
@@ -399,9 +452,26 @@ struct pfring_plugin_registration {
   plugin_free_ring_mem pfring_plugin_free_ring_mem;
 };
 
-typedef int   (*register_pfring_plugin)(struct pfring_plugin_registration *reg);
+typedef int   (*register_pfring_plugin)(struct pfring_plugin_registration
+					*reg);
 typedef int   (*unregister_pfring_plugin)(u_int16_t pfring_plugin_id);
 typedef u_int (*read_device_pfring_free_slots)(int ifindex);
+typedef void  (*handle_ring_dna_device)(dna_device_operation operation,
+					unsigned long packet_memory,
+					u_int packet_memory_num_slots,
+					u_int packet_memory_slot_len,
+					u_int packet_memory_tot_len,
+					void *descr_packet_memory,
+					u_int descr_packet_memory_num_slots,
+					u_int descr_packet_memory_slot_len,
+					u_int descr_packet_memory_tot_len,
+					u_int channel_id,
+					void *phys_card_memory,
+					u_int phys_card_memory_len,
+					struct net_device *netdev,
+					dna_device_model device_model,
+					wait_queue_head_t *packet_waitqueue,
+					u_int8_t *interrupt_received);
 
 extern register_pfring_plugin get_register_pfring_plugin(void);
 extern unregister_pfring_plugin get_unregister_pfring_plugin(void);
@@ -415,7 +485,28 @@ extern int do_register_pfring_plugin(struct pfring_plugin_registration *reg);
 extern int do_unregister_pfring_plugin(u_int16_t pfring_plugin_id);
 extern int do_read_device_pfring_free_slots(int deviceidx);
 
-typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet, u_char real_skb, short channel_id);
+extern handle_ring_dna_device get_ring_dna_device_handler(void);
+extern void set_ring_dna_device_handler(handle_ring_dna_device 
+					the_dna_device_handler);
+extern void do_ring_dna_device_handler(dna_device_operation operation,
+				       unsigned long packet_memory,
+				       u_int packet_memory_num_slots,
+				       u_int packet_memory_slot_len,
+				       u_int packet_memory_tot_len,
+				       void *descr_packet_memory,
+				       u_int descr_packet_memory_num_slots,
+				       u_int descr_packet_memory_slot_len,
+				       u_int descr_packet_memory_tot_len,
+				       u_int channel_id,
+				       void *phys_card_memory,
+				       u_int phys_card_memory_len,
+				       struct net_device *netdev,
+				       dna_device_model device_model,
+				       wait_queue_head_t *packet_waitqueue,
+				       u_int8_t *interrupt_received);
+
+typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet,
+			       u_char real_skb, short channel_id);
 extern handle_ring_skb get_skb_ring_handler(void);
 extern void set_skb_ring_handler(handle_ring_skb the_handler);
 extern void do_skb_ring_handler(struct sk_buff *skb,
