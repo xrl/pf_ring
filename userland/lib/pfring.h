@@ -29,7 +29,8 @@
 
 #ifndef __USE_XOPEN2K
 typedef volatile int pthread_spinlock_t;
-extern int pthread_spin_init (pthread_spinlock_t *__lock, int __pshared) __THROW;
+extern int pthread_spin_init (pthread_spinlock_t *__lock,
+			      int __pshared) __THROW;
 
 /* Destroy the spinlock LOCK.  */
 extern int pthread_spin_destroy (pthread_spinlock_t *__lock) __THROW;
@@ -77,6 +78,7 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <pthread.h>
 
 
+
 #define MAX_CAPLEN       16384
 #define PAGE_SIZE         4096
 
@@ -98,8 +100,17 @@ extern "C" {
 #endif
 
   /* ********************************* */
+  #define MAX_NUM_CHANNELS        256
 
   typedef struct {
+#ifdef ENABLE_DNA_SUPPORT
+    /* DNA (Direct NIC Access) */
+    u_char dna_mapped_device;    
+    u_int32_t tot_dna_read_pkts, rx_reg;
+    dna_device dna_dev;    
+    u_int32_t *rx_reg_ptr[MAX_NUM_CHANNELS];
+#endif
+
     char *buffer, *slots, *device_name;
     int  fd;
     FlowSlotInfo *slots_info;
@@ -109,6 +120,10 @@ extern "C" {
     u_long num_poll_calls;
     pthread_spinlock_t spinlock;
   } pfring;
+
+#ifdef ENABLE_DNA_SUPPORT
+#include "pfring_e1000_dna.h"
+#endif
 
   typedef struct {
     u_int64_t recv, drop;
@@ -122,11 +137,13 @@ extern "C" {
   int pfring_set_channel_id(pfring *ring, int32_t channel_id);
   int pfring_remove_from_cluster(pfring *ring);
   int pfring_set_reflector(pfring *ring, char *reflectorDevice);
-  pfring* pfring_open(char *device_name, u_int8_t promisc, u_int32_t caplen, u_int8_t reentrant);
+  pfring* pfring_open(char *device_name, u_int8_t promisc, 
+		      u_int32_t caplen, u_int8_t reentrant);
+  pfring* pfring_open_dna(char *device_name, u_int8_t reentrant);
   void pfring_close(pfring *ring);
   int pfring_stats(pfring *ring, pfring_stat *stats);
   int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
-		  struct pfring_pkthdr *hdr, u_char wait_for_incoming_packet);
+		  struct pfring_pkthdr *hdr, u_int8_t wait_for_incoming_packet);
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 				      char* stats, u_int *stats_len);
   int pfring_get_hash_filtering_rule_stats(pfring *ring,
@@ -142,6 +159,8 @@ extern "C" {
   int pfring_version(pfring *ring, u_int32_t *version);
   int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */);
   int pfring_get_selectable_fd(pfring *ring);
+
+
 #ifdef  __cplusplus
 }
 #endif

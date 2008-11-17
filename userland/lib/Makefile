@@ -26,19 +26,19 @@ INCLUDE   = -I${KERNELDIR}
 #
 # Object files
 #
-OBJS      = pfring.o
+OBJS      = pfring.o pfring_e1000_dna.o
 
 #
 # C compiler and flags
 #
 CC        = gcc
-CFLAGS    = -g -O2 -Wall ${INCLUDE}
+CFLAGS    = -g -Wall ${INCLUDE}
 LDFLAGS   = -shared
 
 SYSLIBS   = -lpthread
 
 # How to make an object file
-%.o: %.c
+%.o: %.c %.h
 #	@echo "=*= making object $@ =*="
 	@${CC} ${CFLAGS} -c $< -o $@
 
