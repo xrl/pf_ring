@@ -38,7 +38,7 @@ PREFIX=linux
 # kernel identifiers.
 VERSION=${VERSION:-2}
 PATCHLEVEL=${PATCHLEVEL:-6}
-SUBLEVEL=${SUBLEVEL:-25.3}
+SUBLEVEL=${SUBLEVEL:-27.7}
 KERNEL_VERSION=$VERSION.$PATCHLEVEL.$SUBLEVEL
 EXTRAVERSION=${EXTRAVERSION:--1-686-smp-$PATCH}
 
@@ -241,11 +241,6 @@ EOF
     errors=`expr $errors + 1`
   fi
 
-
-
-
-
-
   echo "     Patch #3 (modify netif_receive_skb [NAPI])"
   if test -f $PATCH/kernel/net/core/PATCH-3-to-dev.c; then
     #
@@ -276,8 +271,8 @@ EOF
     # It is defined in the source file net/core/PATCH-4-to-dev.c.
   
   if test -f $PATCH/kernel/net/core/PATCH-4-to-dev.c; then
-    line=`grep -n "Grab device queue" $MYKERNEL/net/core/dev.c | tail -n 1 | cut -d":" -f 1`
-    line=`expr $line - 1`
+    line=`grep -n "if (q->enqueue) {" $MYKERNEL/net/core/dev.c | tail -n 1 | cut -d":" -f 1`
+    line=`expr $line + 1`
   
     mv $MYKERNEL/net/core/dev.c $MYKERNEL/net/core/dev.c.tmp
     cat $MYKERNEL/net/core/dev.c.tmp | sed "$line r $PATCH/kernel/net/core/PATCH-4-to-dev.c" > $MYKERNEL/net/core/dev.c

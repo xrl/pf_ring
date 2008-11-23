@@ -333,13 +333,7 @@ static void ring_sock_destruct(struct sock *sk)
 #endif
     return;
   }
-
-  BUG_TRAP(!atomic_read(&sk->sk_rmem_alloc));
-  BUG_TRAP(!atomic_read(&sk->sk_wmem_alloc));
 #else
-  BUG_TRAP(atomic_read(&sk->rmem_alloc)==0);
-  BUG_TRAP(atomic_read(&sk->wmem_alloc)==0);
-
   if (!sk->dead) {
 #if defined(RING_DEBUG)
     printk("[PF_RING] Attempt to release alive ring socket: %p\n", sk);
@@ -1167,7 +1161,12 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	skb->data -= displ;
 
 	/* send it */
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27))
+	if (netdev_get_tx_queue(pfr->reflector_dev, 0)->xmit_lock_owner != cpu)
+#else
 	if (pfr->reflector_dev->xmit_lock_owner != cpu)
+#endif
 	  {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
 	    spin_lock_bh(&pfr->reflector_dev->xmit_lock);
