@@ -26,7 +26,7 @@ INCLUDE   = -I${KERNELDIR}
 #
 # Object files
 #
-OBJS      = pfring.o pfring_e1000_dna.o
+OBJS      = pfring.o # pfring_e1000_dna.o
 
 #
 # C compiler and flags

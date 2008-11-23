@@ -15,13 +15,13 @@
 /* #undef HAVE_CLONING_BPF */
 
 /* define if you have the DAG API */
-#define HAVE_DAG_API 1
+/* #undef HAVE_DAG_API */
 
 /* define if you have dag_get_erf_types() */
-#define HAVE_DAG_GET_ERF_TYPES 1
+/* #undef HAVE_DAG_GET_ERF_TYPES */
 
 /* define if you have streams capable DAG API */
-#define HAVE_DAG_STREAMS_API 1
+/* #undef HAVE_DAG_STREAMS_API */
 
 /* Define to 1 if you have the declaration of `ether_hostton', and to 0 if you
    don't. */

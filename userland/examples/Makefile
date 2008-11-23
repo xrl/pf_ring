@@ -83,7 +83,7 @@ ringm: ${RMOBJS} ${LIBPFRING}
 
 pcaps: ${RPOBJS}
 	@echo "=*= making program $@ =*="
-	${CC} ${RPOBJS} -lpcap -o $@
+	${CC} ${RPOBJS} ${LIBPCAP} ${LIBS} -o $@
 
 pfcount: pfcount.o ${LIBPFRING}
 	@echo "=*= making program $@ =*="

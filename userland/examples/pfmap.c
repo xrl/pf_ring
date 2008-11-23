@@ -43,6 +43,14 @@
 
 #include "pfring.h"
 
+#ifndef ENABLE_DNA_SUPPORT
+
+int main(int argc, char* argv[]) {
+  printf("DNA is not enabled on this PF_RING instance\n");
+  return(0);
+}
+
+#else
 
 #define ALARM_SLEEP       1
 #define DEFAULT_SNAPLEN 128
@@ -449,3 +457,5 @@ int main(int argc, char* argv[]) {
   pfring_close(pd);
   return(0);
 }
+
+#endif
