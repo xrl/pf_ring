@@ -853,6 +853,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
       return(0); /* No match */
     } else {
       *last_matched_plugin = rule->rule.extended_fields.filter_plugin_id;
+      hdr->parsed_pkt.last_matched_plugin_id = rule->rule.extended_fields.filter_plugin_id;
 
       if(debug)
 	printk("[PF_RING] [last_matched_plugin = %d][buffer=%p][len=%d]\n",
@@ -1215,6 +1216,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
       if((last_matched_plugin > 0)
 	 && (parse_memory_buffer[last_matched_plugin] != NULL)) {
 	offset = hdr->parsed_header_len = parse_memory_buffer[last_matched_plugin]->mem_len;
+
+	hdr->parsed_pkt.last_matched_plugin_id = last_matched_plugin;
 
 #if defined(RING_DEBUG)
 	printk("[PF_RING] --> [last_matched_plugin = %d][parsed_header_len=%d]\n",

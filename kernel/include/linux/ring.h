@@ -78,6 +78,7 @@ struct pkt_parsing_info {
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
   u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
 
+  u_int16_t last_matched_plugin_id; /* If > 0 identifies a plugin to that matched the packet */
   union {
     struct pkt_offset offset; /* Offsets of L3/L4/payload elements */
     struct pkt_aggregation_info aggregation; /* Future or plugin use */
