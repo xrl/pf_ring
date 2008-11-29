@@ -772,6 +772,54 @@ static int hash_bucket_match(filtering_hash_bucket *hash_bucket,
 
 /* ********************************** */
 
+inline int hash_bucket_match_rule(filtering_hash_bucket *hash_bucket,
+				  hash_filtering_rule *rule)
+{
+  printk("[PF_RING] (%u,%d,%d.%d.%d.%d:%u,%d.%d.%d.%d:%u) (%u,%d,%d.%d.%d.%d:%u,%d.%d.%d.%d:%u)\n",
+	 hash_bucket->rule.vlan_id, hash_bucket->rule.proto,
+	 ((hash_bucket->rule.host_peer_a >> 24) & 0xff),
+	 ((hash_bucket->rule.host_peer_a >> 16) & 0xff),
+	 ((hash_bucket->rule.host_peer_a >> 8) & 0xff),
+	 ((hash_bucket->rule.host_peer_a >> 0) & 0xff),
+	 hash_bucket->rule.port_peer_a,
+	 ((hash_bucket->rule.host_peer_b >> 24) & 0xff),
+	 ((hash_bucket->rule.host_peer_b >> 16) & 0xff),
+	 ((hash_bucket->rule.host_peer_b >> 8) & 0xff),
+	 ((hash_bucket->rule.host_peer_b >> 0) & 0xff),
+	 hash_bucket->rule.port_peer_b,
+
+	 rule->vlan_id, rule->proto,
+	 ((rule->host_peer_a >> 24) & 0xff),
+	 ((rule->host_peer_a >> 16) & 0xff),
+	 ((rule->host_peer_a >> 8) & 0xff),
+	 ((rule->host_peer_a >> 0) & 0xff),
+	 rule->port_peer_a,
+	 ((rule->host_peer_b >> 24) & 0xff),
+	 ((rule->host_peer_b >> 16) & 0xff),
+	 ((rule->host_peer_b >> 8) & 0xff),
+	 ((rule->host_peer_b >> 0) & 0xff),
+	 rule->port_peer_b);
+
+
+
+  if((hash_bucket->rule.proto == rule->proto)
+     && (hash_bucket->rule.vlan_id == rule->vlan_id)
+     && (((hash_bucket->rule.host_peer_a == rule->host_peer_a)
+	  && (hash_bucket->rule.host_peer_b == rule->host_peer_b)
+	  && (hash_bucket->rule.port_peer_a == rule->port_peer_a)
+	  && (hash_bucket->rule.port_peer_b == rule->port_peer_b))
+	 ||
+	 ((hash_bucket->rule.host_peer_a == rule->host_peer_b)
+	  && (hash_bucket->rule.host_peer_b == rule->host_peer_a)
+	  && (hash_bucket->rule.port_peer_a == rule->port_peer_b)
+	  && (hash_bucket->rule.port_peer_b == rule->port_peer_a))))
+    return(1);
+  else
+    return(0);
+}
+
+/* ********************************** */
+
 /* 0 = no match, 1 = match */
 static int match_filtering_rule(struct ring_opt *the_ring,
 				filtering_rule_element *rule,
@@ -1665,7 +1713,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
   u_int32_t hash_value = hash_pkt(rule->rule.vlan_id, rule->rule.proto,
 				  rule->rule.host_peer_a, rule->rule.host_peer_b,
 				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
-  int rc = -1, debug = 0;
+  int rc = -1, debug = 1;
 
   if(debug) printk("[PF_RING] handle_filtering_hash_bucket(vlan=%u, proto=%u, "
 		   "sip=%d.%d.%d.%d, sport=%u, dip=%d.%d.%d.%d, dport=%u, "
@@ -3016,12 +3064,17 @@ static int ring_getsockopt(struct socket *sock,
 	  hash_filtering_rule rule;
 	  u_int hash_idx;
 
-	  if(pfr->filtering_hash == NULL) return -EFAULT;
-
-	  if(copy_from_user(&rule, optval, sizeof(rule)))
+	  if(pfr->filtering_hash == NULL) {
+	    printk("[PF_RING] so_get_hash_filtering_rule_stats(): no hash failure\n");
 	    return -EFAULT;
+	  }
 
-	  if(0)
+	  if(copy_from_user(&rule, optval, sizeof(rule))) {
+	    printk("[PF_RING] so_get_hash_filtering_rule_stats: copy_from_user() failure\n");
+	    return -EFAULT;
+	  }
+
+	  if(1)
 	    printk("[PF_RING] so_get_hash_filtering_rule_stats(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u)\n",
 		   rule.vlan_id, rule.proto,
 		   rule.host_peer_a, rule.port_peer_a,
@@ -3037,23 +3090,29 @@ static int ring_getsockopt(struct socket *sock,
 	    read_lock(&pfr->ring_rules_lock);
 	    bucket = pfr->filtering_hash[hash_idx];
 
+	    if(1) printk("[PF_RING] so_get_hash_filtering_rule_stats(): bucket=%p\n", bucket);
+
 	    while(bucket != NULL) {
-	      if(memcmp(&bucket->rule, &rule, sizeof(hash_filtering_rule)) == 0) {
+	      // if(memcmp(&bucket->rule, &rule, sizeof(hash_filtering_rule)) == 0) 
+	      if(hash_bucket_match_rule(bucket, &rule)) {
 		char *buffer = kmalloc(len, GFP_ATOMIC);
 
-		if(buffer == NULL)
+		if(buffer == NULL) {
+		  printk("[PF_RING] so_get_hash_filtering_rule_stats() no memory failure\n");
 		  rc = -EFAULT;
-		else {
+		} else {
 		  if((plugin_registration[rule.plugin_action.plugin_id] == NULL)
 		     || (plugin_registration[rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)) {
-		    printk("[PF_RING]  Found rule but pluginId %d is not registered\n", rule.plugin_action.plugin_id);
+		    printk("[PF_RING]  Found rule but pluginId %d is not registered\n",
+			   rule.plugin_action.plugin_id);
 		    rc = -EFAULT;
 		  } else
-		    rc = plugin_registration[rule.plugin_action.plugin_id] ->pfring_plugin_get_stats(pfr, NULL,
-												     bucket, buffer, len);
+		    rc = plugin_registration[rule.plugin_action.plugin_id]->pfring_plugin_get_stats(pfr, NULL,
+												    bucket, buffer, len);
 
 		  if(rc > 0) {
 		    if(copy_to_user(optval, buffer, rc)) {
+		      printk("[PF_RING] copy_to_user() failure\n");
 		      rc = -EFAULT;
 		    }
 		  }
@@ -3064,7 +3123,8 @@ static int ring_getsockopt(struct socket *sock,
 	    } /* while */
 
 	    read_unlock(&pfr->ring_rules_lock);
-	  }
+	  } else
+	    if(1) printk("[PF_RING] so_get_hash_filtering_rule_stats(): entry not found [hash_idx=%d]\n", hash_idx);
 	}
 
 	return(rc);
