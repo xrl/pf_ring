@@ -2346,7 +2346,7 @@ unsigned int ring_poll(struct file * file,
   FlowSlot* slot;
   struct ring_opt *pfr = ring_sk(sock->sk);
 
-  printk("[PF_RING] -- poll called\n");
+  /* printk("[PF_RING] -- poll called\n"); */
 
   if(pfr->dna_device == NULL) {
     /* PF_RING mode */
