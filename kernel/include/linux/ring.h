@@ -143,6 +143,12 @@ typedef enum {
   execute_action_and_continue_rule_evaluation
 } rule_action_behaviour;
 
+typedef enum {
+  forward_packet = 0,
+  dont_forward_packet,
+  use_rule_forward_policy
+} packet_action_behaviour;
+
 typedef struct {
   u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
   rule_action_behaviour rule_action; /* What to do in case of match */
@@ -427,7 +433,8 @@ typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
 				 struct pfring_pkthdr *hdr,
 				 struct sk_buff *skb,
 				 u_int16_t filter_plugin_id,
-				 struct parse_buffer *filter_rule_memory_storage);
+				 struct parse_buffer **filter_rule_memory_storage,
+				 packet_action_behaviour *behaviour);
 /* Return 1/0 in case of match/no match for the given skb */
 typedef int (*plugin_filter_skb)(struct ring_opt *the_ring,
 				 filtering_rule_element *rule,

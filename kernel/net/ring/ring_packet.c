@@ -787,7 +787,6 @@ inline int hash_bucket_match_rule(filtering_hash_bucket *hash_bucket,
 	 ((hash_bucket->rule.host_peer_b >> 8) & 0xff),
 	 ((hash_bucket->rule.host_peer_b >> 0) & 0xff),
 	 hash_bucket->rule.port_peer_b,
-
 	 rule->vlan_id, rule->proto,
 	 ((rule->host_peer_a >> 24) & 0xff),
 	 ((rule->host_peer_a >> 16) & 0xff),
@@ -799,8 +798,6 @@ inline int hash_bucket_match_rule(filtering_hash_bucket *hash_bucket,
 	 ((rule->host_peer_b >> 8) & 0xff),
 	 ((rule->host_peer_b >> 0) & 0xff),
 	 rule->port_peer_b);
-
-
 
   if((hash_bucket->rule.proto == rule->proto)
      && (hash_bucket->rule.vlan_id == rule->vlan_id)
@@ -827,11 +824,15 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 				struct sk_buff *skb,
 				int displ,
 				struct parse_buffer *parse_memory_buffer[],
-				u_int *last_matched_plugin)
+				u_int8_t *free_parse_mem,
+				u_int *last_matched_plugin,
+				packet_action_behaviour *behaviour)
 {
   int debug = 0;
 
-  if(debug) printk("[PF_RING] match_filtering_rule()\n");
+  /* if(debug) printk("[PF_RING] match_filtering_rule()\n"); */
+
+  *behaviour = use_rule_forward_policy; /* Default */
 
   if((rule->rule.core_fields.vlan_id > 0) && (hdr->parsed_pkt.vlan_id  != rule->rule.core_fields.vlan_id)) return(0);
   if((rule->rule.core_fields.proto > 0)   && (hdr->parsed_pkt.l3_proto != rule->rule.core_fields.proto))   return(0);
@@ -861,8 +862,8 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     if((hdr->parsed_pkt.pkt_detail.offset.payload_offset > 0)
        && (hdr->caplen > hdr->parsed_pkt.pkt_detail.offset.payload_offset)) {
       struct ts_state state;
-      char *payload = (char*)&(skb->data[hdr->parsed_pkt.pkt_detail.offset.payload_offset-displ]);
-      int i, rc, payload_len = hdr->caplen - hdr->parsed_pkt.pkt_detail.offset.payload_offset;
+      char *payload = (char*)&(skb->data[hdr->parsed_pkt.pkt_detail.offset.payload_offset /* -displ */]);
+      int i, rc, payload_len = hdr->caplen - hdr->parsed_pkt.pkt_detail.offset.payload_offset - displ;
 
       printk("[PF_RING] Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][",
 	     hdr->caplen, payload_len, displ, hdr->parsed_pkt.pkt_detail.offset.payload_offset);
@@ -884,7 +885,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id] != NULL)
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb != NULL)
      ) {
-    int rc, debug = 0;
+    int rc;
 
     if(debug)
       printk("[PF_RING] rule->plugin_id [rule_id=%d][filter_plugin_id=%d][plugin_action=%d][ptr=%p]\n",
@@ -896,6 +897,8 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]
       ->pfring_plugin_filter_skb(the_ring, rule, hdr, skb,
 				 &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
+
+    if(parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]) *free_parse_mem = 1;
 
     if(rc <= 0) {
       return(0); /* No match */
@@ -917,14 +920,25 @@ static int match_filtering_rule(struct ring_opt *the_ring,
      && (plugin_registration[rule->rule.plugin_action.plugin_id] != NULL)
      && (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
      ) {
+    if(debug) printk("[PF_RING] Calling pfring_plugin_handle_skb()\n");
+
     plugin_registration[rule->rule.plugin_action.plugin_id]
       ->pfring_plugin_handle_skb(the_ring, rule, NULL, hdr, skb,
 				 rule->rule.extended_fields.filter_plugin_id,
-				 parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
+				 &parse_memory_buffer[rule->rule.plugin_action.plugin_id],
+				 behaviour);
+
+    if(*last_matched_plugin == 0)
+      *last_matched_plugin = rule->rule.plugin_action.plugin_id;
+
+    if(parse_memory_buffer[rule->rule.plugin_action.plugin_id]) *free_parse_mem = 1;
+  } else {
+    if(debug) printk("[PF_RING] Skipping pfring_plugin_handle_skb(plugin_action=%d)\n",
+		     rule->rule.plugin_action.plugin_id);
   }
 
   if(debug) {
-    printk("[PF_RING] MATCH: match_filtering_rule(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u) ",
+    printk("[PF_RING] MATCH: match_filtering_rule(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u)\n",
 	   hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto, hdr->parsed_pkt.ipv4_src, hdr->parsed_pkt.l4_src_port,
 	   hdr->parsed_pkt.ipv4_dst, hdr->parsed_pkt.l4_dst_port);
     printk("[PF_RING] [rule(vlan=%u, proto=%u, ip=%u-%u, port=%u-%u)]\n",
@@ -1031,6 +1045,22 @@ static int add_hdr_to_ring(struct ring_opt *pfr,
 
 /* ********************************** */
 
+/* Free filtering placeholders */
+static void free_parse_memory(struct parse_buffer *parse_memory_buffer[]) {
+  int i;
+  
+  for(i=1; i<=max_registered_plugin_id; i++)
+    if(parse_memory_buffer[i]) {
+      if(parse_memory_buffer[i]->mem != NULL) {
+	kfree(parse_memory_buffer[i]->mem);
+      }
+      
+      kfree(parse_memory_buffer[i]);
+    }
+}
+
+/* ********************************** */
+
 static int add_skb_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    struct pfring_pkthdr *hdr,
@@ -1040,6 +1070,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 {
   int fwd_pkt = 0;
   struct list_head *ptr, *tmp_ptr;
+  u_int8_t free_parse_mem = 0;
   u_int last_matched_plugin = 0;
   u_char hash_found = 0;
   struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
@@ -1124,21 +1155,36 @@ static int add_skb_to_ring(struct sk_buff *skb,
     } /* while */
 
     if(hash_found) {
+      packet_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
+      
       if((hash_bucket->rule.plugin_action.plugin_id != 0)
 	 && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
 	 && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id] != NULL)
 	 && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
-	 ) {
+	 ) {	
 	plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
-	  ->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, 0 /* no plugin */, NULL);
+	  ->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, 
+				     0 /* no plugin */, 
+				     &parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id],
+				     &behaviour);
+	
+	if(parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id]) free_parse_mem = 1;
+	last_matched_plugin = hash_bucket->rule.plugin_action.plugin_id;
+	hdr->parsed_pkt.last_matched_plugin_id = hash_bucket->rule.plugin_action.plugin_id;
       }
 
-      if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+      if(behaviour == forward_packet_and_stop_rule_evaluation)
 	fwd_pkt = 1;
-      } else if(hash_bucket->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+      else if(behaviour == dont_forward_packet_and_stop_rule_evaluation)
 	fwd_pkt = 0;
-      } else if(hash_bucket->rule.rule_action == execute_action_and_continue_rule_evaluation) {
-	hash_found = 0; /* This way we also evaluate the list of rules */
+      else {	
+	if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+	  fwd_pkt = 1;
+	} else if(hash_bucket->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+	  fwd_pkt = 0;
+	} else if(hash_bucket->rule.rule_action == execute_action_and_continue_rule_evaluation) {
+	  hash_found = 0; /* This way we also evaluate the list of rules */
+	}
       }
     } else {
       /* printk("[PF_RING] Packet not found\n"); */
@@ -1150,21 +1196,32 @@ static int add_skb_to_ring(struct sk_buff *skb,
     list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
       {
 	filtering_rule_element *entry;
+	packet_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
 
 	entry = list_entry(ptr, filtering_rule_element, list);
 
-	if(match_filtering_rule(pfr, entry, hdr, skb, displ, parse_memory_buffer, &last_matched_plugin))
+	if(match_filtering_rule(pfr, entry, hdr, skb, displ,
+				parse_memory_buffer, &free_parse_mem,
+				&last_matched_plugin, &behaviour))
 	  {
-	    if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+	    if(behaviour == forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 1;
 	      break;
-	    } else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+	    } else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 0;
 	      break;
-	    } else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
-	      /* The action has already been performed inside match_filtering_rule()
-		 hence instead of stopping rule evaluation, the next rule
-		 will be evaluated */
+	    } else {
+	      if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+		fwd_pkt = 1;
+		break;
+	      } else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+		fwd_pkt = 0;
+		break;
+	      } else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
+		/* The action has already been performed inside match_filtering_rule()
+		   hence instead of stopping rule evaluation, the next rule
+		   will be evaluated */
+	      }
 	    }
 	  }
       } /* for */
@@ -1192,6 +1249,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #endif
 
 	write_unlock_bh(&pfr->ring_index_lock);
+	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	return(-1);
       }
 
@@ -1236,6 +1294,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #if defined(RING_DEBUG)
 	      printk("[PF_RING] ++ hard_start_xmit succeeded\n");
 #endif
+	      if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	      return(1); /* OK */
 	    }
 
@@ -1252,6 +1311,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	printk("[PF_RING] ++ hard_start_xmit failed\n");
 #endif
 	skb->data += displ;
+	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	return(-ENETDOWN); /* -ENETDOWN */
       }
 
@@ -1286,19 +1346,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   printk("[PF_RING] [pfr->slots_info->insert_idx=%d]\n", pfr->slots_info->insert_idx);
 #endif
 
-  if(!hash_found) {
-    /* Free filtering placeholders */
-    int i;
-
-    for(i=1; i<=max_registered_plugin_id; i++)
-      if(parse_memory_buffer[i]) {
-	if(parse_memory_buffer[i]->mem != NULL) {
-	  kfree(parse_memory_buffer[i]->mem);
-	}
-
-	kfree(parse_memory_buffer[i]);
-      }
-  }
+  if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 
   return(0);
 }
@@ -1713,7 +1761,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
   u_int32_t hash_value = hash_pkt(rule->rule.vlan_id, rule->rule.proto,
 				  rule->rule.host_peer_a, rule->rule.host_peer_b,
 				  rule->rule.port_peer_a, rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
-  int rc = -1, debug = 1;
+  int rc = -1, debug = 0;
 
   if(debug) printk("[PF_RING] handle_filtering_hash_bucket(vlan=%u, proto=%u, "
 		   "sip=%d.%d.%d.%d, sport=%u, dip=%d.%d.%d.%d, dport=%u, "
@@ -1737,7 +1785,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 							     sizeof(filtering_hash_bucket*),
 							     GFP_KERNEL);
     if(pfr->filtering_hash == NULL) {
-      kfree(rule);
+      /* kfree(rule); */
       if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [0]\n", -EFAULT);
       return(-EFAULT);
     }
@@ -1762,7 +1810,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
       if(memcmp(&bucket->rule, &rule->rule, sizeof(hash_filtering_rule)) == 0) {
 	if(add_rule) {
 	  if(debug) printk("[PF_RING] Duplicate found while adding rule: discarded\n");
-	  kfree(rule);
+	  /* kfree(rule); */
 	  return(-EFAULT);
 	} else {
 	  /* We've found the bucket to delete */
