@@ -925,7 +925,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     plugin_registration[rule->rule.plugin_action.plugin_id]
       ->pfring_plugin_handle_skb(the_ring, rule, NULL, hdr, skb,
 				 rule->rule.extended_fields.filter_plugin_id,
-				 &parse_memory_buffer[rule->rule.plugin_action.plugin_id],
+				 &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id],
 				 behaviour);
 
     if(*last_matched_plugin == 0)
