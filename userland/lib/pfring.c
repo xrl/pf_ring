@@ -93,6 +93,21 @@ int pfring_set_reflector(pfring *ring, char *reflectorDevice) {
 
 /* ******************************* */
 
+int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+#ifdef ENABLE_DNA_SUPPORT
+  if(ring->dna_mapped_device) return(-1);
+#endif
+  return(ring ?
+	 setsockopt(ring->fd, 0, SO_PURGE_IDLE_HASH_RULES,
+		    &inactivity_sec, sizeof(inactivity_sec)) : -1);
+#endif
+}
+
+/* ******************************* */
+
 #ifndef USE_PCAP
 static int set_if_promisc(const char *device, int set_promisc) {
   int sock_fd;
@@ -625,7 +640,7 @@ struct udphdr {
 #define TH_ACK_MULTIPLIER	0x10
 #define TH_URG_MULTIPLIER	0x20
 
-
+#ifdef USE_PCAP
 static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 {
   struct iphdr *ip;
@@ -687,7 +702,8 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 
   return(0); /* No IP */
 }
-//#endif
+
+#endif
 
 /* **************************************************** */
 

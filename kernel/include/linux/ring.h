@@ -23,8 +23,8 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.9.0"
-#define RING_VERSION_NUM           0x030900
+#define RING_VERSION                "3.9.1"
+#define RING_VERSION_NUM           0x030901
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -38,6 +38,7 @@
 #define SO_ACTIVATE_RING                 107
 #define SO_RING_BUCKET_LEN               108
 #define SO_SET_CHANNEL_ID                109
+#define SO_PURGE_IDLE_HASH_RULES         110 /* inactivity (sec) */
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -158,6 +159,7 @@ typedef struct {
   filtering_rule_core_fields     core_fields;
   filtering_rule_extended_fields extended_fields;
   filtering_rule_plugin_action   plugin_action;
+  unsigned long jiffies_last_match;  /* Jiffies of the last rule match (updated by pf_ring) */
 } filtering_rule;
 
 /* *********************************** */
@@ -176,6 +178,7 @@ typedef struct {
 
   rule_action_behaviour rule_action; /* What to do in case of match */
   filtering_rule_plugin_action plugin_action;
+  unsigned long jiffies_last_match;  /* Jiffies of the last rule match (updated by pf_ring) */
 } hash_filtering_rule;
 
 /* ************************************************* */
