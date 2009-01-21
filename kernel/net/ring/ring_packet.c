@@ -404,8 +404,8 @@ static u_int32_t num_queued_pkts(struct ring_opt *pfr)
     }
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING] -> num_queued_pkts=%d [tot_insert=%d][tot_read=%d]\n",
-	   tot_pkts, tot_insert, tot_read);
+    printk("[PF_RING] -> [tot_insert=%d][tot_read=%d]\n",
+	   tot_insert, tot_read);
 #endif
   } else
     return(0);
@@ -969,6 +969,8 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   int idx;
   FlowSlot *theSlot;
   int32_t the_bit = 1 << channel_id;
+
+  if(!pfr->ring_active) return;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] --> add_pkt_to_ring(len=%d) [pfr->channel_id=%d][channel_id=%d]\n",
@@ -1966,7 +1968,7 @@ static int ring_release(struct socket *sock)
   struct list_head *ptr, *tmp_ptr;
   void * ring_memory_ptr;
 
-  if(!sk)  return 0;
+  if(!sk) return 0; else pfr->ring_active = 0;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING]  called ring_release\n");
