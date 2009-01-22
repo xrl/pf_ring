@@ -1,7 +1,7 @@
 /*
  * Definitions for packet ring
  *
- * 2004-08 Luca Deri <deri@ntop.org>
+ * 2004-09 Luca Deri <deri@ntop.org>
  */
 
 #ifndef __RING_H
@@ -23,8 +23,8 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.9.1"
-#define RING_VERSION_NUM           0x030901
+#define RING_VERSION                "3.9.2"
+#define RING_VERSION_NUM           0x030902
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -387,7 +387,7 @@ struct ring_opt {
   struct list_head rules;
 
   /* Locks */
-  atomic_t num_ring_slots_waiters;
+  atomic_t num_ring_users;
   wait_queue_head_t ring_slots_waitqueue;
   rwlock_t ring_index_lock, ring_rules_lock;
 

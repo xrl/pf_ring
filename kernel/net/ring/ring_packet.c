@@ -1,6 +1,6 @@
 /* ***************************************************************
  *
- * (C) 2004-08 - Luca Deri <deri@ntop.org>
+ * (C) 2004-09 - Luca Deri <deri@ntop.org>
  *
  * This code includes contributions courtesy of
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
@@ -612,7 +612,7 @@ static inline void ring_remove(struct sock *sk)
 
     if(entry->sk == sk) {
       list_del(ptr);
-      kfree(ptr);
+      kfree(entry);
       ring_table_size--;
       break;
     }
@@ -1070,11 +1070,11 @@ static void free_parse_memory(struct parse_buffer *parse_memory_buffer[]) {
 /* ********************************** */
 
 static int add_skb_to_ring(struct sk_buff *skb,
-			    struct ring_opt *pfr,
-			    struct pfring_pkthdr *hdr,
-			    int is_ip_pkt,
-			    int displ,
-			    short channel_id)
+			   struct ring_opt *pfr,
+			   struct pfring_pkthdr *hdr,
+			   int is_ip_pkt,
+			   int displ,
+			   short channel_id)
 {
   int fwd_pkt = 0;
   struct list_head *ptr, *tmp_ptr;
@@ -1089,6 +1089,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   */
 
   if(!pfr->ring_active) return(-1);
+  atomic_set(&pfr->num_ring_users, 1);
 
   /* [1] BPF Filtering (from af_packet.c) */
   if(pfr->bpfFilter != NULL) {
@@ -1109,6 +1110,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	     pfr->slots_info->insert_idx,
 	     skb->pkt_type, skb->cloned);
 #endif
+      atomic_set(&pfr->num_ring_users, 0);
       return(-1);
     }
   }
@@ -1258,6 +1260,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
 	write_unlock_bh(&pfr->ring_index_lock);
 	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
+	atomic_set(&pfr->num_ring_users, 0);
 	return(-1);
       }
 
@@ -1303,6 +1306,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	      printk("[PF_RING] ++ hard_start_xmit succeeded\n");
 #endif
 	      if(free_parse_mem) free_parse_memory(parse_memory_buffer);
+	      atomic_set(&pfr->num_ring_users, 0);
 	      return(1); /* OK */
 	    }
 
@@ -1320,6 +1324,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #endif
 	skb->data += displ;
 	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
+	atomic_set(&pfr->num_ring_users, 0);
 	return(-ENETDOWN); /* -ENETDOWN */
       }
 
@@ -1354,6 +1359,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   printk("[PF_RING] [pfr->slots_info->insert_idx=%d]\n", pfr->slots_info->insert_idx);
 #endif
 
+  atomic_set(&pfr->num_ring_users, 0);
   if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 
   return(0);
@@ -1933,7 +1939,7 @@ static int ring_create(
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
   rwlock_init(&pfr->ring_rules_lock);
-  atomic_set(&pfr->num_ring_slots_waiters, 0);
+  atomic_set(&pfr->num_ring_users, 0);
   INIT_LIST_HEAD(&pfr->rules);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
@@ -1968,8 +1974,15 @@ static int ring_release(struct socket *sock)
   struct list_head *ptr, *tmp_ptr;
   void * ring_memory_ptr;
 
-  if(!sk) return 0; else pfr->ring_active = 0;
+  if(!sk)
+    return 0; 
+  else
+    pfr->ring_active = 0;
 
+  while(atomic_read(&pfr->num_ring_users) > 0) {
+    schedule();
+  }
+  
 #if defined(RING_DEBUG)
   printk("[PF_RING]  called ring_release\n");
 #endif
@@ -1990,7 +2003,7 @@ static int ring_release(struct socket *sock)
 
       if(entry->the_ring == pfr) {
 	list_del(ptr);
-	kfree(ptr);
+	kfree(entry);
 	break;
       }
     }
@@ -2051,7 +2064,6 @@ static int ring_release(struct socket *sock)
 
   /* Free the ring buffer later, vfree needs interrupts enabled */
   ring_memory_ptr = pfr->ring_memory;
-
   ring_sk(sk) = NULL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0))
@@ -2065,7 +2077,7 @@ static int ring_release(struct socket *sock)
 #if defined(RING_DEBUG)
     printk("[PF_RING]  ring_release: rvfree\n");
 #endif
-    rvfree(pfr->ring_memory, pfr->slots_info->tot_mem);
+    rvfree(ring_memory_ptr, pfr->slots_info->tot_mem);
   }
 
   kfree(pfr);
@@ -3051,7 +3063,7 @@ static int ring_setsockopt(struct socket *sock,
 		  list_del(ptr);
 		  pfr->num_filtering_rules--;
 		  if(entry->plugin_data_ptr != NULL) kfree(entry->plugin_data_ptr);
-		  kfree(ptr);
+		  kfree(entry);
 		  if(debug) printk("[PF_RING] SO_REMOVE_FILTERING_RULE: rule %d has been removed\n", rule_id);
 		  rule_found = 1;
 		  break;
@@ -3418,7 +3430,7 @@ void dna_device_handler(dna_device_operation operation,
       if((entry->dev.netdev == netdev)
 	 && (entry->dev.channel_id == channel_id)) {
 	list_del(ptr);
-	kfree(ptr);
+	kfree(entry);
 	dna_devices_list_size--;
 	break;
       }
