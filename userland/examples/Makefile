@@ -58,7 +58,7 @@ LIBS       = ${LIBPFRING} -lpthread
 #
 # Main targets
 #
-PFPROGS   = ringc rings ringm pcaps pfcount pfmap forwarder
+PFPROGS   = ringc rings ringm pcaps pfcount pfmap forwarder alldevs
 PCAPPROGS = pcount pwrite
 TARGETS   = ${PFPROGS} ${PCAPPROGS}
 
@@ -100,6 +100,10 @@ forwarder: forwarder.o ${LIBPFRING}
 pcount: pcount.o ${LIBPCAP} ${LIBPFRING}
 	@echo "=*= making program $@ =*="
 	${CC} pcount.o ${LIBPCAP} ${LIBS} -o $@
+
+alldevs: alldevs.o ${LIBPCAP} ${LIBPFRING}
+	@echo "=*= making program $@ =*="
+	${CC} alldevs.o ${LIBPCAP} ${LIBS} -o $@
 
 pwrite: pwrite.o ${LIBPCAP} ${LIBPFRING}
 	@echo "=*= making program $@ =*="

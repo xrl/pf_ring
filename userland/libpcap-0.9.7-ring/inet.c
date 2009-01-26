@@ -174,6 +174,10 @@ add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
 		 * devices, a list of adapters that only includes
 		 * the wlt devices).
 		 */
+#define HAVE_PF_RING
+#ifdef HAVE_PF_RING
+		if(0) {
+#endif
 #ifdef __APPLE__
 		if (strncmp(name, "wlt", 3) == 0) {
 			char *en_name;
@@ -207,6 +211,9 @@ add_or_find_if(pcap_if_t **curdev_ret, pcap_if_t **alldevs, const char *name,
 		}
 		pcap_close(p);
 
+#ifdef HAVE_PF_RING
+		}
+#endif
 		/*
 		 * Yes, we can open it.
 		 * Allocate a new entry.
