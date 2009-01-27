@@ -360,6 +360,8 @@ int main(int argc, char* argv[]) {
   char *device = NULL, c, *string = NULL;
   int promisc, snaplen = DEFAULT_SNAPLEN;
   u_char wait_for_packet = 1;
+  struct pfring_pkthdr hdr;
+  char buffer[2048];
 
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
@@ -423,31 +425,21 @@ int main(int argc, char* argv[]) {
   /* ************************************************ */
 
   {
-    struct e1000_rx_desc *head;
     int debug = 0;
-    
-    head = (struct e1000_rx_desc*)pd->dna_dev.descr_packet_memory;
 
     while(1) {
-      if(e1000_there_is_a_packet_to_read(pd, 1)) {
-	char *pkt; 
-	int i;
-	u_int16_t len;
-
-	pkt = get_e1000_packet(pd, pd->rx_reg, &len);
-
-	if(verbose) printf("Got packet [len=%d] at index %d\n", len, pd->rx_reg);
+      if(pfring_recv(pd, buffer, sizeof(buffer), &hdr, 1)) {
+	if(verbose) printf("Got packet [len=%d]\n", hdr.len);
 	if(verbose || debug) {
+	  int i;
+
 	  //printf("[\n");
-	  for(i=0; i<len; i++) {
-	    printf("%02X ", pkt[i] & 0xFF);
+	  for(i=0; i<hdr.len; i++) {
+	    printf("%02X ", buffer[i] & 0xFF);
 	    if(i % 16 == 0) printf("\n");
 	  }
 	  printf("\n");
 	}
-      } else {
-	// sleep(1);
-	sched_yield();
       }
     }
   }

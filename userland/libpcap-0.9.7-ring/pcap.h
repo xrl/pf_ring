@@ -292,6 +292,10 @@ int pcap_setmintocopy(pcap_t *p, int size);
 pfring* pcap_get_pfring_handle(const pcap_t *pHandle);
 #endif
 
+#ifdef HAVE_PF_RING
+pfring* pcap_get_pfring_handle(const pcap_t *pHandle);
+#endif
+
 #ifdef WPCAP
 /* Include file with the wpcap-specific extensions */
 #include <Win32-Extensions.h>

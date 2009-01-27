@@ -871,7 +871,11 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	 */
 	if (getsockopt(handle->fd,
 #ifdef HAVE_PF_RING
-		       (handle->ring == NULL) ? SOL_SOCKET : 0,
+		       /*
+			 SOL_PACKET instead of SOL_SOCKET fix courtesy of
+			 Max Romanov <max.romanov@gmail.com>
+		       */
+		       (handle->ring == NULL) ? SOL_PACKET : 0,
 #else
 		       SOL_SOCKET, 
 #endif

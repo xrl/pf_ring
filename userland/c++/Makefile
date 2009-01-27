@@ -1,4 +1,4 @@
-CPP=g++ -g -O2
+CPP=g++ -g 
 
 ifeq (,$(KERNEL_VER))
 KERNEL_VER=$(shell uname -r)

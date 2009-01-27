@@ -274,7 +274,7 @@ typedef struct {
 #else
   void *packet_waitqueue;
 #endif
-  u_int8_t *interrupt_received;
+  u_int8_t *interrupt_received, in_use;
 } dna_device;
 
 typedef struct {

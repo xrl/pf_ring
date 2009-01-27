@@ -433,6 +433,9 @@ AC_ARG_WITH([dag-libraries], [  --with-dag-libraries=DIR  Endace DAG library dir
 	dag_lib_dir=$withval
 ],[])
 
+# Avoid interference with PF_RING
+want_dag=no
+
 case "$V_PCAP" in
 linux|bpf|dag)
 	#

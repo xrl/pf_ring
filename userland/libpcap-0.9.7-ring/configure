@@ -6364,6 +6364,9 @@ if test "${with_dag_libraries+set}" = set; then
 fi
 
 
+# Avoid interference with PF_RING
+want_dag=no
+
 case "$V_PCAP" in
 linux|bpf|dag)
 	#

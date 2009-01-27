@@ -74,6 +74,7 @@ void print_stats() {
   static struct timeval lastTime;
 
   if(startTime.tv_sec == 0) {
+    lastTime.tv_sec = 0;
     gettimeofday(&startTime, NULL);
     return;
   }
@@ -91,12 +92,14 @@ void print_stats() {
 	    numPkts, (double)numPkts/deltaSec,
 	    numBytes, (double)8*numBytes/(double)(deltaSec*1000000));
 
-    deltaSec = (double)delta_time(&endTime, &lastTime)/1000000;
-    diff = pcapStat.ps_recv-lastPkts;
-    fprintf(stderr, "=========================\n"
-	    "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
-	    diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
-    lastPkts = pcapStat.ps_recv;
+    if(lastTime.tv_sec > 0) {
+      deltaSec = (double)delta_time(&endTime, &lastTime)/1000000;
+      diff = pcapStat.ps_recv-lastPkts;
+      fprintf(stderr, "=========================\n"
+	      "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
+	      diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
+      lastPkts = pcapStat.ps_recv;
+    }
 
     fprintf(stderr, "=========================\n");
   }

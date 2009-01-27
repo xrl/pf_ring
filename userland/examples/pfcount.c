@@ -320,6 +320,9 @@ void printHelp(void) {
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name. Use device@channel for channels]\n");
   /* printf("-f <filter>     [pfring filter]\n"); */
+#ifdef ENABLE_DNA_SUPPORT
+  printf("-d              [Open the device in DNA mode]\n");
+#endif
   printf("-c <cluster id> [cluster id]\n");
   printf("-s <string>     [String to search on packets]\n");
   printf("-l <len>        [Capture length]\n");
@@ -333,7 +336,7 @@ int main(int argc, char* argv[]) {
   char *device = NULL, c, *string = NULL;
   int promisc, snaplen = DEFAULT_SNAPLEN;
   u_int clusterId = 0;
-  u_char wait_for_packet = 1;
+  u_char wait_for_packet = 1, dna_mode = 0;
 
 #if 0
   struct sched_param schedparam;
@@ -373,7 +376,7 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:l:vs:a" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:dl:vs:a" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -384,6 +387,11 @@ int main(int argc, char* argv[]) {
       break;
     case 'c':
       clusterId = atoi(optarg);
+      break;
+    case 'd':
+#ifdef ENABLE_DNA_SUPPORT
+      dna_mode = 1;
+#endif
       break;
     case 'l':
       snaplen = atoi(optarg);
@@ -411,8 +419,15 @@ int main(int argc, char* argv[]) {
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
-  if((pd = pfring_open(device, promisc, 
-		       snaplen, 0 /* we don't use threads */)) == NULL) {
+
+  if(!dna_mode)
+    pd = pfring_open(device, promisc,  snaplen, 0 /* we don't use threads */);
+#ifdef ENABLE_DNA_SUPPORT
+  else
+    pd = pfring_open_dna(device, 0 /* we don't use threads */);
+#endif
+
+  if(pd == NULL) {
     printf("pfring_open error\n");
     return(-1);
   } else {
