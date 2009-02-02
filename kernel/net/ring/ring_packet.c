@@ -2461,14 +2461,15 @@ unsigned int ring_poll(struct file * file,
 {
   FlowSlot* slot;
   struct ring_opt *pfr = ring_sk(sock->sk);
+  int rc;
 
-  /* printk("[PF_RING] -- poll called\n"); */
+  /* printk("[PF_RING] -- poll called\n");  */
 
   if(pfr->dna_device == NULL) {
     /* PF_RING mode */
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING] poll called\n");
+    printk("[PF_RING] poll called (non DNA device)\n");
 #endif
 
     pfr->ring_active = 1;
@@ -2489,11 +2490,21 @@ unsigned int ring_poll(struct file * file,
     /* DNA mode */
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING] poll called [%d]\n", *pfr->dna_device->interrupt_received);
+    printk("[PF_RING] poll called on DNA device [%d]\n", 
+	   *pfr->dna_device->interrupt_received);
 #endif
 
-    if(*pfr->dna_device->interrupt_received == 0)
+    if(pfr->dna_device->wait_packet_function_ptr == NULL) 
+      return(0);
+    
+    rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 1);
+    if(rc == 0) /* No packet arrived yet */ {
       poll_wait(file, pfr->dna_device->packet_waitqueue, wait);
+      rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 0);
+    }
+
+    //*pfr->dna_device->interrupt_received = rc;
+    rc = *pfr->dna_device->interrupt_received;
 
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll %s return [%d]\n", 
@@ -2501,11 +2512,11 @@ unsigned int ring_poll(struct file * file,
 	   *pfr->dna_device->interrupt_received);
 #endif
 
-    if(*pfr->dna_device->interrupt_received) {
-      *pfr->dna_device->interrupt_received = 0;
+    if(rc) {
       return(POLLIN | POLLRDNORM);
-    } else
+    } else {
       return(0);
+    }
   }
 }
 
@@ -3389,7 +3400,9 @@ void dna_device_handler(dna_device_operation operation,
 			struct net_device *netdev,
 			dna_device_model device_model,
 			wait_queue_head_t *packet_waitqueue,
-			u_int8_t *interrupt_received) {
+			u_int8_t *interrupt_received,
+			void *adapter_ptr,
+			dna_wait_packet wait_packet_function_ptr) {
   int debug = 0;
 
   if(debug) 
@@ -3415,6 +3428,8 @@ void dna_device_handler(dna_device_operation operation,
       next->dev.device_model = device_model;
       next->dev.packet_waitqueue = packet_waitqueue;
       next->dev.interrupt_received = interrupt_received;
+      next->dev.adapter_ptr = adapter_ptr;
+      next->dev.wait_packet_function_ptr = wait_packet_function_ptr;
       list_add(&next->list, &ring_dna_devices_list);
       dna_devices_list_size++;
     } else {

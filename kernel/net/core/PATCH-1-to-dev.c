@@ -118,7 +118,9 @@ void do_ring_dna_device_handler(dna_device_operation operation,
 				struct net_device *netdev,
 				dna_device_model device_model,
 				wait_queue_head_t *packet_waitqueue,
-				u_int8_t *interrupt_received) {
+				u_int8_t *interrupt_received,
+				void *adapter_ptr,
+				dna_wait_packet wait_packet_function_ptr) {
   if(ring_dna_device_handler)
     ring_dna_device_handler(operation,
 			    packet_memory,
@@ -131,7 +133,8 @@ void do_ring_dna_device_handler(dna_device_operation operation,
 			    descr_packet_memory_tot_len, channel_id,
 			    phys_card_memory, phys_card_memory_len,
 			    netdev, device_model, packet_waitqueue,
-			    interrupt_received);
+			    interrupt_received, adapter_ptr,
+			    wait_packet_function_ptr);
 }
 
 /* ************************************************ */

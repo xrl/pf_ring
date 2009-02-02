@@ -247,6 +247,8 @@ void deallocateRing(void);
 
 /* ************************************************* */
 
+typedef int (*dna_wait_packet)(void *adapter, int mode);
+
 typedef enum {
   add_device_mapping = 0, remove_device_mapping
 } dna_device_operation;
@@ -275,6 +277,8 @@ typedef struct {
   void *packet_waitqueue;
 #endif
   u_int8_t *interrupt_received, in_use;
+  void *adapter_ptr;
+  dna_wait_packet wait_packet_function_ptr;
 } dna_device;
 
 typedef struct {
@@ -482,7 +486,9 @@ typedef void  (*handle_ring_dna_device)(dna_device_operation operation,
 					struct net_device *netdev,
 					dna_device_model device_model,
 					wait_queue_head_t *packet_waitqueue,
-					u_int8_t *interrupt_received);
+					u_int8_t *interrupt_received,
+					void *adapter_ptr,
+					dna_wait_packet wait_packet_function_ptr);
 
 extern register_pfring_plugin get_register_pfring_plugin(void);
 extern unregister_pfring_plugin get_unregister_pfring_plugin(void);
@@ -514,7 +520,9 @@ extern void do_ring_dna_device_handler(dna_device_operation operation,
 				       struct net_device *netdev,
 				       dna_device_model device_model,
 				       wait_queue_head_t *packet_waitqueue,
-				       u_int8_t *interrupt_received);
+				       u_int8_t *interrupt_received,
+				       void *adapter_ptr,
+				       dna_wait_packet wait_packet_function_ptr);
 
 typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet,
 			       u_char real_skb, short channel_id);
