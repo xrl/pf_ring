@@ -24,7 +24,7 @@
 /* Test Only */
 //#define USE_PCAP 
 
-#define ENABLE_DNA_SUPPORT
+/* #define ENABLE_DNA_SUPPORT */
 
 #include <sys/types.h>
 
