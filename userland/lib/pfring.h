@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-08 - Luca Deri <deri@ntop.org>
+ * (C) 2005-09 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,6 +24,7 @@
 /* Test Only */
 //#define USE_PCAP 
 
+#define ENABLE_DNA_SUPPORT
 
 #include <sys/types.h>
 

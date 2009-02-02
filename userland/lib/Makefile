@@ -24,15 +24,21 @@ KERNELDIR = /lib/modules/${KERNELVER}/source/include
 INCLUDE   = -I${KERNELDIR}
 
 #
+# DNA Support
+#
+DNA_OBJS   = #pfring_e1000_dna.o
+DNA_DEFINE = #-DENABLE_DNA_SUPPORT
+
+#
 # Object files
 #
-OBJS      = pfring.o # pfring_e1000_dna.o
+OBJS      = pfring.o ${DNA_OBJS}
 
 #
 # C compiler and flags
 #
 CC        = gcc
-CFLAGS    = -g -Wall ${INCLUDE}
+CFLAGS    = -g -Wall ${INCLUDE} ${DNA_DEFINE}
 LDFLAGS   = -shared
 
 SYSLIBS   = -lpthread
@@ -58,7 +64,7 @@ ${STATICLIB}: ${OBJS}
 
 ${DYNAMICLIB}: ${OBJS}
 	@echo "=*= making library $@ =*="
-	@${CC} ${LDFLAGS} $< ${SYSLIBS} -o $@
+	${CC} ${LDFLAGS} $< ${SYSLIBS} -o $@
 
 install: ${STATICLIB} ${DYNAMICLIB}
 	cp ${STATICLIB} ${INSTDIR}/lib/

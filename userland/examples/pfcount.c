@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-08 - Luca Deri <deri@ntop.org>
+ * (C) 2005-09 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -129,6 +129,7 @@ void print_stats() {
 void sigproc(int sig) {
   static int called = 0;
 
+  fprintf(stderr, "Leaving...\n");
   if(called) return; else called = 1;
 
   print_stats();
@@ -316,7 +317,7 @@ int32_t gmt2local(time_t t) {
 /* *************************************** */
 
 void printHelp(void) {
-  printf("pfcount\n(C) 2005-08 Deri Luca <deri@ntop.org>\n");
+  printf("pfcount\n(C) 2005-09 Deri Luca <deri@ntop.org>\n");
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name. Use device@channel for channels]\n");
   /* printf("-f <filter>     [pfring filter]\n"); */
@@ -502,6 +503,9 @@ int main(int argc, char* argv[]) {
   }
 
   signal(SIGINT, sigproc);
+  signal(SIGTERM, sigproc);
+  signal(SIGINT, sigproc);
+
 
   if(!verbose) {
     signal(SIGALRM, my_sigalarm);

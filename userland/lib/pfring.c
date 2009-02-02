@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-08 - Luca Deri <deri@ntop.org>
+ * (C) 2005-09 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -23,6 +23,10 @@
 #include <pthread.h>
 
 #include "pfring.h"
+
+#ifdef ENABLE_DNA_SUPPORT
+#include "pfring_e1000_dna.h"
+#endif
 
 // #define RING_DEBUG
 
@@ -640,7 +644,7 @@ struct udphdr {
 #define TH_ACK_MULTIPLIER	0x10
 #define TH_URG_MULTIPLIER	0x20
 
-#ifdef USE_PCAP
+#if defined(USE_PCAP) || defined(ENABLE_DNA_SUPPORT)
 static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 {
   struct iphdr *ip;
@@ -649,6 +653,7 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 
   memset(&hdr->parsed_pkt, 0, sizeof(struct pkt_parsing_info));
 
+  hdr->parsed_header_len = 0;
   hdr->parsed_pkt.eth_type = ntohs(eh->h_proto);
   hdr->parsed_pkt.pkt_detail.offset.eth_offset = 0;
 
@@ -732,32 +737,36 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
     char *pkt;
 
     if(wait_for_incoming_packet) {
+      if(ring->reentrant) pthread_spin_lock(&ring->spinlock);
+      
       switch(ring->dna_dev.device_model) {
       case intel_e1000:
-	pkt = get_next_e1000_packet(ring, buffer, buffer_len, hdr);
+	e1000_there_is_a_packet_to_read(ring, wait_for_incoming_packet);
 	break;
-      case intel_igb:
-	pkt = NULL, hdr->len = 0;
-	break;
-      case intel_ixgbe:
-	pkt = NULL, hdr->len = 0;
-	break;
+      default:
+	return(0);
       }
-    }
 
-    if(ring->reentrant) pthread_spin_lock(&ring->spinlock);
+      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+    }
 
     switch(ring->dna_dev.device_model) {
     case intel_e1000:
-      e1000_there_is_a_packet_to_read(ring, 1);
+      pkt = get_next_e1000_packet(ring, buffer, buffer_len, hdr);
       break;
-    default:
-      return(0);
-    }
-    if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+    case intel_igb:
+      pkt = NULL, hdr->len = 0;
+      break;
+    case intel_ixgbe:
+      pkt = NULL, hdr->len = 0;
+      break;
+    }    
 
     if(pkt && (hdr->len > 0)) {
-      parse_pkt(buffer, hdr);
+      if(1)
+	hdr->parsed_header_len = 0;
+      else
+	parse_pkt(buffer, hdr);
       return(1);
     } else
       return(0);
@@ -903,6 +912,27 @@ static int pfring_get_mapped_dna_device(pfring *ring, dna_device *dev) {
 /* **************************************************** */
 
 #ifdef ENABLE_DNA_SUPPORT
+static void pfring_dump_dna_stats(pfring* ring) {
+  switch(ring->dna_dev.device_model) {
+  case intel_e1000:
+    printf("[Intel 1 Gbit e1000 family]\n");
+    pfring_dump_dna_e1000_stats(ring);
+    break;
+  case intel_igb:
+    printf("[Intel 1 Gbit igb family]\n");
+    break;
+  case intel_ixgbe:
+    printf("[Intel 10 Gbit ixgbe family]\n");
+    break;
+  default:
+    printf("[Unknown card model]\n");
+  }
+}
+#endif
+
+/* **************************************************** */
+
+#ifdef ENABLE_DNA_SUPPORT
 pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 #ifdef USE_PCAP
   return(NULL);
@@ -993,9 +1023,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 	return (NULL);
       }
 
-      /* FIX */
-      init_e1000(ring);
-
+      init_e1000(ring); /* FIX */
       pfring_dump_dna_stats(ring);
 
       return(ring);
@@ -1017,23 +1045,3 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 }
 #endif
 
-/* **************************************************** */
-
-#ifdef ENABLE_DNA_SUPPORT
-static void pfring_dump_dna_stats(pfring* ring) {
-  switch(ring->dna_dev.device_model) {
-  case intel_e1000:
-    printf("[Intel 1 Gbit e1000 family]\n");
-    pfring_dump_dna_e1000_stats(ring);
-    break;
-  case intel_igb:
-    printf("[Intel 1 Gbit igb family]\n");
-    break;
-  case intel_ixgbe:
-    printf("[Intel 10 Gbit ixgbe family]\n");
-    break;
-  default:
-    printf("[Unknown card model]\n");
-  }
-}
-#endif
