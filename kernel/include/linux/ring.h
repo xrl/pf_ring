@@ -23,8 +23,8 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.9.2"
-#define RING_VERSION_NUM           0x030902
+#define RING_VERSION                "3.9.3"
+#define RING_VERSION_NUM           0x030903
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99

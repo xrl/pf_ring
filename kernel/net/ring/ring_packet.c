@@ -822,6 +822,56 @@ inline int hash_bucket_match_rule(filtering_hash_bucket *hash_bucket,
 
 /* ********************************** */
 
+inline int hash_filtering_rule_match(hash_filtering_rule *a,
+				     hash_filtering_rule *b)
+{
+  int debug = 0;
+
+  if(debug)
+    printk("[PF_RING] (%u,%d,%d.%d.%d.%d:%u,%d.%d.%d.%d:%u) (%u,%d,%d.%d.%d.%d:%u,%d.%d.%d.%d:%u)\n",
+	   a->vlan_id, a->proto,
+	   ((a->host_peer_a >> 24) & 0xff),
+	   ((a->host_peer_a >> 16) & 0xff),
+	   ((a->host_peer_a >> 8) & 0xff),
+	   ((a->host_peer_a >> 0) & 0xff),
+	   a->port_peer_a,
+	   ((a->host_peer_b >> 24) & 0xff),
+	   ((a->host_peer_b >> 16) & 0xff),
+	   ((a->host_peer_b >> 8) & 0xff),
+	   ((a->host_peer_b >> 0) & 0xff),
+	   a->port_peer_b,
+
+	   b->vlan_id, b->proto,
+	   ((b->host_peer_a >> 24) & 0xff),
+	   ((b->host_peer_a >> 16) & 0xff),
+	   ((b->host_peer_a >> 8) & 0xff),
+	   ((b->host_peer_a >> 0) & 0xff),
+	   b->port_peer_a,
+	   ((b->host_peer_b >> 24) & 0xff),
+	   ((b->host_peer_b >> 16) & 0xff),
+	   ((b->host_peer_b >> 8) & 0xff),
+	   ((b->host_peer_b >> 0) & 0xff),
+	   b->port_peer_b);
+
+
+  if((a->proto == b->proto)
+     && (a->vlan_id == b->vlan_id)
+     && (((a->host_peer_a == b->host_peer_a)
+	  && (a->host_peer_b == b->host_peer_b)
+	  && (a->port_peer_a == b->port_peer_a)
+	  && (a->port_peer_b == b->port_peer_b))
+	 ||
+	 ((a->host_peer_a == b->host_peer_b)
+	  && (a->host_peer_b == b->host_peer_a)
+	  && (a->port_peer_a == b->port_peer_b)
+	  && (a->port_peer_b == b->port_peer_a)))) {
+    return(1);
+  } else
+    return(0);
+}
+
+/* ********************************** */
+
 /* 0 = no match, 1 = match */
 static int match_filtering_rule(struct ring_opt *the_ring,
 				filtering_rule_element *rule,
@@ -1821,7 +1871,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     filtering_hash_bucket *prev = NULL, *bucket = pfr->filtering_hash[hash_value];
 
     while(bucket != NULL) {
-      if(memcmp(&bucket->rule, &rule->rule, sizeof(hash_filtering_rule)) == 0) {
+      if(hash_filtering_rule_match(&bucket->rule, &rule->rule)) {
 	if(add_rule) {
 	  if(debug) printk("[PF_RING] Duplicate found while adding rule: discarded\n");
 	  /* kfree(rule); */
