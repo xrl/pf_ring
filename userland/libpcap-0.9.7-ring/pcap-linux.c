@@ -1454,6 +1454,37 @@ static void map_arphrd_to_dlt(pcap_t *handle, int arptype, int cooked_ok)
 	}
 }
 
+static void maximize_socket_buffer(int sock_fd, int buf_type)  {
+  int rcv_buffsize_base, rcv_buffsize, max_buf_size = 1024 * 2 * 1024 /* 2 MB */, debug = 1, i;
+  socklen_t len = sizeof(rcv_buffsize_base);
+
+  if(getsockopt(sock_fd, SOL_SOCKET, buf_type, &rcv_buffsize_base, &len) < 0) {
+    printf("Unable to read socket receiver buffer size [%s]\n",
+		      strerror(errno));
+    return;
+  } else {
+    if(debug) printf("Default socket %s buffer size is %d\n",
+				buf_type == SO_RCVBUF ? "receive" : "send",
+				rcv_buffsize_base);
+  }
+
+  for(i=2;; i++) {
+    rcv_buffsize = i * rcv_buffsize_base;
+    if(rcv_buffsize > max_buf_size) break;
+
+    if(setsockopt(sock_fd, SOL_SOCKET, buf_type, &rcv_buffsize, sizeof(rcv_buffsize)) < 0) {
+      if(debug) printf("Unable to set socket %s buffer size [%s]\n",
+				  buf_type == SO_RCVBUF ? "receive" : "send",
+				  strerror(errno));
+      break;
+    } else
+      if(debug) printf("%s socket buffer size set %d\n",
+				  buf_type == SO_RCVBUF ? "Receive" : "Send",
+				  rcv_buffsize);
+  }
+}
+
+
 /* ===== Functions to interface to the newer kernels ================== */
 
 /*
@@ -1488,6 +1519,8 @@ live_open_new(pcap_t *handle, const char *device, int promisc,
 				 pcap_strerror(errno) );
 			break;
 		}
+
+		maximize_socket_buffer(sock_fd, SO_RCVBUF);
 
 		/* It seems the kernel supports the new interface. */
 		handle->md.sock_packet = 0;
