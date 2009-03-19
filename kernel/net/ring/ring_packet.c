@@ -133,6 +133,29 @@ static void ring_proc_remove(struct ring_opt *pfr);
 static void ring_proc_init(void);
 static void ring_proc_term(void);
 
+/*
+  Caveat 
+  [http://lists.metaprl.org/pipermail/cs134-labs/2002-October/000025.html]
+
+  GFP_ATOMIC means roughly "make the allocation operation atomic".  This
+  means that the kernel will try to find the memory using a pile of free
+  memory set aside for urgent allocation.  If that pile doesn't have
+  enough free pages, the operation will fail.  This flag is useful for
+  allocation within interrupt handlers.
+  
+  GFP_KERNEL will try a little harder to find memory.  There's a
+  possibility that the call to kmalloc() will sleep while the kernel is
+  trying to find memory (thus making it unsuitable for interrupt
+  handlers).  It's much more rare for an allocation with GFP_KERNEL to
+  fail than with GFP_ATOMIC.
+  
+  In all cases, kmalloc() should only be used allocating small amounts of
+  memory (a few kb).  vmalloc() is better for larger amounts.
+  
+  Also note that in lab 1 and lab 2, it would have been arguably better to
+  use GFP_KERNEL instead of GFP_ATOMIC.  GFP_ATOMIC should be saved for
+  those instances in which a sleep would be totally unacceptable.
+*/
 /* ********************************** */
 
 /* Forward */
@@ -1847,13 +1870,15 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     if(pfr->filtering_hash == NULL)
       pfr->filtering_hash = (filtering_hash_bucket**)kcalloc(DEFAULT_RING_HASH_SIZE,
 							     sizeof(filtering_hash_bucket*),
-							     GFP_KERNEL);
+							     GFP_ATOMIC);
     if(pfr->filtering_hash == NULL) {
       /* kfree(rule); */
       if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [0]\n", -EFAULT);
       return(-EFAULT);
     }
   }
+
+  if(debug) printk("[PF_RING] handle_filtering_hash_bucket() allocated memory\n");
 
   if(pfr->filtering_hash == NULL) {
     /* We're trying to delete a hash rule from an empty hash */
@@ -1879,6 +1904,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 	} else {
 	  /* We've found the bucket to delete */
 
+	  if(debug) printk("[PF_RING] handle_filtering_hash_bucket() found a bucket to delete: removing it\n");
 	  if(prev == NULL)
 	    pfr->filtering_hash[hash_value] = bucket->next;
 	  else
@@ -1898,6 +1924,8 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 
     if(add_rule) {
       /* If the flow arrived until here, then this rule is unique */
+
+      if(debug) printk("[PF_RING] handle_filtering_hash_bucket() no duplicate rule found: adding the rule\n");
       rule->next = pfr->filtering_hash[hash_value];
       pfr->filtering_hash[hash_value] = rule;
       rc = 0;
