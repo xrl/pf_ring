@@ -718,13 +718,10 @@ static int parse_pkt(struct sk_buff *skb,
 
     hdr->parsed_pkt.ipv4_src = ntohl(ip->saddr), hdr->parsed_pkt.ipv4_dst = ntohl(ip->daddr), hdr->parsed_pkt.l3_proto = ip->protocol;
     hdr->parsed_pkt.ipv4_tos = ip->tos;
+    hdr->parsed_pkt.pkt_detail.offset.l4_offset = hdr->parsed_pkt.pkt_detail.offset.l3_offset+ip->ihl*4;
 
     if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP))
       {
-	u_int16_t ip_len = ip->ihl*4;
-
-	hdr->parsed_pkt.pkt_detail.offset.l4_offset = hdr->parsed_pkt.pkt_detail.offset.l3_offset+ip_len;
-
 	if(ip->protocol == IPPROTO_TCP)
 	  {
 	    struct tcphdr *tcp = (struct tcphdr*)(skb->data+hdr->parsed_pkt.pkt_detail.offset.l4_offset);
