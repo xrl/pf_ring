@@ -105,7 +105,7 @@ all: libpcap.a
 
 libpcap.a: $(OBJ)
 	@rm -f $@
-	ar rc $@ $(OBJ) $(LIBS)
+	ar rc $@ $(OBJ) ../lib/pfring.o $(LIBS)
 	$(RANLIB) $@
 
 shared: libpcap.$(DYEXT)
