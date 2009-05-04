@@ -68,6 +68,20 @@ int pfring_set_channel_id(pfring *ring, int32_t channel_id) {
 
 /* ******************************* */
 
+int pfring_set_application_name(pfring *ring, char *name) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+#ifdef ENABLE_DNA_SUPPORT
+  if(ring->dna_mapped_device) return(-1);
+#endif
+  return(ring ? setsockopt(ring->fd, 0, SO_SET_APPL_NAME,
+			   name, strlen(name)): -1);
+#endif
+}
+
+/* ******************************* */
+
 int pfring_remove_from_cluster(pfring *ring) {
 #ifdef USE_PCAP
   return(-1);

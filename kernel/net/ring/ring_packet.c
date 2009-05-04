@@ -76,7 +76,7 @@
 #endif
 #include <net/ip.h>
 
-/* #define RING_DEBUG */
+#define RING_DEBUG
 
 /* ************************************************* */
 
@@ -473,6 +473,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
 	rlen += sprintf(buf + rlen, "Version       : %d\n",  fsi->version);
 	rlen += sprintf(buf + rlen, "Sampling Rate : %d\n",  pfr->sample_rate);
+	rlen += sprintf(buf + rlen, "Appl. Name    : %s\n",  pfr->appl_name ? pfr->appl_name : "<unknown>");
 	rlen += sprintf(buf + rlen, "IP Defragment : %s\n",  enable_ip_defrag ? "Yes" : "No");
 	rlen += sprintf(buf + rlen, "BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
 	rlen += sprintf(buf + rlen, "# Filt. Rules : %d\n",  pfr->num_filtering_rules);
@@ -2147,6 +2148,7 @@ static int ring_release(struct socket *sock)
 
   sock_put(sk);
   write_unlock_bh(&ring_mgmt_lock);
+  if(pfr->appl_name != NULL) kfree(pfr->appl_name);
 
   if(ring_memory_ptr != NULL) {
 #if defined(RING_DEBUG)
@@ -2800,7 +2802,7 @@ static int ring_setsockopt(struct socket *sock,
   int val, found, ret = 0 /* OK */;
   u_int cluster_id, debug = 0;
   int32_t channel_id;
-  char devName[8];
+  char devName[8], applName[32+1];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
   u_int16_t rule_id, rule_inactivity;
@@ -2909,6 +2911,23 @@ static int ring_setsockopt(struct socket *sock,
       printk("[PF_RING] [pfr->channel_id=%d][channel_id=%d]\n",
 	     pfr->channel_id, channel_id);
 #endif
+      ret = 0;
+      break;
+
+    case SO_SET_APPL_NAME:
+      if(optlen > sizeof(applName) /* Names should not be too long */)
+	return -EINVAL;
+
+      if(copy_from_user(&applName, optval, optlen))
+	return -EFAULT;
+
+      if(pfr->appl_name != NULL) kfree(pfr->appl_name);
+      pfr->appl_name = (char*)kmalloc(optlen+1, GFP_ATOMIC);
+      if(pfr->appl_name != NULL) {
+	memcpy(pfr->appl_name, applName, optlen);
+	pfr->appl_name[optlen] = '\0';
+      }
+
       ret = 0;
       break;
 

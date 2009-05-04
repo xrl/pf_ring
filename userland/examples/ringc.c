@@ -233,7 +233,8 @@ int main (int argc, char * argv [])
     {
       printf ("%s: cannot open interface '%s'\n", progname, interface);
       return -1;
-    }
+    } else
+    pfring_set_application_name(ring, "ringc");
 
   /* Print PF_RING driver version */
   pfring_version (ring, & ringdriver);

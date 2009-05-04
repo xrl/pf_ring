@@ -434,6 +434,7 @@ int main(int argc, char* argv[]) {
   } else {
     u_int32_t version;
 
+    pfring_set_application_name(pd, "pfcount");
     pfring_version(pd, &version);
 
     printf("Using PF_RING v.%d.%d.%d\n",

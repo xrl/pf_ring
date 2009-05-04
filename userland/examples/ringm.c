@@ -293,7 +293,8 @@ int main (int argc, char * argv [])
     {
       printf ("%s: cannot open interface '%s'\n", progname, interface);
       return -1;
-    }
+    } else
+    pfring_set_application_name(ring, "ringm");
 
   /* Allocate enough memory to keep the pointers to the threads */
   threads = calloc ((threadsno + 1) * sizeof (my_thread_t *), 1);

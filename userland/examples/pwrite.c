@@ -130,7 +130,8 @@ int main(int argc, char* argv[]) {
   if((pd = pfring_open(device, promisc, 1500, 0)) == NULL) {
     printf("pfring_open error\n");
     return(-1);
-  }
+  } else
+    pfring_set_application_name(pd, "pwrite");
 
   printf("Capturing from %s\n", device);
 

@@ -213,7 +213,8 @@ int main (int argc, char * argv [])
       {
 	printf ("%s: cannot open interface '%s'\n", progname, interface);
 	return -1;
-      }
+      } else
+      pfring_set_application_name(ringtable [r], "rings");
 
   /* Get memory for packet capturing */
   packet = calloc (snapshot, 1);

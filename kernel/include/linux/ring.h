@@ -23,8 +23,8 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.9.3"
-#define RING_VERSION_NUM           0x030903
+#define RING_VERSION                "3.9.4"
+#define RING_VERSION_NUM           0x030904
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -39,6 +39,7 @@
 #define SO_RING_BUCKET_LEN               108
 #define SO_SET_CHANNEL_ID                109
 #define SO_PURGE_IDLE_HASH_RULES         110 /* inactivity (sec) */
+#define SO_SET_APPL_NAME                 111
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -356,6 +357,7 @@ struct ring_opt {
   struct net_device *ring_netdev;
   u_short ring_pid;
   u_int32_t ring_id;
+  char *appl_name; /* String that identifies the application bound to the socket */
 
   /* Direct NIC Access */
   u_int8_t mmap_count;

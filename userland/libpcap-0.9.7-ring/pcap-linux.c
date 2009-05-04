@@ -454,6 +454,14 @@ pcap_open_live(const char *device, int snaplen, int promisc, int to_ms,
 	return handle;
 }
 
+#ifdef HAVE_PF_RING
+void pcap_set_appl_name_linux(pcap_t *handle, char *appl_name)
+{
+  if(handle->ring)
+    pfring_set_application_name(handle->ring, appl_name);
+}
+#endif
+
 /*
  *  Read at most max_packets from the capture stream and call the callback
  *  for each of them. Returns the number of packets handled or -1 if an
