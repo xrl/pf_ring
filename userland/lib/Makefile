@@ -46,7 +46,7 @@ SYSLIBS   = -lpthread
 # How to make an object file
 %.o: %.c %.h
 #	@echo "=*= making object $@ =*="
-	@${CC} ${CFLAGS} -c $< -o $@
+	${CC} ${CFLAGS} -c $< -o $@
 
 #
 # Main targets
@@ -59,8 +59,8 @@ all: ${TARGETS}
 
 ${STATICLIB}: ${OBJS}
 	@echo "=*= making library $@ =*="
-	@ar rs $@ ${OBJS}
-	@ranlib $@
+	ar rs $@ ${OBJS}
+	ranlib $@
 
 ${DYNAMICLIB}: ${OBJS}
 	@echo "=*= making library $@ =*="

@@ -76,7 +76,7 @@
 #endif
 #include <net/ip.h>
 
-#define RING_DEBUG
+/* #define RING_DEBUG */
 
 /* ************************************************* */
 
@@ -1601,7 +1601,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     }
 
 #if defined(RING_DEBUG)
-  if(1) {
+  if(0) {
     struct timeval tv;
 
     skb_get_timestamp(skb, &tv);
@@ -3687,7 +3687,7 @@ static int __init ring_init(void)
   int i;
 
   printk("[PF_RING] Welcome to PF_RING %s\n"
-	 "(C) 2004-08 L.Deri <deri@ntop.org>\n",
+	 "(C) 2004-09 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION);
 
   INIT_LIST_HEAD(&ring_table);

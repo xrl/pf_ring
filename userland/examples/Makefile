@@ -28,6 +28,10 @@ PFRINGDIR  = ../lib
 LIBPFRING  = ${PFRINGDIR}/libpfring.a
 
 #
+# DNA Support
+DNA_DEFINE = #-DENABLE_DNA_SUPPORT
+
+#
 # PF_RING aware libpcap
 #
 PCAPDIR    = ../libpcap-0.9.7-ring
@@ -42,7 +46,7 @@ INCLUDE    = -I${KERNELDIR} -I${PFRINGDIR} -I${PCAPDIR}
 # C compiler and flags
 #
 CC         = gcc
-CFLAGS     = -g -Wall ${INCLUDE}
+CFLAGS     = -g -Wall ${INCLUDE} ${DNA_DEFINE}
 # LDFLAGS  =
 
 #
