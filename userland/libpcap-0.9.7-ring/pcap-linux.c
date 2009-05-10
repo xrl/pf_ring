@@ -1463,7 +1463,7 @@ static void map_arphrd_to_dlt(pcap_t *handle, int arptype, int cooked_ok)
 }
 
 static void maximize_socket_buffer(int sock_fd, int buf_type)  {
-  int rcv_buffsize_base, rcv_buffsize, max_buf_size = 1024 * 2 * 1024 /* 2 MB */, debug = 1, i;
+  int rcv_buffsize_base, rcv_buffsize, max_buf_size = 1024 * 2 * 1024 /* 2 MB */, debug = 0, i;
   socklen_t len = sizeof(rcv_buffsize_base);
 
   if(getsockopt(sock_fd, SOL_SOCKET, buf_type, &rcv_buffsize_base, &len) < 0) {
