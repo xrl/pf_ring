@@ -1617,7 +1617,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
 #if defined (RING_DEBUG)
-  printk("[PF_RING] channel_id=%d\n", channel_id);
+  /* printk("[PF_RING] channel_id=%d\n", channel_id); */
 #endif
 
 #ifdef PROFILING
@@ -2576,12 +2576,12 @@ unsigned int ring_poll(struct file * file,
     
     rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 1);
     if(rc == 0) /* No packet arrived yet */ {
-      poll_wait(file, pfr->dna_device->packet_waitqueue, wait);
+      /* poll_wait(file, pfr->dna_device->packet_waitqueue, wait); */
+    } else
       rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 0);
-    }
 
     //*pfr->dna_device->interrupt_received = rc;
-    rc = *pfr->dna_device->interrupt_received;
+    if(rc == 0) rc = *pfr->dna_device->interrupt_received;
 
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll %s return [%d]\n", 

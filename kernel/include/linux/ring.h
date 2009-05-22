@@ -52,8 +52,6 @@
 
 /* *********************************** */
 
-#define NO_VLAN ((u_int16_t)-1)
-
 struct pkt_aggregation_info {
   u_int32_t num_pkts, num_bytes;
   struct timeval first_seen, last_seen;
