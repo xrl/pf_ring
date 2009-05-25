@@ -508,7 +508,7 @@ configure:5172: $? = 0
 configure:5190: result: yes
 configure:5110: checking for strlcpy
 configure:5166: gcc -o conftest -g -O2   conftest.c  >&5
-/tmp/ccgS9irG.o: In function `main':
+/tmp/ccoFEkoM.o: In function `main':
 /home/deri/PF_RING/userland/libpcap-1.0.0-ring/conftest.c:60: undefined reference to `strlcpy'
 collect2: ld returned 1 exit status
 configure:5172: $? = 1
@@ -787,7 +787,7 @@ configure:8165: $? = 0
 configure:8183: result: yes
 configure:8194: checking for dag_get_stream_erf_types in -ldag
 configure:8229: gcc -o conftest -g -O2  -L/usr/local/lib conftest.c -ldag   >&5
-/tmp/cckY0dTd.o: In function `main':
+/tmp/ccUdC7zm.o: In function `main':
 /home/deri/PF_RING/userland/libpcap-1.0.0-ring/conftest.c:49: undefined reference to `dag_get_stream_erf_types'
 collect2: ld returned 1 exit status
 configure:8235: $? = 1

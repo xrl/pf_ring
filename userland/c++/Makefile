@@ -4,12 +4,12 @@ ifeq (,$(KERNEL_VER))
 KERNEL_VER=$(shell uname -r)
 endif
 KERNEL_DIR=/lib/modules/$(KERNEL_VER)/source/include
-LIBPCAP_DIR=../libpcap-0.9.7-ring
+LIBPCAP_DIR=../libpcap-1.0.0-ring
 INCLUDE=-I$(KERNEL_DIR) -I$(LIBPCAP_DIR) -I../lib
 LIBPFRING_CPP=libpfring_cpp.a
 RANLIB=ranlib
 OBJ=PFring.o
-LIBS=-L../lib -lpfring -lpthread 
+LIBS=../lib/libpfring.a -lpthread 
 
 all: $(LIBPFRING_CPP) pf_test
 

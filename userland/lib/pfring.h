@@ -163,7 +163,6 @@ extern "C" {
   int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */);
   int pfring_get_selectable_fd(pfring *ring);
 
-
 #ifdef  __cplusplus
 }
 #endif
