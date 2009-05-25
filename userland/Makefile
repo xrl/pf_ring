@@ -7,7 +7,7 @@ libpfring:
 	cd lib; make
 
 pcap:
-	cd libpcap-0.9.7-ring; ./configure;make
+	cd libpcap-1.0.0-ring; ./configure;make
 
 ring_examples:
 	cd examples; make
@@ -26,7 +26,7 @@ libpfring_clean:
 	cd lib; make clean
 
 pcap_clean:
-	cd libpcap-0.9.7-ring; make clean
+	cd libpcap-1.0.0-ring; make clean
 
 ring_examples_clean:
 	cd examples; make clean

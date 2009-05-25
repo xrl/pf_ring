@@ -1046,6 +1046,8 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
       free(ring);
       return(NULL);
     }
+  } else {
+    err = -1;
   }
 
   if(err == 0) {
@@ -1053,8 +1055,14 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
       pthread_spin_init(&ring->spinlock, PTHREAD_PROCESS_PRIVATE);
 
     return(ring);
-  } else
-    return(NULL);
+  }
+
+  if(ring) {
+    free(ring);
+    ring = NULL;
+  }
+
+  return(NULL);
 #endif
 }
 #endif
