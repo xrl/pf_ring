@@ -19,7 +19,6 @@ First of all you need to patch your kernel. If you already have a patch file use
    zcat linux-2.X.Y.patch.gz | patch -p0
 
 6. Configure your kernel (2.4 and 2.6 are slightly different)
-   - Enable RTIRQ (if you use it)
    - Enable 'Code maturity level options' 
              -> ' Prompt for development and/or incomplete code/drivers'
    - Enable 'Networking options'
@@ -33,6 +32,12 @@ First of all you need to patch your kernel. If you already have a patch file use
 7. You're now ready to build your kernel. Build it as usual, install it and reboot your box.
    
 8. Now build libpcap-ring and you networking applications against libpcap-ring. Note that it is a common mistake to run applications dynamically linked with libcap-ring with the old legacy libpcap.
+
+--- optionally ---
+
+If you have already patched the Linux kernel with PF_RING
+you can type make in this directory to build the ring module
+
 
 2.   Using PF_RING
 -------------------
