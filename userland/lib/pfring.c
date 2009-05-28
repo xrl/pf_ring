@@ -69,6 +69,10 @@ int pfring_set_channel_id(pfring *ring, int32_t channel_id) {
 /* ******************************* */
 
 int pfring_set_application_name(pfring *ring, char *name) {
+#if !defined(SO_SET_APPL_NAME)
+  return(-1);
+#else
+
 #ifdef USE_PCAP
   return(-1);
 #else
@@ -77,6 +81,7 @@ int pfring_set_application_name(pfring *ring, char *name) {
 #endif
   return(ring ? setsockopt(ring->fd, 0, SO_SET_APPL_NAME,
 			   name, strlen(name)): -1);
+#endif
 #endif
 }
 
@@ -128,7 +133,7 @@ int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec) {
 
 #ifndef USE_PCAP
 static int set_if_promisc(const char *device, int set_promisc) {
-  int sock_fd;
+  int sock_fd, ret = 0;
   struct ifreq ifr;
 
   if(device == NULL) return(-3);
@@ -143,18 +148,19 @@ static int set_if_promisc(const char *device, int set_promisc) {
     return(-2);
   }
 
+  ret = ifr.ifr_flags & IFF_PROMISC;
   if(set_promisc) {
-    if((ifr.ifr_flags & IFF_PROMISC) == 0) ifr.ifr_flags |= IFF_PROMISC;
+    if(ret == 0) ifr.ifr_flags |= IFF_PROMISC;
   } else {
     /* Remove promisc */
-    if((ifr.ifr_flags & IFF_PROMISC) != 0) ifr.ifr_flags &= ~IFF_PROMISC;
+    if(ret != 0) ifr.ifr_flags &= ~IFF_PROMISC;
   }
 
   if(ioctl(sock_fd, SIOCSIFFLAGS, &ifr) == -1)
     return(-1);
 
   close(sock_fd);
-  return(0);
+  return(ret);
 }
 #endif
 
