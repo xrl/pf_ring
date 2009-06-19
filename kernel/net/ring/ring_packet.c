@@ -2779,7 +2779,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 	  else
 	    prev->next = next;
 	  
-	  num_purged_rules++;
+	  pfr->num_filtering_rules--, num_purged_rules++;
 	} else
 	  prev = scan;
 	  
