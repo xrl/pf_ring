@@ -534,7 +534,9 @@ static void ring_proc_init(void)
 			     proc_net);
 
   if(ring_proc_dir) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30))
     ring_proc_dir->owner = THIS_MODULE;
+#endif
     ring_proc = create_proc_read_entry(PROC_INFO, 0,
 				       ring_proc_dir,
 				       ring_proc_get_info,
@@ -546,8 +548,10 @@ static void ring_proc_init(void)
     if(!ring_proc || !ring_proc_plugins_info)
       printk("[PF_RING]  unable to register proc file\n");
     else {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30))
       ring_proc->owner = THIS_MODULE;
       ring_proc_plugins_info->owner = THIS_MODULE;
+#endif
       printk("[PF_RING]  registered /proc/net/pf_ring/\n");
     }
   } else
@@ -1601,7 +1605,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     }
 
 #if defined(RING_DEBUG)
-  if(0) {
+  if(1) {
     struct timeval tv;
 
     skb_get_timestamp(skb, &tv);
@@ -1713,6 +1717,10 @@ static int skb_ring_handler(struct sk_buff *skb,
   /* Avoid the ring to be manipulated while playing with it */
   read_lock_bh(&ring_mgmt_lock);
 
+#if 0
+  printk("[PF_RING] -----------------------------------\n");
+#endif
+
   /* [1] Check unclustered sockets */
   list_for_each(ptr, &ring_table) {
     struct ring_opt *pfr;
@@ -1723,6 +1731,15 @@ static int skb_ring_handler(struct sk_buff *skb,
     skElement = entry->sk;
     pfr = ring_sk(skElement);
 
+#if 0
+    if(pfr  && (pfr->ring_slots != NULL)) {
+      /* if(pfr->ring_netdev && pfr->ring_netdev->name && strcmp(pfr->ring_netdev->name, "eth0")) */
+	printk("[PF_RING] Received packet [device=%s][socket=%s][%p]\n",
+	       skb->dev->name ? skb->dev->name : "<unknown>", 
+	       pfr->ring_netdev->name ? pfr->ring_netdev->name : "<unknown>", pfr);
+    }
+#endif
+
     if((pfr != NULL)
        && (pfr->cluster_id == 0 /* No cluster */)
        && (pfr->ring_slots != NULL)
@@ -1732,6 +1749,12 @@ static int skb_ring_handler(struct sk_buff *skb,
       /* We've found the ring where the packet can be stored */
       int old_caplen = hdr.caplen; /* Keep old lenght */
       hdr.caplen = min(hdr.caplen, pfr->bucket_len);
+#if 0
+      printk("[PF_RING] MATCH received packet [device=%s][socket=%s][%p]\n",
+	     skb->dev->name ? skb->dev->name : "<unknown>",
+	     pfr->ring_netdev->name ? pfr->ring_netdev->name : "<unknown>", pfr);
+#endif
+
       add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id);
       hdr.caplen = old_caplen;
       rc = 1; /* Ring found: we've done our job */
