@@ -23,7 +23,7 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.9.4"
+#define RING_VERSION                "3.9.5"
 #define RING_VERSION_NUM           0x030904
 
 /* Set */
@@ -140,11 +140,12 @@ typedef struct {
 typedef enum {
   forward_packet_and_stop_rule_evaluation = 0,
   dont_forward_packet_and_stop_rule_evaluation,
-  execute_action_and_continue_rule_evaluation
+  execute_action_and_continue_rule_evaluation,
+  forward_packet_add_rule_and_stop_rule_evaluation
 } rule_action_behaviour;
 
 typedef enum {
-  forward_packet = 0,
+  forward_packet = 100,
   dont_forward_packet,
   use_rule_forward_policy
 } packet_action_behaviour;

@@ -280,7 +280,7 @@ static void *rvmalloc(unsigned long size)
   }
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  rvmalloc: %lu pages\n", pages);
+  printk("[PF_RING] rvmalloc: %lu pages\n", pages);
 #endif
   return mem;
 }
@@ -296,7 +296,7 @@ static void rvfree(void *mem, unsigned long size)
   unsigned long pages = 0;
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  rvfree: %lu bytes\n", size);
+  printk("[PF_RING] rvfree: %lu bytes\n", size);
 #endif
 
   if (!mem)
@@ -310,12 +310,12 @@ static void rvfree(void *mem, unsigned long size)
     size -= PAGE_SIZE;
   }
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  rvfree: %lu pages\n", pages);
-  printk("[PF_RING]  rvfree: calling vfree....\n");
+  printk("[PF_RING] rvfree: %lu pages\n", pages);
+  printk("[PF_RING] rvfree: calling vfree....\n");
 #endif
   vfree(mem);
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  rvfree: after vfree....\n");
+  printk("[PF_RING] rvfree: after vfree....\n");
 #endif
 }
 
@@ -390,7 +390,7 @@ static void ring_proc_add(struct ring_opt *pfr, struct net_device *dev)
       snprintf(name, sizeof(name), "%d.%d", pfr->ring_pid, pfr->ring_id);
 
     create_proc_read_entry(name, 0, ring_proc_dir, ring_proc_get_info, pfr);
-    /* printk("[PF_RING]  added /proc/net/pf_ring/%s\n", name); */
+    /* printk("[PF_RING] added /proc/net/pf_ring/%s\n", name); */
     /* printk("[PF_RING] %s has index %d\n", dev->name, dev->ifindex); */
   }
 }
@@ -409,7 +409,7 @@ static void ring_proc_remove(struct ring_opt *pfr)
       snprintf(name, sizeof(name), "%d.%d", pfr->ring_pid, pfr->ring_id);
 
     remove_proc_entry(name, ring_proc_dir);
-    printk("[PF_RING]  removed /proc/net/pf_ring/%s\n", name);
+    printk("[PF_RING] removed /proc/net/pf_ring/%s\n", name);
   }
 }
 
@@ -546,16 +546,16 @@ static void ring_proc_init(void)
 						    ring_proc_get_plugin_info,
 						    NULL);
     if(!ring_proc || !ring_proc_plugins_info)
-      printk("[PF_RING]  unable to register proc file\n");
+      printk("[PF_RING] unable to register proc file\n");
     else {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30))
       ring_proc->owner = THIS_MODULE;
       ring_proc_plugins_info->owner = THIS_MODULE;
 #endif
-      printk("[PF_RING]  registered /proc/net/pf_ring/\n");
+      printk("[PF_RING] registered /proc/net/pf_ring/\n");
     }
   } else
-    printk("[PF_RING]  unable to create /proc/net/pf_ring\n");
+    printk("[PF_RING] unable to create /proc/net/pf_ring\n");
 }
 
 /* ********************************** */
@@ -564,10 +564,10 @@ static void ring_proc_term(void)
 {
   if(ring_proc != NULL) {
     remove_proc_entry(PROC_INFO, ring_proc_dir);
-    printk("[PF_RING]  removed /proc/net/pf_ring/%s\n", PROC_INFO);
+    printk("[PF_RING] removed /proc/net/pf_ring/%s\n", PROC_INFO);
 
     remove_proc_entry(PROC_PLUGINS_INFO, ring_proc_dir);
-    printk("[PF_RING]  removed /proc/net/pf_ring/%s\n", PROC_PLUGINS_INFO);
+    printk("[PF_RING] removed /proc/net/pf_ring/%s\n", PROC_PLUGINS_INFO);
 
     if(ring_proc_dir != NULL) {
       remove_proc_entry("pf_ring",
@@ -575,7 +575,7 @@ static void ring_proc_term(void)
 			init_net.
 #endif
     			proc_net);
-      printk("[PF_RING]  deregistered /proc/net/pf_ring\n");
+      printk("[PF_RING] deregistered /proc/net/pf_ring\n");
     }
   }
 }
@@ -594,7 +594,7 @@ static inline void ring_insert(struct sock *sk)
   struct ring_opt *pfr;
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_insert()\n");
+  printk("[PF_RING] ring_insert()\n");
 #endif
 
   next = kmalloc(sizeof(struct ring_element), GFP_ATOMIC);
@@ -605,7 +605,7 @@ static inline void ring_insert(struct sock *sk)
     write_unlock_bh(&ring_mgmt_lock);
   } else {
     if(net_ratelimit())
-      printk("[PF_RING]  net_ratelimit() failure\n");
+      printk("[PF_RING] net_ratelimit() failure\n");
   }
 
   ring_table_size++;
@@ -632,7 +632,7 @@ static inline void ring_remove(struct sock *sk)
   struct ring_element *entry;
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_remove()\n");
+  printk("[PF_RING] ring_remove()\n");
 #endif
 
   list_for_each_safe(ptr, tmp_ptr, &ring_table) {
@@ -647,7 +647,7 @@ static inline void ring_remove(struct sock *sk)
   }
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  leaving ring_remove()\n");
+  printk("[PF_RING] leaving ring_remove()\n");
 #endif
 }
 
@@ -945,13 +945,18 @@ static int match_filtering_rule(struct ring_opt *the_ring,
       char *payload = (char*)&(skb->data[hdr->parsed_pkt.pkt_detail.offset.payload_offset /* -displ */]);
       int i, rc, payload_len = hdr->caplen - hdr->parsed_pkt.pkt_detail.offset.payload_offset - displ;
 
-      printk("[PF_RING] Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][",
-	     hdr->caplen, payload_len, displ, hdr->parsed_pkt.pkt_detail.offset.payload_offset);
-
-      for(i=0; i<payload_len; i++) printk("[PF_RING] %c", payload[i]);
-      printk("[PF_RING] ]\n");
+      if(debug) {
+	printk("[PF_RING] Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][",
+	       hdr->caplen, payload_len, displ, hdr->parsed_pkt.pkt_detail.offset.payload_offset);
+      
+	for(i=0; i<payload_len; i++) printk("%c", payload[i]);
+	printk("]\n");
+      }
 
       rc = (textsearch_find_continuous(rule->pattern, &state, payload, payload_len) != UINT_MAX) ? 1 : 0;
+      
+      if(debug)
+	printk("[PF_RING] Match returned: %d [behaviour=%d]\n", rc, *behaviour);
 
       if(rc == 0)
 	return(0); /* No match */
@@ -1021,11 +1026,11 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     printk("[PF_RING] MATCH: match_filtering_rule(vlan=%u, proto=%u, sip=%u, sport=%u, dip=%u, dport=%u)\n",
 	   hdr->parsed_pkt.vlan_id, hdr->parsed_pkt.l3_proto, hdr->parsed_pkt.ipv4_src, hdr->parsed_pkt.l4_src_port,
 	   hdr->parsed_pkt.ipv4_dst, hdr->parsed_pkt.l4_dst_port);
-    printk("[PF_RING] [rule(vlan=%u, proto=%u, ip=%u-%u, port=%u-%u)]\n",
+    printk("[PF_RING] [rule(vlan=%u, proto=%u, ip=%u-%u, port=%u-%u)(behaviour=%d)]\n",
 	   rule->rule.core_fields.vlan_id, rule->rule.core_fields.proto,
 	   rule->rule.core_fields.host_low, rule->rule.core_fields.host_high,
 	   rule->rule.core_fields.port_low,
-	   rule->rule.core_fields.port_high);
+	   rule->rule.core_fields.port_high, *behaviour);
   }
 
   rule->rule.jiffies_last_match = jiffies;
@@ -1090,7 +1095,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 	static u_char print_once = 0;
 
 	if(!print_once) {
-	  printk("[PF_RING]  WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
+	  printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
 	       pfr->bucket_len, hdr->parsed_header_len);
 	  print_once = 1;
 	}
@@ -1154,7 +1159,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   int fwd_pkt = 0;
   struct list_head *ptr, *tmp_ptr;
   u_int8_t free_parse_mem = 0;
-  u_int last_matched_plugin = 0;
+  u_int last_matched_plugin = 0, debug = 0;
   u_char hash_found = 0;
   struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
   /* This is a memory holder
@@ -1258,7 +1263,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	hdr->parsed_pkt.last_matched_plugin_id = hash_bucket->rule.plugin_action.plugin_id;
       }
 
-      if(behaviour == forward_packet_and_stop_rule_evaluation)
+      if((behaviour == forward_packet_and_stop_rule_evaluation)
+	 || (behaviour == forward_packet_add_rule_and_stop_rule_evaluation)
+	 )
 	fwd_pkt = 1;
       else if(behaviour == dont_forward_packet_and_stop_rule_evaluation)
 	fwd_pkt = 0;
@@ -1289,8 +1296,57 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				parse_memory_buffer, &free_parse_mem,
 				&last_matched_plugin, &behaviour))
 	  {
+	    
+	    if(behaviour == use_rule_forward_policy)
+	      behaviour = entry->rule.rule_action;
+	    
+	    if(debug) printk("[PF_RING] behaviour=%d\n", behaviour);
+
 	    if(behaviour == forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 1;
+	      break;
+	    } else if(behaviour == forward_packet_add_rule_and_stop_rule_evaluation) {
+	      filtering_hash_bucket *hash_bucket;
+
+	      fwd_pkt = 1;
+
+	      hash_bucket = (filtering_hash_bucket*)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
+
+	      if(hash_bucket) {
+		int rc;
+
+		hash_bucket->rule.vlan_id = hdr->parsed_pkt.vlan_id;
+		hash_bucket->rule.proto = hdr->parsed_pkt.l3_proto;
+		hash_bucket->rule.host_peer_a = hdr->parsed_pkt.ipv4_src;
+		hash_bucket->rule.host_peer_b = hdr->parsed_pkt.ipv4_dst;
+		hash_bucket->rule.port_peer_a = hdr->parsed_pkt.l4_src_port;
+		hash_bucket->rule.port_peer_b = hdr->parsed_pkt.l4_dst_port;
+		hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
+		hash_bucket->rule.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
+
+		write_lock(&pfr->ring_rules_lock);
+		rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
+		pfr->num_filtering_rules++;
+		write_unlock(&pfr->ring_rules_lock);
+
+		if(rc != 0) {
+		  kfree(hash_bucket);
+		  return(-1);
+		} else {
+		  if(debug) printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d]\n",
+				   ((hash_bucket->rule.host_peer_a >> 24) & 0xff),
+				   ((hash_bucket->rule.host_peer_a >> 16) & 0xff),
+				   ((hash_bucket->rule.host_peer_a >> 8) & 0xff),
+				   ((hash_bucket->rule.host_peer_a >> 0) & 0xff),
+				   hash_bucket->rule.port_peer_a,
+				   ((hash_bucket->rule.host_peer_b >> 24) & 0xff),
+				   ((hash_bucket->rule.host_peer_b >> 16) & 0xff),
+				   ((hash_bucket->rule.host_peer_b >> 8) & 0xff),
+				   ((hash_bucket->rule.host_peer_b >> 0) & 0xff),
+				   hash_bucket->rule.port_peer_b);
+		}
+	      }
+	      
 	      break;
 	    } else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 0;
@@ -1351,14 +1407,16 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	/* increase reference counter so that this skb is not freed */
 	atomic_inc(&skb->users);
 
-	skb->data -= displ;
+	printk("[PF_RING] reflect(len=%d, displ=%d)\n", skb->len, displ);
+
+	skb->data -= displ, skb->len += displ;
 
 	/* send it */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27))
-	if (netdev_get_tx_queue(pfr->reflector_dev, 0)->xmit_lock_owner != cpu)
+	if(netdev_get_tx_queue(pfr->reflector_dev, 0)->xmit_lock_owner != cpu)
 #else
-	if (pfr->reflector_dev->xmit_lock_owner != cpu)
+	if(pfr->reflector_dev->xmit_lock_owner != cpu)
 #endif
 	  {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
@@ -1368,7 +1426,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #else
 	    netif_tx_lock_bh(pfr->reflector_dev);
 #endif
-	    if (pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev) == 0) {
+	    if(pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev) == 0) {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
 	      spin_lock_bh(&pfr->reflector_dev->xmit_lock);
 	      pfr->reflector_dev->xmit_lock_owner = -1;
@@ -1376,12 +1434,14 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #else
 	      netif_tx_unlock_bh(pfr->reflector_dev);
 #endif
-	      skb->data += displ;
+	      skb->data += displ, skb->len -= displ;
+
 #if defined(RING_DEBUG)
 	      printk("[PF_RING] ++ hard_start_xmit succeeded\n");
 #endif
 	      if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	      atomic_set(&pfr->num_ring_users, 0);
+
 	      return(1); /* OK */
 	    }
 
@@ -1397,9 +1457,12 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #if defined(RING_DEBUG)
 	printk("[PF_RING] ++ hard_start_xmit failed\n");
 #endif
-	skb->data += displ;
+	
+	skb->data += displ, skb->len -= displ;
+
 	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	atomic_set(&pfr->num_ring_users, 0);
+	
 	return(-ENETDOWN); /* -ENETDOWN */
       }
 
@@ -1507,7 +1570,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 
     max_registered_plugin_id = max(max_registered_plugin_id, reg->plugin_id);
 
-    printk("[PF_RING]  registered plugin [id=%d][max=%d][%p]\n",
+    printk("[PF_RING] registered plugin [id=%d][max=%d][%p]\n",
 	   reg->plugin_id, max_registered_plugin_id, plugin_registration[reg->plugin_id]);
     try_module_get(THIS_MODULE); /* Increment usage count */
     return(0);
@@ -1567,7 +1630,7 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
       }
     }
 
-    printk("[PF_RING]  unregistered plugin [id=%d][max=%d]\n",
+    printk("[PF_RING] unregistered plugin [id=%d][max=%d]\n",
 	   pfring_plugin_id, max_registered_plugin_id);
     module_put(THIS_MODULE); /* Decrement usage count */
     return(0);
@@ -1974,7 +2037,7 @@ static int ring_create(
   int err;
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_create()\n");
+  printk("[PF_RING] ring_create()\n");
 #endif
 
   /* Are you root, superuser or so ? */
@@ -2053,7 +2116,7 @@ static int ring_create(
   ring_insert(sk);
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_create() - created\n");
+  printk("[PF_RING] ring_create() - created\n");
 #endif
 
   return(0);
@@ -2083,7 +2146,7 @@ static int ring_release(struct socket *sock)
   }
   
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  called ring_release\n");
+  printk("[PF_RING] called ring_release\n");
 #endif
 
   /*
@@ -2175,7 +2238,7 @@ static int ring_release(struct socket *sock)
 
   if(ring_memory_ptr != NULL) {
 #if defined(RING_DEBUG)
-    printk("[PF_RING]  ring_release: rvfree\n");
+    printk("[PF_RING] ring_release: rvfree\n");
 #endif
     rvfree(ring_memory_ptr, pfr->slots_info->tot_mem);
   }
@@ -2183,11 +2246,11 @@ static int ring_release(struct socket *sock)
   kfree(pfr);
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_release: rvfree done\n");
+  printk("[PF_RING] ring_release: rvfree done\n");
 #endif
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_release: done\n");
+  printk("[PF_RING] ring_release: done\n");
 #endif
 
   return 0;
@@ -2208,7 +2271,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   if(!dev) return(-1);
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  packet_ring_bind(%s) called\n", dev->name);
+  printk("[PF_RING] packet_ring_bind(%s) called\n", dev->name);
 #endif
 
   /* **********************************************
@@ -2243,10 +2306,10 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->ring_memory = rvmalloc(tot_mem);
 
   if (pfr->ring_memory != NULL) {
-    printk("[PF_RING]  successfully allocated %lu bytes at 0x%08lx\n",
+    printk("[PF_RING] successfully allocated %lu bytes at 0x%08lx\n",
 	   (unsigned long) tot_mem, (unsigned long) pfr->ring_memory);
   } else {
-    printk("[PF_RING]  ERROR: not enough memory for ring\n");
+    printk("[PF_RING] ERROR: not enough memory for ring\n");
     return(-1);
   }
 
@@ -2262,7 +2325,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->slots_info->tot_mem     = tot_mem;
   pfr->slots_info->sample_rate = 1;
 
-  printk("[PF_RING]  allocated %d slots [slot_len=%d][tot_mem=%u]\n",
+  printk("[PF_RING] allocated %d slots [slot_len=%d][tot_mem=%u]\n",
 	 pfr->slots_info->tot_slots, pfr->slots_info->slot_len,
 	 pfr->slots_info->tot_mem);
 
@@ -2317,7 +2380,7 @@ static int ring_bind(struct socket *sock,
   struct net_device *dev = NULL;
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_bind() called\n");
+  printk("[PF_RING] ring_bind() called\n");
 #endif
 
   /*
@@ -2334,7 +2397,7 @@ static int ring_bind(struct socket *sock,
   sa->sa_data[sizeof(sa->sa_data)-1] = '\0';
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  searching device %s\n", sa->sa_data);
+  printk("[PF_RING] searching device %s\n", sa->sa_data);
 #endif
 
   if((dev = __dev_get_by_name(
@@ -2343,7 +2406,7 @@ static int ring_bind(struct socket *sock,
 #endif
 			      sa->sa_data)) == NULL) {
 #if defined(RING_DEBUG)
-    printk("[PF_RING]  search failed\n");
+    printk("[PF_RING] search failed\n");
 #endif
     return(-EINVAL);
   } else
@@ -2402,7 +2465,7 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
       if(rc) {
 #if defined(RING_DEBUG)
-	printk("[PF_RING]  remap_pfn_range() failed\n");
+	printk("[PF_RING] remap_pfn_range() failed\n");
 #endif
 	return(-EAGAIN);
       }
@@ -2432,19 +2495,19 @@ static int ring_mmap(struct file *file,
 
   if(size % PAGE_SIZE) {
 #if defined(RING_DEBUG)
-    printk("[PF_RING]  ring_mmap() failed: "
+    printk("[PF_RING] ring_mmap() failed: "
 	   "len is not multiple of PAGE_SIZE\n");
 #endif
     return(-EINVAL);
   }
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_mmap() called, size: %ld bytes\n", size);
+  printk("[PF_RING] ring_mmap() called, size: %ld bytes\n", size);
 #endif
 
   if((pfr->dna_device == NULL) && (pfr->ring_memory == NULL)) {
 #if defined(RING_DEBUG)
-    printk("[PF_RING]  ring_mmap() failed: "
+    printk("[PF_RING] ring_mmap() failed: "
 	   "mapping area to an unbound socket\n");
 #endif
     return -EINVAL;
@@ -2454,7 +2517,7 @@ static int ring_mmap(struct file *file,
     /* if userspace tries to mmap beyond end of our buffer, fail */
     if(size > pfr->slots_info->tot_mem) {
 #if defined(RING_DEBUG)
-      printk("[PF_RING]  ring_mmap() failed: "
+      printk("[PF_RING] ring_mmap() failed: "
 	     "area too large [%ld > %d]\n",
 	     size, pfr->slots_info->tot_mem);
 #endif
@@ -2462,7 +2525,7 @@ static int ring_mmap(struct file *file,
     }
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING]  mmap [slot_len=%d]"
+    printk("[PF_RING] mmap [slot_len=%d]"
 	   "[tot_slots=%d] for ring on device %s\n",
 	   pfr->slots_info->slot_len, pfr->slots_info->tot_slots,
 	   pfr->ring_netdev->name);
@@ -2504,7 +2567,7 @@ static int ring_mmap(struct file *file,
   }
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING]  ring_mmap succeeded\n");
+  printk("[PF_RING] ring_mmap succeeded\n");
 #endif
 
   return 0;
@@ -2774,10 +2837,11 @@ static int ring_map_dna_device(struct ring_opt *pfr,
 
 static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity) 
 {
-  int i, num_purged_rules = 0;
-  unsigned long expire_jiffies = jiffies - rule_inactivity * HZ;
+  int i, num_purged_rules = 0, debug = 1;
+  unsigned long expire_jiffies = jiffies - msecs_to_jiffies(1000*rule_inactivity);
 
-  printk("[RING] %d [rule_inactivity=%d]\n", 3, rule_inactivity);	  
+  if(debug)
+    printk("[RING] purge_idle_hash_rules(rule_inactivity=%d)\n", rule_inactivity);	  
 
   /* Free filtering hash rules inactive for more than rule_inactivity seconds */
   if(pfr->filtering_hash == NULL) return;
@@ -2792,7 +2856,9 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 	if(scan->rule.jiffies_last_match < expire_jiffies) {
 	  /* Expired rule: free it */
 
-	  printk("[RING]About to purge rule....\n");
+	  printk("[RING] About to purge rule.... [last_match=%u][expire_jiffies=%u]\n",
+		 (unsigned int)scan->rule.jiffies_last_match, 
+		 (unsigned int)expire_jiffies);
 
 	  if(scan->plugin_data_ptr != NULL) kfree(scan->plugin_data_ptr);
 	  kfree(scan);
@@ -2823,7 +2889,7 @@ static int ring_setsockopt(struct socket *sock,
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
-  u_int cluster_id, debug = 0;
+  u_int cluster_id, debug = 1;
   int32_t channel_id;
   char devName[8], applName[32+1];
   struct list_head *prev = NULL;
@@ -3076,11 +3142,11 @@ static int ring_setsockopt(struct socket *sock,
 					       GFP_KERNEL, TS_AUTOLOAD);
 
 	    if(IS_ERR(rule->pattern)) {
-	      printk("[PF_RING]  Unable to compile pattern '%s'\n",
+	      printk("[PF_RING] Unable to compile pattern '%s'\n",
 		     rule->rule.extended_fields.payload_pattern);
 	      rule->pattern = NULL;
 	    } else
-	      printk("[PF_RING]  Compiled pattern '%s'\n", rule->rule.extended_fields.payload_pattern);
+	      printk("[PF_RING] Compiled pattern '%s'\n", rule->rule.extended_fields.payload_pattern);
 	  } else
 	    rule->pattern = NULL;
 #endif
@@ -3359,7 +3425,7 @@ static int ring_getsockopt(struct socket *sock,
 		} else {
 		  if((plugin_registration[rule.plugin_action.plugin_id] == NULL)
 		     || (plugin_registration[rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)) {
-		    printk("[PF_RING]  Found rule but pluginId %d is not registered\n",
+		    printk("[PF_RING] Found rule but pluginId %d is not registered\n",
 			   rule.plugin_action.plugin_id);
 		    rc = -EFAULT;
 		  } else
@@ -3421,7 +3487,7 @@ static int ring_getsockopt(struct socket *sock,
 		else {
 		  if((plugin_registration[rule->rule.plugin_action.plugin_id] == NULL)
 		     || (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)) {
-		    printk("[PF_RING]  Found rule %d but pluginId %d is not registered\n",
+		    printk("[PF_RING] Found rule %d but pluginId %d is not registered\n",
 			   rule_id, rule->rule.plugin_action.plugin_id);
 		    rc = -EFAULT;
 		  } else
@@ -3700,7 +3766,7 @@ static void __exit ring_exit(void)
   set_ring_dna_device_handler(NULL);
   sock_unregister(PF_RING);
   ring_proc_term();
-  printk("[PF_RING]  unloaded\n");
+  printk("[PF_RING] unloaded\n");
 }
 
 /* ************************************ */
@@ -3731,19 +3797,19 @@ static int __init ring_init(void)
   set_ring_dna_device_handler(dna_device_handler);
 
   if(get_buffer_ring_handler() != buffer_ring_handler) {
-    printk("[PF_RING]  set_buffer_ring_handler FAILED\n");
+    printk("[PF_RING] set_buffer_ring_handler FAILED\n");
 
     set_skb_ring_handler(NULL);
     set_buffer_ring_handler(NULL);
     sock_unregister(PF_RING);
     return -1;
   } else {
-    printk("[PF_RING]  Ring slots       %d\n", num_slots);
-    printk("[PF_RING]  Slot version     %d\n", RING_FLOWSLOT_VERSION);
-    printk("[PF_RING]  Capture TX       %s\n",
+    printk("[PF_RING] Ring slots       %d\n", num_slots);
+    printk("[PF_RING] Slot version     %d\n", RING_FLOWSLOT_VERSION);
+    printk("[PF_RING] Capture TX       %s\n",
 	   enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    printk("[PF_RING]  IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
-    printk("[PF_RING]  Initialized correctly\n");
+    printk("[PF_RING] IP Defragment    %s\n",  enable_ip_defrag ? "Yes" : "No");
+    printk("[PF_RING] Initialized correctly\n");
 
     ring_proc_init();
     return 0;
