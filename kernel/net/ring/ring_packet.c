@@ -60,6 +60,7 @@
 #include <linux/tcp.h>
 #include <linux/udp.h>
 #include <linux/list.h>
+#include <linux/netdevice.h>
 #include <linux/proc_fs.h>
 #ifdef CONFIG_TEXTSEARCH
 #include <linux/textsearch.h>
@@ -1324,10 +1325,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
 		hash_bucket->rule.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
 
-		write_lock(&pfr->ring_rules_lock);
+		//write_lock_bh(&pfr->ring_rules_lock);
 		rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
 		pfr->num_filtering_rules++;
-		write_unlock(&pfr->ring_rules_lock);
+		// write_unlock_bh(&pfr->ring_rules_lock);
 
 		if(rc != 0) {
 		  kfree(hash_bucket);
@@ -1346,7 +1347,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				   hash_bucket->rule.port_peer_b);
 		}
 	      }
-	      
+
 	      break;
 	    } else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 0;
@@ -1400,70 +1401,35 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
     /* [4] Check if there is a reflector device defined */
     if((pfr->reflector_dev != NULL)
-       && (!netif_queue_stopped(pfr->reflector_dev)))
+       && (!netif_queue_stopped(pfr->reflector_dev) /* TX is in good shape */)
+       )
       {
-	int cpu = smp_processor_id();
-
-	/* increase reference counter so that this skb is not freed */
-	atomic_inc(&skb->users);
-
-	printk("[PF_RING] reflect(len=%d, displ=%d)\n", skb->len, displ);
-
-	skb->data -= displ, skb->len += displ;
-
-	/* send it */
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27))
-	if(netdev_get_tx_queue(pfr->reflector_dev, 0)->xmit_lock_owner != cpu)
-#else
-	if(pfr->reflector_dev->xmit_lock_owner != cpu)
-#endif
-	  {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
-	    spin_lock_bh(&pfr->reflector_dev->xmit_lock);
-	    pfr->reflector_dev->xmit_lock_owner = cpu;
-	    spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
-#else
-	    netif_tx_lock_bh(pfr->reflector_dev);
-#endif
-	    if(pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev) == 0) {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
-	      spin_lock_bh(&pfr->reflector_dev->xmit_lock);
-	      pfr->reflector_dev->xmit_lock_owner = -1;
-	      spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
-#else
-	      netif_tx_unlock_bh(pfr->reflector_dev);
-#endif
-	      skb->data += displ, skb->len -= displ;
-
-#if defined(RING_DEBUG)
-	      printk("[PF_RING] ++ hard_start_xmit succeeded\n");
-#endif
-	      if(free_parse_mem) free_parse_memory(parse_memory_buffer);
-	      atomic_set(&pfr->num_ring_users, 0);
-
-	      return(1); /* OK */
-	    }
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
-	    spin_lock_bh(&pfr->reflector_dev->xmit_lock);
-	    pfr->reflector_dev->xmit_lock_owner = -1;
-	    spin_unlock_bh(&pfr->reflector_dev->xmit_lock);
-#else
-	    netif_tx_unlock_bh(pfr->reflector_dev);
-#endif
-	  }
-
-#if defined(RING_DEBUG)
-	printk("[PF_RING] ++ hard_start_xmit failed\n");
-#endif
+	int ret;
+	struct sk_buff *cloned;
 	
-	skb->data += displ, skb->len -= displ;
+	/*
+	  We need to clone the buffer as the sender will queue it and
+	  transmit later in the future. Done that the skb will be freed.
+	  If we don't do this, we'll end up likely crashing up the
+	  system as the skb will be freed already when it is supposed
+	  to be sent out.
+	*/
+	if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL) {
+	  HARD_TX_LOCK(pfr->reflector_dev, smp_processor_id());
+	  cloned->data -= displ, cloned->len += displ;
+	  ret = pfr->reflector_dev->hard_start_xmit(cloned, pfr->reflector_dev);
+	  cloned->data += displ, cloned->len -= displ;
+	  HARD_TX_UNLOCK(pfr->reflector_dev);
+	} else
+	  ret = -1;
 
-	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
+#if defined(RING_DEBUG)
+	printk("[PF_RING] reflect(len=%d, displ=%d): %d\n", skb->len, displ, ret);
+#endif
+
 	atomic_set(&pfr->num_ring_users, 0);
-	
-	return(-ENETDOWN); /* -ENETDOWN */
+	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
+	return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
       }
 
     /* No reflector device: the packet needs to be queued */
@@ -1497,8 +1463,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
   printk("[PF_RING] [pfr->slots_info->insert_idx=%d]\n", pfr->slots_info->insert_idx);
 #endif
 
-  atomic_set(&pfr->num_ring_users, 0);
   if(free_parse_mem) free_parse_memory(parse_memory_buffer);
+  atomic_set(&pfr->num_ring_users, 0);
 
   return(0);
 }
@@ -2223,6 +2189,9 @@ static int ring_release(struct socket *sock)
 
     kfree(pfr->filtering_hash);
   }
+  
+  if(pfr->reflector_dev != NULL) 
+    dev_put(pfr->reflector_dev); /* Release device */
 
   /* Free the ring buffer later, vfree needs interrupts enabled */
   ring_memory_ptr = pfr->ring_memory;
@@ -3137,7 +3106,9 @@ static int ring_setsockopt(struct socket *sock,
 	/* Compile pattern if present */
 	if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
 	  {
-	    rule->pattern = textsearch_prepare("kmp", rule->rule.extended_fields.payload_pattern,
+	    rule->pattern = textsearch_prepare("bm" /* Boyer-Moore */ 
+					       /* "kmp" = Knuth-Morris-Pratt */, 
+					       rule->rule.extended_fields.payload_pattern,
 					       strlen(rule->rule.extended_fields.payload_pattern),
 					       GFP_KERNEL, TS_AUTOLOAD);
 

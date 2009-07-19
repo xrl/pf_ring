@@ -164,6 +164,7 @@ typedef struct {
 
 /* *********************************** */
 
+/* Hash size used for precise packet matching */
 #define DEFAULT_RING_HASH_SIZE     4096
 
 /*
