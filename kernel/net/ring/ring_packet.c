@@ -1405,29 +1405,20 @@ static int add_skb_to_ring(struct sk_buff *skb,
        )
       {
 	int ret;
-	struct sk_buff *cloned;
-	
-	/*
-	  We need to clone the buffer as the sender will queue it and
-	  transmit later in the future. Done that the skb will be freed.
-	  If we don't do this, we'll end up likely crashing up the
-	  system as the skb will be freed already when it is supposed
-	  to be sent out.
-	*/
-	if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL) {
-	  HARD_TX_LOCK(pfr->reflector_dev, smp_processor_id());
-	  cloned->data -= displ, cloned->len += displ;
-	  ret = pfr->reflector_dev->hard_start_xmit(cloned, pfr->reflector_dev);
-	  cloned->data += displ, cloned->len -= displ;
-	  HARD_TX_UNLOCK(pfr->reflector_dev);
-	} else
-	  ret = -1;
 
+	atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
+
+	HARD_TX_LOCK(pfr->reflector_dev, smp_processor_id());
+	skb->data -= displ, skb->len += displ;
+	ret = pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev);
+	skb->data += displ, skb->len -= displ;
+	HARD_TX_UNLOCK(pfr->reflector_dev);
+	
 #if defined(RING_DEBUG)
 	printk("[PF_RING] reflect(len=%d, displ=%d): %d\n", skb->len, displ, ret);
 #endif
 
-	atomic_set(&pfr->num_ring_users, 0);
+	atomic_set(&pfr->num_ring_users, 0); /* Done */
 	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
       }
@@ -3110,7 +3101,11 @@ static int ring_setsockopt(struct socket *sock,
 					       /* "kmp" = Knuth-Morris-Pratt */, 
 					       rule->rule.extended_fields.payload_pattern,
 					       strlen(rule->rule.extended_fields.payload_pattern),
-					       GFP_KERNEL, TS_AUTOLOAD);
+					       GFP_KERNEL, TS_AUTOLOAD
+#ifdef TS_IGNORECASE
+					       | TS_IGNORECASE
+#endif
+);
 
 	    if(IS_ERR(rule->pattern)) {
 	      printk("[PF_RING] Unable to compile pattern '%s'\n",
