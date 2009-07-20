@@ -50,6 +50,43 @@
 /* Map */
 #define SO_MAP_DNA_DEVICE                130
 
+/* **************** regexp.h ******************* */
+
+/*
+http://www.opensource.apple.com/darwinsource/10.3/expect-1/expect/expect.h ,
+which contains a version of this library, says:
+
+ *
+ * NSUBEXP must be at least 10, and no greater than 117 or the parser
+ * will not work properly.
+ *
+
+However, it looks rather like this library is limited to 10.  If you think
+otherwise, let us know.
+*/
+
+#define NSUBEXP  10
+typedef struct regexp {
+	char *startp[NSUBEXP];
+	char *endp[NSUBEXP];
+	char regstart;		/* Internal use only. */
+	char reganch;		/* Internal use only. */
+	char *regmust;		/* Internal use only. */
+	int regmlen;		/* Internal use only. */
+	char program[1];	/* Unwarranted chumminess with compiler. */
+} regexp;
+
+regexp * regcomp(char *exp, int *patternsize);
+int regexec(regexp *prog, char *string);
+void regsub(regexp *prog, char *source, char *dest);
+void regerror(char *s);
+
+/*
+ * The first byte of the regexp internal "program" is actually this magic
+ * number; the start node begins in the second byte.
+ */
+#define	MAGIC	0234
+
 /* *********************************** */
 
 struct pkt_aggregation_info {
@@ -419,9 +456,7 @@ typedef struct {
 
 typedef struct {
   filtering_rule rule;
-#ifdef CONFIG_TEXTSEARCH
-  struct ts_config *pattern;
-#endif
+  regexp *pattern;
   struct list_head list;
 
   /* Plugin action */
