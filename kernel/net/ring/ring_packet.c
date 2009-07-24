@@ -2251,6 +2251,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   */
 
   if(!pfr->ring_active) return(-1);
+
   atomic_set(&pfr->num_ring_users, 1);
 
   /* [1] BPF Filtering (from af_packet.c) */
@@ -2392,10 +2393,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
 	      fwd_pkt = 1;
 
-	      hash_bucket = (filtering_hash_bucket*)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
+	      hash_bucket = (filtering_hash_bucket*)kcalloc(1, sizeof(filtering_hash_bucket), GFP_ATOMIC);
 
 	      if(hash_bucket) {
-		int rc;
+		int rc = 0;
 
 		hash_bucket->rule.vlan_id = hdr->parsed_pkt.vlan_id;
 		hash_bucket->rule.proto = hdr->parsed_pkt.l3_proto;
@@ -2406,10 +2407,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
 		hash_bucket->rule.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
 
-		//write_lock_bh(&pfr->ring_rules_lock);
 		rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
 		pfr->num_filtering_rules++;
-		// write_unlock_bh(&pfr->ring_rules_lock);
 
 		if(rc != 0) {
 		  kfree(hash_bucket);
@@ -2427,9 +2426,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				   ((hash_bucket->rule.host_peer_b >> 0) & 0xff),
 				   hash_bucket->rule.port_peer_b,
 				   pfr->num_filtering_rules);
-		}
+		}	      
 	      }
-
 	      break;
 	    } else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 0;
@@ -2485,45 +2483,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
     if((pfr->reflector_dev != NULL)
        && (pfr->reflector_dev->flags & IFF_UP))       
       {
-#if 0
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-	struct netdev_queue *txq = netdev_get_tx_queue(pfr->reflector_dev, 0 /* TX queue 0 */);
-#endif
-	int ret = -1;
-	int cpu = smp_processor_id();
-
-	if(pfr->reflector_dev->xmit_lock_owner != cpu) {
-	  HARD_TX_LOCK(pfr->reflector_dev, 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-		       txq,
-#endif
-		       cpu);
-	
-	  if(!netif_queue_stopped(pfr->reflector_dev)) {
-	    /* TX is in good shape */
-	    
-	    atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
-	    skb->data -= displ, skb->len += displ;
-	    ret = pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev);
-	    skb->data += displ, skb->len -= displ;
-	    HARD_TX_UNLOCK(pfr->reflector_dev
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-			   , txq
-#endif
-			   );
-	    
-#if !defined(RING_DEBUG)
-	    printk("[PF_RING] reflect(len=%d, displ=%d): %d\n", skb->len, displ, ret);
-#endif
-	    
-	    atomic_set(&pfr->num_ring_users, 0); /* Done */
-	  }
-	} 
-	
-	
-	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
-	return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
-#else
 	int ret;
 
 	skb->pkt_type = PACKET_OUTGOING, skb->dev = pfr->reflector_dev;
@@ -2533,9 +2492,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	skb->data += displ, skb->len -= displ;
 	atomic_set(&pfr->num_ring_users, 0); /* Done */
 	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
-	printk("[PF_RING] --> ret=%d\n", ret);
+	/* printk("[PF_RING] --> ret=%d\n", ret); */
         return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
-#endif
       }
 
     /* No reflector device: the packet needs to be queued */
