@@ -2483,37 +2483,59 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
     /* [4] Check if there is a reflector device defined */
     if((pfr->reflector_dev != NULL)
-       && (!netif_queue_stopped(pfr->reflector_dev) /* TX is in good shape */)
-       )
+       && (pfr->reflector_dev->flags & IFF_UP))       
       {
+#if 0
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 	struct netdev_queue *txq = netdev_get_tx_queue(pfr->reflector_dev, 0 /* TX queue 0 */);
 #endif
-	int ret;
+	int ret = -1;
+	int cpu = smp_processor_id();
 
-	atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
-
-	HARD_TX_LOCK(pfr->reflector_dev, 
+	if(pfr->reflector_dev->xmit_lock_owner != cpu) {
+	  HARD_TX_LOCK(pfr->reflector_dev, 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-		     txq,
+		       txq,
 #endif
-		     smp_processor_id());
-	skb->data -= displ, skb->len += displ;
-	ret = pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev);
-	skb->data += displ, skb->len -= displ;
-	HARD_TX_UNLOCK(pfr->reflector_dev
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
-		       , txq
-#endif
-		       );
+		       cpu);
 	
-#if defined(RING_DEBUG)
-	printk("[PF_RING] reflect(len=%d, displ=%d): %d\n", skb->len, displ, ret);
+	  if(!netif_queue_stopped(pfr->reflector_dev)) {
+	    /* TX is in good shape */
+	    
+	    atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
+	    skb->data -= displ, skb->len += displ;
+	    ret = pfr->reflector_dev->hard_start_xmit(skb, pfr->reflector_dev);
+	    skb->data += displ, skb->len -= displ;
+	    HARD_TX_UNLOCK(pfr->reflector_dev
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
+			   , txq
 #endif
-
-	atomic_set(&pfr->num_ring_users, 0); /* Done */
+			   );
+	    
+#if !defined(RING_DEBUG)
+	    printk("[PF_RING] reflect(len=%d, displ=%d): %d\n", skb->len, displ, ret);
+#endif
+	    
+	    atomic_set(&pfr->num_ring_users, 0); /* Done */
+	  }
+	} 
+	
+	
 	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
+#else
+	int ret;
+
+	skb->pkt_type = PACKET_OUTGOING, skb->dev = pfr->reflector_dev;
+	atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
+	skb->data -= displ, skb->len += displ;
+	ret = dev_queue_xmit(skb);
+	skb->data += displ, skb->len -= displ;
+	atomic_set(&pfr->num_ring_users, 0); /* Done */
+	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
+	printk("[PF_RING] --> ret=%d\n", ret);
+        return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
+#endif
       }
 
     /* No reflector device: the packet needs to be queued */
