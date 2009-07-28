@@ -1548,25 +1548,27 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
       fsi = pfr->slots_info;
 
       if(fsi) {
-	rlen = sprintf(buf,        "Bound Device  : %s\n",
+	rlen = sprintf(buf,        "Bound Device   : %s\n",
 		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
-	rlen += sprintf(buf + rlen, "Version       : %d\n",  fsi->version);
-	rlen += sprintf(buf + rlen, "Sampling Rate : %d\n",  pfr->sample_rate);
-	rlen += sprintf(buf + rlen, "Appl. Name    : %s\n",  pfr->appl_name ? pfr->appl_name : "<unknown>");
-	rlen += sprintf(buf + rlen, "IP Defragment : %s\n",  enable_ip_defrag ? "Yes" : "No");
-	rlen += sprintf(buf + rlen, "BPF Filtering : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
-	rlen += sprintf(buf + rlen, "# Filt. Rules : %d\n",  pfr->num_filtering_rules);
-	rlen += sprintf(buf + rlen, "Cluster Id    : %d\n",  pfr->cluster_id);
-	rlen += sprintf(buf + rlen, "Channel Id    : %d\n",  pfr->channel_id);
-	rlen += sprintf(buf + rlen, "Tot Slots     : %d\n",  fsi->tot_slots);
-	rlen += sprintf(buf + rlen, "Bucket Len    : %d\n",  fsi->data_len);
-	rlen += sprintf(buf + rlen, "Slot Len      : %d [bucket+header]\n",  fsi->slot_len);
-	rlen += sprintf(buf + rlen, "Tot Memory    : %d\n",  fsi->tot_mem);
-	rlen += sprintf(buf + rlen, "Tot Packets   : %lu\n", (unsigned long)fsi->tot_pkts);
-	rlen += sprintf(buf + rlen, "Tot Pkt Lost  : %lu\n", (unsigned long)fsi->tot_lost);
-	rlen += sprintf(buf + rlen, "Tot Insert    : %lu\n", (unsigned long)fsi->tot_insert);
-	rlen += sprintf(buf + rlen, "Tot Read      : %lu\n", (unsigned long)fsi->tot_read);
-	rlen += sprintf(buf + rlen, "Num Free Slots: %u\n",  get_num_ring_free_slots(pfr));
+	rlen += sprintf(buf + rlen, "Version        : %d\n",  fsi->version);
+	rlen += sprintf(buf + rlen, "Sampling Rate  : %d\n",  pfr->sample_rate);
+	rlen += sprintf(buf + rlen, "Appl. Name     : %s\n",  pfr->appl_name ? pfr->appl_name : "<unknown>");
+	rlen += sprintf(buf + rlen, "IP Defragment  : %s\n",  enable_ip_defrag ? "Yes" : "No");
+	rlen += sprintf(buf + rlen, "BPF Filtering  : %s\n",  pfr->bpfFilter ? "Enabled" : "Disabled");
+	rlen += sprintf(buf + rlen, "# Filt. Rules  : %d\n",  pfr->num_filtering_rules);
+	rlen += sprintf(buf + rlen, "Cluster Id     : %d\n",  pfr->cluster_id);
+	rlen += sprintf(buf + rlen, "Channel Id     : %d\n",  pfr->channel_id);
+	rlen += sprintf(buf + rlen, "Tot Slots      : %d\n",  fsi->tot_slots);
+	rlen += sprintf(buf + rlen, "Bucket Len     : %d\n",  fsi->data_len);
+	rlen += sprintf(buf + rlen, "Slot Len       : %d [bucket+header]\n",  fsi->slot_len);
+	rlen += sprintf(buf + rlen, "Tot Memory     : %d\n",  fsi->tot_mem);
+	rlen += sprintf(buf + rlen, "Tot Packets    : %lu\n", (unsigned long)fsi->tot_pkts);
+	rlen += sprintf(buf + rlen, "Tot Pkt Lost   : %lu\n", (unsigned long)fsi->tot_lost);
+	rlen += sprintf(buf + rlen, "Tot Insert     : %lu\n", (unsigned long)fsi->tot_insert);
+	rlen += sprintf(buf + rlen, "Tot Read       : %lu\n", (unsigned long)fsi->tot_read);
+	rlen += sprintf(buf + rlen, "Tot Fwd Ok     : %lu\n", (unsigned long)fsi->tot_fwd_ok);
+	rlen += sprintf(buf + rlen, "Tot Fwd Errors : %lu\n", (unsigned long)fsi->tot_fwd_notok);
+	rlen += sprintf(buf + rlen, "Num Free Slots : %u\n",  get_num_ring_free_slots(pfr));
       } else
 	rlen = sprintf(buf, "WARNING fsi == NULL\n");
     } else
@@ -2493,6 +2495,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	atomic_set(&pfr->num_ring_users, 0); /* Done */
 	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
 	/* printk("[PF_RING] --> ret=%d\n", ret); */
+	if(ret == NETDEV_TX_OK)
+	  pfr->slots_info->tot_fwd_ok++;
+	else
+	  pfr->slots_info->tot_fwd_notok++;
         return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
       }
 
