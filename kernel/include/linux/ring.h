@@ -455,9 +455,18 @@ typedef struct {
 
 /* **************************************** */
 
+#define MAX_NUM_PATTERN   32
+
 typedef struct {
   filtering_rule rule;
+
+#ifdef USE_REGEX
   regexp *pattern;
+#else
+#ifdef CONFIG_TEXTSEARCH
+  struct ts_config *pattern[MAX_NUM_PATTERN];
+#endif
+#endif
   struct list_head list;
 
   /* Plugin action */

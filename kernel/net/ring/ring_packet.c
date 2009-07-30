@@ -295,7 +295,7 @@ inline char tolower(char c) {
 
 inline void string2lower(char* str, int str_len) {
   int i;
-  
+
   for(i=0; i<str_len; i++) str[i] = tolower(str[i]);
 }
 
@@ -1213,7 +1213,7 @@ static void ring_proc_init(void);
 static void ring_proc_term(void);
 
 /*
-  Caveat 
+  Caveat
   [http://lists.metaprl.org/pipermail/cs134-labs/2002-October/000025.html]
 
   GFP_ATOMIC means roughly "make the allocation operation atomic".  This
@@ -1221,16 +1221,16 @@ static void ring_proc_term(void);
   memory set aside for urgent allocation.  If that pile doesn't have
   enough free pages, the operation will fail.  This flag is useful for
   allocation within interrupt handlers.
-  
+
   GFP_KERNEL will try a little harder to find memory.  There's a
   possibility that the call to kmalloc() will sleep while the kernel is
   trying to find memory (thus making it unsuitable for interrupt
   handlers).  It's much more rare for an allocation with GFP_KERNEL to
   fail than with GFP_ATOMIC.
-  
+
   In all cases, kmalloc() should only be used allocating small amounts of
   memory (a few kb).  vmalloc() is better for larger amounts.
-  
+
   Also note that in lab 1 and lab 2, it would have been arguably better to
   use GFP_KERNEL instead of GFP_ATOMIC.  GFP_ATOMIC should be saved for
   those instances in which a sleep would be totally unacceptable.
@@ -2018,29 +2018,51 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     if(balance_hash != rule->rule.balance_id) return(0);
   }
 
-  if(rule->pattern != NULL) {
+
+#ifdef USE_REGEX
+  if(rule->pattern != NULL)
+#else
+    if(rule->pattern[0] != NULL)
+#endif
+{
+  if(debug) printk("[PF_RING] pattern\n");
+
     if((hdr->parsed_pkt.pkt_detail.offset.payload_offset > 0)
        && (hdr->caplen > hdr->parsed_pkt.pkt_detail.offset.payload_offset)) {
       char *payload = (char*)&(skb->data[hdr->parsed_pkt.pkt_detail.offset.payload_offset /* -displ */]);
-      int i, rc, payload_len = hdr->caplen - hdr->parsed_pkt.pkt_detail.offset.payload_offset - displ;
-           
+      int i, rc = 0, payload_len = hdr->caplen - hdr->parsed_pkt.pkt_detail.offset.payload_offset - displ;
+
       if(payload_len > 0) {
 	if(debug) {
 	  printk("[PF_RING] Trying to match pattern [caplen=%d][len=%d][displ=%d][payload_offset=%d][",
 		 hdr->caplen, payload_len, displ, hdr->parsed_pkt.pkt_detail.offset.payload_offset);
-	  
+
 	  for(i=0; i<payload_len; i++) printk("[%d/%c]", i, payload[i] & 0xFF);
 	  printk("]\n");
 	}
-	
+
 	payload[payload_len] = '\0';
 
 	if(debug) printk("[PF_RING] Attempt to match [%s]\n", payload);
+
+#ifdef USE_REGEX
 	rc = regexec(rule->pattern, payload);
-	
+#else
+	{
+	  int i;
+	  struct ts_state state;
+
+	  for(i=0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++) {
+	    if(debug) printk("[PF_RING] Attempt to match pattern %d\n", i);
+	    rc = (textsearch_find_continuous(rule->pattern[i], &state, payload, payload_len) != UINT_MAX) ? 1 : 0;
+	    if(rc == 1) break;
+	  }
+	}
+#endif
+
 	if(debug)
 	  printk("[PF_RING] Match returned: %d [payload_len=%d][%s]\n", rc, payload_len, payload);
-	
+
 	if(rc == 0)
 	  return(0); /* No match */
       } else
@@ -2220,13 +2242,13 @@ static int add_hdr_to_ring(struct ring_opt *pfr,
 /* Free filtering placeholders */
 static void free_parse_memory(struct parse_buffer *parse_memory_buffer[]) {
   int i;
-  
+
   for(i=1; i<=max_registered_plugin_id; i++)
     if(parse_memory_buffer[i]) {
       if(parse_memory_buffer[i]->mem != NULL) {
 	kfree(parse_memory_buffer[i]->mem);
       }
-      
+
       kfree(parse_memory_buffer[i]);
     }
 }
@@ -2331,18 +2353,18 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
     if(hash_found) {
       packet_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
-      
+
       if((hash_bucket->rule.plugin_action.plugin_id != 0)
 	 && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
 	 && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id] != NULL)
 	 && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
-	 ) {	
+	 ) {
 	plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
-	  ->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, 
-				     0 /* no plugin */, 
+	  ->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb,
+				     0 /* no plugin */,
 				     &parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id],
 				     &behaviour);
-	
+
 	if(parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id]) free_parse_mem = 1;
 	last_matched_plugin = hash_bucket->rule.plugin_action.plugin_id;
 	hdr->parsed_pkt.last_matched_plugin_id = hash_bucket->rule.plugin_action.plugin_id;
@@ -2354,7 +2376,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	fwd_pkt = 1;
       else if(behaviour == dont_forward_packet_and_stop_rule_evaluation)
 	fwd_pkt = 0;
-      else {	
+      else {
 	if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
 	  fwd_pkt = 1;
 	} else if(hash_bucket->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
@@ -2381,10 +2403,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				parse_memory_buffer, &free_parse_mem,
 				&last_matched_plugin, &behaviour))
 	  {
-	    
+
 	    if(behaviour == use_rule_forward_policy)
 	      behaviour = entry->rule.rule_action;
-	    
+
 	    if(debug) printk("[PF_RING] behaviour=%d\n", behaviour);
 
 	    if(behaviour == forward_packet_and_stop_rule_evaluation) {
@@ -2416,7 +2438,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		  kfree(hash_bucket);
 		  return(-1);
 		} else {
-		  if(debug) printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
+		  if(1 || debug) printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
 				   ((hash_bucket->rule.host_peer_a >> 24) & 0xff),
 				   ((hash_bucket->rule.host_peer_a >> 16) & 0xff),
 				   ((hash_bucket->rule.host_peer_a >> 8) & 0xff),
@@ -2428,7 +2450,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				   ((hash_bucket->rule.host_peer_b >> 0) & 0xff),
 				   hash_bucket->rule.port_peer_b,
 				   pfr->num_filtering_rules);
-		}	      
+		}
 	      }
 	      break;
 	    } else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
@@ -2482,8 +2504,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
     }
 
     /* [4] Check if there is a reflector device defined */
-    if((pfr->reflector_dev != NULL)
-       && (pfr->reflector_dev->flags & IFF_UP))       
+    if(pfr->reflector_dev != NULL) {
+      if(pfr->reflector_dev->flags & IFF_UP)
       {
 	int ret;
 
@@ -2500,7 +2522,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	else
 	  pfr->slots_info->tot_fwd_notok++;
         return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
+      } else {
+	pfr->slots_info->tot_fwd_notok++;
       }
+    }
 
     /* No reflector device: the packet needs to be queued */
     if(hdr->caplen > 0) {
@@ -2834,7 +2859,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     if(pfr  && (pfr->ring_slots != NULL)) {
       /* if(pfr->ring_netdev && pfr->ring_netdev->name && strcmp(pfr->ring_netdev->name, "eth0")) */
 	printk("[PF_RING] Received packet [device=%s][socket=%s][%p]\n",
-	       skb->dev->name ? skb->dev->name : "<unknown>", 
+	       skb->dev->name ? skb->dev->name : "<unknown>",
 	       pfr->ring_netdev->name ? pfr->ring_netdev->name : "<unknown>", pfr);
     }
 #endif
@@ -3173,14 +3198,14 @@ static int ring_release(struct socket *sock)
   void * ring_memory_ptr;
 
   if(!sk)
-    return 0; 
+    return 0;
   else
     pfr->ring_active = 0;
 
   while(atomic_read(&pfr->num_ring_users) > 0) {
     schedule();
   }
-  
+
 #if defined(RING_DEBUG)
   printk("[PF_RING] called ring_release\n");
 #endif
@@ -3233,7 +3258,16 @@ static int ring_release(struct socket *sock)
 	}
       }
 
+#ifdef USE_REGEX
       if(rule->pattern) kfree(rule->pattern);
+#else
+      {
+	int i;
+
+	for(i=0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++)
+	  textsearch_destroy(rule->pattern[i]);
+      }
+#endif
 
       list_del(ptr);
       kfree(rule);
@@ -3258,8 +3292,8 @@ static int ring_release(struct socket *sock)
 
     kfree(pfr->filtering_hash);
   }
-  
-  if(pfr->reflector_dev != NULL) 
+
+  if(pfr->reflector_dev != NULL)
     dev_put(pfr->reflector_dev); /* Release device */
 
   /* Free the ring buffer later, vfree needs interrupts enabled */
@@ -3691,13 +3725,13 @@ unsigned int ring_poll(struct file * file,
     /* DNA mode */
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING] poll called on DNA device [%d]\n", 
+    printk("[PF_RING] poll called on DNA device [%d]\n",
 	   *pfr->dna_device->interrupt_received);
 #endif
 
-    if(pfr->dna_device->wait_packet_function_ptr == NULL) 
+    if(pfr->dna_device->wait_packet_function_ptr == NULL)
       return(0);
-    
+
     rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 1);
     if(rc == 0) /* No packet arrived yet */ {
       /* poll_wait(file, pfr->dna_device->packet_waitqueue, wait); */
@@ -3708,7 +3742,7 @@ unsigned int ring_poll(struct file * file,
     if(rc == 0) rc = *pfr->dna_device->interrupt_received;
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING] poll %s return [%d]\n", 
+    printk("[PF_RING] poll %s return [%d]\n",
 	   pfr->ring_netdev->name,
 	   *pfr->dna_device->interrupt_received);
 #endif
@@ -3842,10 +3876,10 @@ static int add_to_cluster(struct sock *sock,
 static int ring_map_dna_device(struct ring_opt *pfr,
 			       dna_device_mapping *mapping) {
   int debug = 0;
-  
+
   if(mapping->operation == remove_device_mapping) {
     pfr->dna_device = NULL;
-    if(debug) 
+    if(debug)
       printk("[PF_RING] ring_map_dna_device(%s): removed mapping\n",
 	     mapping->device_name);
     return(0);
@@ -3877,32 +3911,32 @@ static int ring_map_dna_device(struct ring_opt *pfr,
 
 /* ************************************* */
 
-static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity) 
+static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity)
 {
   int i, num_purged_rules = 0, debug = 0;
   unsigned long expire_jiffies = jiffies - msecs_to_jiffies(1000*rule_inactivity);
 
   if(debug)
-    printk("[PF_RING] purge_idle_hash_rules(rule_inactivity=%d)\n", rule_inactivity);	  
+    printk("[PF_RING] purge_idle_hash_rules(rule_inactivity=%d)\n", rule_inactivity);
 
   /* Free filtering hash rules inactive for more than rule_inactivity seconds */
   if(pfr->filtering_hash != NULL) {
     for(i=0; i<DEFAULT_RING_HASH_SIZE; i++) {
       if(pfr->filtering_hash[i] != NULL) {
 	filtering_hash_bucket *scan = pfr->filtering_hash[i], *next, *prev = NULL;
-      
+
 	while(scan != NULL) {
 	  next = scan->next;
 
 	  if(scan->rule.jiffies_last_match < expire_jiffies) {
 	    /* Expired rule: free it */
-	    
-	    if(debug) 
+
+	    if(debug)
 	      printk("[PF_RING] Purging hash rule "
 		     /* "[last_match=%u][expire_jiffies=%u]" */
 		     "[%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][purged=%d][tot_rules=%d]\n",
 		     /*
-		       (unsigned int)scan->rule.jiffies_last_match, 
+		       (unsigned int)scan->rule.jiffies_last_match,
 		       (unsigned int)expire_jiffies,
 		     */
 		     ((scan->rule.host_peer_a >> 24) & 0xff),
@@ -3919,22 +3953,22 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 
 	    if(scan->plugin_data_ptr != NULL) kfree(scan->plugin_data_ptr);
 	    kfree(scan);
-	  
+
 	    if(prev == NULL)
 	      pfr->filtering_hash[i] = next;
 	    else
 	      prev->next = next;
-	  
+
 	    pfr->num_filtering_rules--, num_purged_rules++;
 	  } else
 	    prev = scan;
-	  
+
 	  scan = next;
 	}
       }
     }
   }
- 
+
   if(debug)
     printk("[PF_RING] Purged %d hash rules [tot_rules=%d]\n",
 	   num_purged_rules, pfr->num_filtering_rules);
@@ -4152,6 +4186,7 @@ static int ring_setsockopt(struct socket *sock,
 
       if(optlen == sizeof(filtering_rule)) {
 	struct list_head *ptr, *tmp_ptr;
+	int idx = 0;
 
 	if(debug) printk("[PF_RING] Allocating memory\n");
 
@@ -4196,19 +4231,60 @@ static int ring_setsockopt(struct socket *sock,
 	/* Compile pattern if present */
 	if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
 	  {
+#ifdef USE_REGEX
 	    int patternsize;
-	   
-	    rule->pattern = regcomp(rule->rule.extended_fields.payload_pattern, 
-				    &patternsize);	    
+#endif
+	    char *pattern = rule->rule.extended_fields.payload_pattern;
 
+	    printk("[PF_RING] About to compile pattern '%s'\n", pattern);
+
+#ifdef USE_REGEX
+	    rule->pattern = regcomp(pattern, &patternsize);
+#else
+
+	    while(pattern && (idx < MAX_NUM_PATTERN)) {
+	      char *pipe = strchr(pattern, '|');
+            
+	      if(pipe) pipe[0] = '\0';
+
+#ifdef CONFIG_TEXTSEARCH
+	      rule->pattern[idx] = textsearch_prepare("bm" /* Boyer-Moore */
+						      /* "kmp" = Knuth-Morris-Pratt */,
+						      pattern, strlen(pattern),
+						      GFP_KERNEL, TS_AUTOLOAD
+#ifdef TS_IGNORECASE
+						      | TS_IGNORECASE
+#endif
+						      );
+#else
+	      rule->pattern[idx] = NULL;
+#endif
+		
+	      if(rule->pattern[idx]) printk("[PF_RING] Compiled pattern '%s' [idx=%d]\n", pattern, idx);
+
+	      if(pipe)
+		pattern = &pipe[1], idx++;
+	      else
+		break;
+	    }
+#endif
+
+#ifdef USE_REGEX
 	    if(rule->pattern == NULL) {
 	      printk("[PF_RING] Unable to compile pattern '%s'\n",
 		     rule->rule.extended_fields.payload_pattern);
 	      rule->pattern = NULL;
 	    } else
-	      printk("[PF_RING] Compiled pattern '%s'\n", rule->rule.extended_fields.payload_pattern);
-	  } else
+	      printk("[PF_RING] Compiled pattern '%s'\n", pattern);
+#endif
+
+	  } else {
+#ifdef USE_REGEX
 	    rule->pattern = NULL;
+#else
+	    rule->pattern[0] = NULL;
+#endif
+	}
 
 	write_lock(&pfr->ring_rules_lock);
 	if(debug) printk("[PF_RING] SO_ADD_FILTERING_RULE: About to add rule %d\n", rule->rule.rule_id);
@@ -4224,8 +4300,18 @@ static int ring_setsockopt(struct socket *sock,
 	    if(entry->rule.rule_id == rule->rule.rule_id)
 	      {
 		memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
-		if(entry->pattern != NULL) kfree(entry->pattern);
+#ifdef USE_REGEX
+		if(entry->pattern) kfree(entry->pattern);
 		entry->pattern = rule->pattern;
+#else
+		{
+		  int i;
+
+		  for(i=0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
+		    textsearch_destroy(entry->pattern[i]);
+		  memcpy(entry->pattern, rule->pattern, sizeof(struct ts_config*)*MAX_NUM_PATTERN);
+		}
+#endif
 		kfree(rule);
 		rule = NULL;
 		if(debug) printk("[PF_RING] SO_ADD_FILTERING_RULE: overwritten rule_id %d\n", entry->rule.rule_id);
@@ -4308,14 +4394,23 @@ static int ring_setsockopt(struct socket *sock,
 
 	      if(entry->rule.rule_id == rule_id)
 		{
-		  if(entry->pattern) kfree(entry->pattern);
-		  list_del(ptr);
-		  pfr->num_filtering_rules--;
-		  if(entry->plugin_data_ptr != NULL) kfree(entry->plugin_data_ptr);
-		  kfree(entry);
-		  if(debug) printk("[PF_RING] SO_REMOVE_FILTERING_RULE: rule %d has been removed\n", rule_id);
-		  rule_found = 1;
-		  break;
+#ifdef USE_REGEX
+		if(entry->pattern) kfree(entry->pattern);
+#else
+		{
+		  int i;
+		  
+		  for(i=0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
+		    textsearch_destroy(entry->pattern[i]);
+		}
+#endif
+		list_del(ptr);
+		pfr->num_filtering_rules--;
+		if(entry->plugin_data_ptr != NULL) kfree(entry->plugin_data_ptr);
+		kfree(entry);
+		if(debug) printk("[PF_RING] SO_REMOVE_FILTERING_RULE: rule %d has been removed\n", rule_id);
+		rule_found = 1;
+		break;
 		}
 	    } /* for */
 
@@ -4524,7 +4619,7 @@ static int ring_getsockopt(struct socket *sock,
 	if(copy_from_user(&rule_id, optval, sizeof(rule_id)))
 	  return -EFAULT;
 
-	if(debug) 
+	if(debug)
 	  printk("[PF_RING] SO_GET_FILTERING_RULE_STATS: rule_id=%d\n", rule_id);
 
 	read_lock(&pfr->ring_rules_lock);
@@ -4643,7 +4738,7 @@ void dna_device_handler(dna_device_operation operation,
 			dna_wait_packet wait_packet_function_ptr) {
   int debug = 0;
 
-  if(debug) 
+  if(debug)
     printk("[PF_RING] dna_device_handler(%s)\n", netdev->name);
 
   if(operation == add_device_mapping) {
