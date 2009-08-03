@@ -22,6 +22,7 @@
  * - Vincent Carrier <vicarrier@wanadoo.fr>
  * - Eugene Bogush <b_eugene@ukr.net>
  * - Samir Chang <coobyhb@gmail.com>
+ * - Ury Stankevich <urykhy@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1197,6 +1198,7 @@ static u_int plugin_registration_size = 0;
 static struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
 static u_short max_registered_plugin_id = 0;
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
+static rwlock_t ring_list_lock = RW_LOCK_UNLOCKED; 
 
 /* ********************************** */
 
@@ -2156,12 +2158,12 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   FlowSlot *theSlot;
   int32_t the_bit = 1 << channel_id;
 
-  if(!pfr->ring_active) return;
-
 #if defined(RING_DEBUG)
   printk("[PF_RING] --> add_pkt_to_ring(len=%d) [pfr->channel_id=%d][channel_id=%d]\n",
 	 hdr->len, pfr->channel_id, channel_id);
 #endif
+
+ if(!pfr->ring_active) return;
 
   if((pfr->channel_id != RING_ANY_CHANNEL)
      && (channel_id != RING_ANY_CHANNEL)
@@ -2303,11 +2305,13 @@ static int add_skb_to_ring(struct sk_buff *skb,
   }
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] add_skb_to_ring: [displ=%d][len=%d][caplen=%d]"
-	 "[is_ip_pkt=%d][%d -> %d]\n",
+  printk("[PF_RING] add_skb_to_ring: [%s][displ=%d][len=%d][caplen=%d]"
+	 "[is_ip_pkt=%d][%d -> %d][%p/%p]\n",
+	 (skb->dev->name == NULL) ? skb->dev->name : "<NULL>", 
 	 displ, hdr->len, hdr->caplen,
 	 is_ip_pkt, hdr->parsed_pkt.l4_src_port,
-	 hdr->parsed_pkt.l4_dst_port);
+	 hdr->parsed_pkt.l4_dst_port,
+	 skb->dev, pfr->ring_netdev);
 #endif
 
   /* ************************************* */
@@ -3217,6 +3221,7 @@ static int ring_release(struct socket *sock)
   sock_orphan(sk);
   ring_proc_remove(ring_sk(sk));
 
+  write_lock(&ring_list_lock); 
   if(pfr->ring_netdev && (pfr->ring_netdev->ifindex < MAX_NUM_DEVICES)) {
     struct list_head *ptr, *tmp_ptr;
     device_ring_list_element *entry;
@@ -3231,6 +3236,7 @@ static int ring_release(struct socket *sock)
       }
     }
   }
+  write_unlock(&ring_list_lock); 
 
   write_lock_bh(&ring_mgmt_lock);
   ring_remove(sk);
@@ -3427,7 +3433,9 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     if(elem != NULL) {
       elem->the_ring = pfr;
       INIT_LIST_HEAD(&elem->list);
+      write_lock(&ring_list_lock);
       list_add(&elem->list, &device_ring_list[dev->ifindex]);
+      write_unlock(&ring_list_lock);
       /* printk("[PF_RING] Added ring to device index %d\n", dev->ifindex); */
     }
   }

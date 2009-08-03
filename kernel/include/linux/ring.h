@@ -456,6 +456,11 @@ typedef struct {
 /* **************************************** */
 
 #define MAX_NUM_PATTERN   32
+#define BITMASK_LEN        8
+
+#define BITMASK_SET(n, p)       (p[n/32] |= (1<<(n % 32)))
+#define BITMASK_CLR(n, p)       (p[n/32] &= ~(1<<(n % 32)))
+#define BITMASK_ISSET(n, p)     (p[n/32] &  (1<<(n % 32)))
 
 typedef struct {
   filtering_rule rule;
@@ -465,6 +470,7 @@ typedef struct {
 #else
 #ifdef CONFIG_TEXTSEARCH
   struct ts_config *pattern[MAX_NUM_PATTERN];
+  u_int32_t bitmask[BITMASK_LEN];
 #endif
 #endif
   struct list_head list;
