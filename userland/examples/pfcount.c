@@ -448,7 +448,7 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  if(1) {
+  if(0) {
     if(0) {
       hash_filtering_rule rule;
 
