@@ -24,7 +24,7 @@
 
 /* Versioning */
 #define RING_VERSION                "3.9.5"
-#define RING_VERSION_NUM           0x030904
+#define RING_VERSION_NUM           0x030905
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
