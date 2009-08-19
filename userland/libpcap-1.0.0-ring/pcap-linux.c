@@ -3585,9 +3585,11 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 	int ret;
 	int save_errno;
 
+#if 0
 #ifdef HAVE_PF_RING
 	if(handle->ring != NULL)
 	  return(-1); /* Filter in userland */
+#endif
 #endif
 
 	/*
@@ -3621,7 +3623,13 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 	 * the filtering done in userland even if it could have been
 	 * done in the kernel.
 	 */
-	if (setsockopt(handle->fd, SOL_SOCKET, SO_ATTACH_FILTER,
+	if (setsockopt(handle->fd, 
+#ifdef HAVE_PF_RING
+			 0 
+#else
+			 SOL_SOCKET
+#endif
+		       , SO_ATTACH_FILTER,
 		       &total_fcode, sizeof(total_fcode)) == 0) {
 		char drain[1];
 
@@ -3630,6 +3638,7 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 		 */
 		total_filter_on = 1;
 
+#ifndef HAVE_PF_RING
 		/*
 		 * Save the socket's current mode, and put it in
 		 * non-blocking mode; we drain it by reading packets
@@ -3652,12 +3661,19 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 				return -2;
 			}
 		}
+#endif
 	}
 
 	/*
 	 * Now attach the new filter.
 	 */
-	ret = setsockopt(handle->fd, SOL_SOCKET, SO_ATTACH_FILTER,
+	ret = setsockopt(handle->fd, 
+#ifdef HAVE_PF_RING
+			 0 
+#else
+			 SOL_SOCKET
+#endif
+			 , SO_ATTACH_FILTER,
 			 fcode, sizeof(*fcode));
 	if (ret == -1 && total_filter_on) {
 		/*
