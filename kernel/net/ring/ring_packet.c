@@ -3223,6 +3223,7 @@ static int ring_release(struct socket *sock)
   ring_proc_remove(ring_sk(sk));
 
   write_lock(&ring_list_lock); 
+
   if(pfr->ring_netdev && (pfr->ring_netdev->ifindex < MAX_NUM_DEVICES)) {
     struct list_head *ptr, *tmp_ptr;
     device_ring_list_element *entry;
@@ -3237,9 +3238,14 @@ static int ring_release(struct socket *sock)
       }
     }
   }
+
   write_unlock(&ring_list_lock); 
 
   write_lock_bh(&ring_mgmt_lock);
+
+  if(pfr->cluster_id != 0)
+    remove_from_cluster(sk, pfr);
+
   ring_remove(sk);
   sock->sk = NULL;
 
@@ -4011,6 +4017,9 @@ static int ring_setsockopt(struct socket *sock,
     {
     case SO_ATTACH_FILTER:
       ret = -EINVAL;
+
+      printk("[PF_RING] BPF filter (%d)\n", 0);
+
       if (optlen == sizeof(struct sock_fprog))
 	{
 	  unsigned int fsize;
@@ -4019,6 +4028,8 @@ static int ring_setsockopt(struct socket *sock,
 
 	  ret = -EFAULT;
 
+
+	  printk("[PF_RING] BPF filter (%d)\n", 1);
 	  /*
 	    NOTE
 
@@ -4058,6 +4069,11 @@ static int ring_setsockopt(struct socket *sock,
 	  pfr->bpfFilter = filter;
 	  write_unlock(&pfr->ring_rules_lock);
 	  ret = 0;
+
+	  //#if !defined(RING_DEBUG)
+	  printk("[PF_RING] BPF filter attached succesfully [len=%d]\n", filter->len);
+	  //#endif
+
 	}
       break;
 
