@@ -1874,7 +1874,7 @@ static int hash_bucket_match(filtering_hash_bucket *hash_bucket,
 	  && (hash_bucket->rule.host_peer_b == (mask_src ? 0 : hdr->parsed_pkt.ipv4_src))
 	  && (hash_bucket->rule.port_peer_a == (mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port))
 	  && (hash_bucket->rule.port_peer_b == (mask_src ? 0 : hdr->parsed_pkt.l4_src_port))))) {
-    hash_bucket->rule.jiffies_last_match = jiffies;
+    hash_bucket->rule.private.jiffies_last_match = jiffies;
     return(1);
   } else
     return(0);
@@ -1923,7 +1923,7 @@ inline int hash_bucket_match_rule(filtering_hash_bucket *hash_bucket,
 	  && (hash_bucket->rule.host_peer_b == rule->host_peer_a)
 	  && (hash_bucket->rule.port_peer_a == rule->port_peer_b)
 	  && (hash_bucket->rule.port_peer_b == rule->port_peer_a)))) {
-    hash_bucket->rule.jiffies_last_match = jiffies;
+    hash_bucket->rule.private.jiffies_last_match = jiffies;
     return(1);
   } else
     return(0);
@@ -1990,13 +1990,13 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 				struct parse_buffer *parse_memory_buffer[],
 				u_int8_t *free_parse_mem,
 				u_int *last_matched_plugin,
-				packet_action_behaviour *behaviour)
+				rule_action_behaviour *behaviour)
 {
   int debug = 0;
 
   /* if(debug) printk("[PF_RING] match_filtering_rule()\n"); */
 
-  *behaviour = use_rule_forward_policy; /* Default */
+  *behaviour = forward_packet_and_stop_rule_evaluation; /* Default */
 
   if((rule->rule.core_fields.vlan_id > 0) && (hdr->parsed_pkt.vlan_id  != rule->rule.core_fields.vlan_id)) return(0);
   if((rule->rule.core_fields.proto > 0)   && (hdr->parsed_pkt.l3_proto != rule->rule.core_fields.proto))   return(0);
@@ -2020,7 +2020,6 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     u_int32_t balance_hash = hash_pkt_header(hdr, 0, 0) % rule->rule.balance_pool;
     if(balance_hash != rule->rule.balance_id) return(0);
   }
-
 
 #ifdef USE_REGEX
   if(rule->pattern != NULL)
@@ -2129,6 +2128,8 @@ static int match_filtering_rule(struct ring_opt *the_ring,
   } else {
     if(debug) printk("[PF_RING] Skipping pfring_plugin_handle_skb(plugin_action=%d)\n",
 		     rule->rule.plugin_action.plugin_id);
+    *behaviour = rule->rule.rule_action;
+    if(debug) printk("[PF_RING] Rule %d behaviour: %d\n", rule->rule.rule_id, rule->rule.rule_action);
   }
 
   if(debug) {
@@ -2142,7 +2143,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 	   rule->rule.core_fields.port_high, *behaviour);
   }
 
-  rule->rule.jiffies_last_match = jiffies;
+  rule->rule.private.jiffies_last_match = jiffies;
   return(1); /* match */
 }
 
@@ -2258,6 +2259,41 @@ static void free_parse_memory(struct parse_buffer *parse_memory_buffer[]) {
 
 /* ********************************** */
 
+static int reflect_packet(struct sk_buff *skb,
+			  struct ring_opt *pfr,
+			  struct net_device *reflector_dev,
+			  int displ) {
+  int debug = 0;
+
+  if(debug) printk("[PF_RING] reflect_packet called\n");
+
+  if((reflector_dev != NULL) 
+     && (reflector_dev->flags & IFF_UP) /* Interface is up */)
+    {
+      int ret;
+
+      skb->pkt_type = PACKET_OUTGOING, skb->dev = reflector_dev;
+      atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
+      skb->data -= displ, skb->len += displ;
+      ret = dev_queue_xmit(skb);
+      skb->data += displ, skb->len -= displ;
+      atomic_set(&pfr->num_ring_users, 0); /* Done */
+      /* printk("[PF_RING] --> ret=%d\n", ret); */
+      if(ret == NETDEV_TX_OK)
+	pfr->slots_info->tot_fwd_ok++;
+      else
+	pfr->slots_info->tot_fwd_notok++;
+
+      return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN);
+    } 
+  else
+    pfr->slots_info->tot_fwd_notok++;
+
+  return(-ENETDOWN);
+}
+
+/* ********************************** */
+
 static int add_skb_to_ring(struct sk_buff *skb,
 			   struct ring_opt *pfr,
 			   struct pfring_pkthdr *hdr,
@@ -2357,7 +2393,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
     } /* while */
 
     if(hash_found) {
-      packet_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
+      rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
 
       if((hash_bucket->rule.plugin_action.plugin_id != 0)
 	 && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
@@ -2375,20 +2411,28 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	hdr->parsed_pkt.last_matched_plugin_id = hash_bucket->rule.plugin_action.plugin_id;
       }
 
-      if((behaviour == forward_packet_and_stop_rule_evaluation)
-	 || (behaviour == forward_packet_add_rule_and_stop_rule_evaluation)
-	 )
+      switch(behaviour) {
+      case forward_packet_and_stop_rule_evaluation:
 	fwd_pkt = 1;
-      else if(behaviour == dont_forward_packet_and_stop_rule_evaluation)
+	break;
+      case dont_forward_packet_and_stop_rule_evaluation:
 	fwd_pkt = 0;
-      else {
-	if(hash_bucket->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 1;
-	} else if(hash_bucket->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 0;
-	} else if(hash_bucket->rule.rule_action == execute_action_and_continue_rule_evaluation) {
-	  hash_found = 0; /* This way we also evaluate the list of rules */
-	}
+	break;
+      case execute_action_and_continue_rule_evaluation:
+	hash_found = 0; /* This way we also evaluate the list of rules */
+	break;
+      case forward_packet_add_rule_and_stop_rule_evaluation:
+	fwd_pkt = 1;
+	break;
+      case reflect_packet_and_stop_rule_evaluation:
+	fwd_pkt = 0;
+	reflect_packet(skb, pfr, hash_bucket->rule.private.reflector_dev, displ);
+	break;
+      case reflect_packet_and_continue_rule_evaluation:
+	fwd_pkt = 0;
+	reflect_packet(skb, pfr, hash_bucket->rule.private.reflector_dev, displ);
+	hash_found = 0; /* This way we also evaluate the list of rules */
+	break;
       }
     } else {
       /* printk("[PF_RING] Packet not found\n"); */
@@ -2400,7 +2444,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
     list_for_each_safe(ptr, tmp_ptr, &pfr->rules)
       {
 	filtering_rule_element *entry;
-	packet_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
+	rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
 
 	entry = list_entry(ptr, filtering_rule_element, list);
 
@@ -2408,10 +2452,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				parse_memory_buffer, &free_parse_mem,
 				&last_matched_plugin, &behaviour))
 	  {
-
-	    if(behaviour == use_rule_forward_policy)
-	      behaviour = entry->rule.rule_action;
-
 	    if(debug) printk("[PF_RING] behaviour=%d\n", behaviour);
 
 	    if(behaviour == forward_packet_and_stop_rule_evaluation) {
@@ -2434,7 +2474,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		hash_bucket->rule.port_peer_a = hdr->parsed_pkt.l4_src_port;
 		hash_bucket->rule.port_peer_b = hdr->parsed_pkt.l4_dst_port;
 		hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
-		hash_bucket->rule.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
+		hash_bucket->rule.reflector_device_name[0] = '\0';
+		hash_bucket->rule.private.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
+		hash_bucket->rule.private.reflector_dev = NULL;
 
 		rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
 		pfr->num_filtering_rules++;
@@ -2461,18 +2503,23 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	    } else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 0;
 	      break;
-	    } else {
-	      if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
-		fwd_pkt = 1;
-		break;
-	      } else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
-		fwd_pkt = 0;
-		break;
-	      } else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
-		/* The action has already been performed inside match_filtering_rule()
-		   hence instead of stopping rule evaluation, the next rule
-		   will be evaluated */
-	      }
+	    } if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+	      fwd_pkt = 1;
+	      break;
+	    } else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+	      fwd_pkt = 0;
+	      break;
+	    } else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
+	      /* The action has already been performed inside match_filtering_rule()
+		 hence instead of stopping rule evaluation, the next rule
+		 will be evaluated */
+	    } else if(entry->rule.rule_action == reflect_packet_and_stop_rule_evaluation) {
+	      fwd_pkt = 0;
+	      reflect_packet(skb, pfr, entry->rule.private.reflector_dev, displ);
+	    } else if(entry->rule.rule_action == reflect_packet_and_continue_rule_evaluation) {
+	      fwd_pkt = 0;
+	      reflect_packet(skb, pfr, entry->rule.private.reflector_dev, displ);
+	      break;
 	    }
 	  }
       } /* for */
@@ -2480,6 +2527,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
   if(fwd_pkt) {
     /* We accept the packet: it needs to be queued */
+
+    if(debug)  printk("[PF_RING] Forwarding packet to userland\n");
 
     /* [3] Packet sampling */
     if(pfr->sample_rate > 1) {
@@ -2508,31 +2557,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
       write_unlock_bh(&pfr->ring_index_lock);
     }
 
-    /* [4] Check if there is a reflector device defined */
-    if(pfr->reflector_dev != NULL) {
-      if(pfr->reflector_dev->flags & IFF_UP)
-      {
-	int ret;
-
-	skb->pkt_type = PACKET_OUTGOING, skb->dev = pfr->reflector_dev;
-	atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
-	skb->data -= displ, skb->len += displ;
-	ret = dev_queue_xmit(skb);
-	skb->data += displ, skb->len -= displ;
-	atomic_set(&pfr->num_ring_users, 0); /* Done */
-	if(free_parse_mem) free_parse_memory(parse_memory_buffer);
-	/* printk("[PF_RING] --> ret=%d\n", ret); */
-	if(ret == NETDEV_TX_OK)
-	  pfr->slots_info->tot_fwd_ok++;
-	else
-	  pfr->slots_info->tot_fwd_notok++;
-        return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN); /* -ENETDOWN */
-      } else {
-	pfr->slots_info->tot_fwd_notok++;
-      }
-    }
-
-    /* No reflector device: the packet needs to be queued */
     if(hdr->caplen > 0) {
       /* Copy the packet into the bucket */
       int offset;
@@ -2991,6 +3015,24 @@ static int buffer_ring_handler(struct net_device *dev,
 
 /* ************************************* */
 
+static void free_filtering_rule(filtering_rule *rule)
+{ 
+  if(rule->private.reflector_dev != NULL)
+    dev_put(rule->private.reflector_dev); /* Release device */
+}
+
+/* ************************************* */
+
+static void free_filtering_hash_bucket(filtering_hash_bucket *bucket)
+{
+  if(bucket->plugin_data_ptr) kfree(bucket->plugin_data_ptr);
+  
+  if(bucket->rule.private.reflector_dev != NULL)
+    dev_put(bucket->rule.private.reflector_dev); /* Release device */
+}
+
+/* ************************************* */
+
 static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 					filtering_hash_bucket* rule,
 					u_char add_rule)
@@ -3060,8 +3102,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 	  else
 	    prev->next = bucket->next;
 
-	  /* Free the bucket */
-	  if(bucket->plugin_data_ptr) kfree(bucket->plugin_data_ptr);
+	  free_filtering_hash_bucket(bucket);
 	  kfree(bucket);
 	  if(debug) printk("[PF_RING] handle_filtering_hash_bucket() returned %d [2]\n", 0);
 	  return(0);
@@ -3283,6 +3324,7 @@ static int ring_release(struct socket *sock)
 #endif
 
       list_del(ptr);
+      free_filtering_rule(&rule->rule);
       kfree(rule);
     }
 
@@ -3296,7 +3338,8 @@ static int ring_release(struct socket *sock)
 
 	while(scan != NULL) {
 	  next = scan->next;
-	  if(scan->plugin_data_ptr != NULL) kfree(scan->plugin_data_ptr);
+
+	  free_filtering_hash_bucket(scan);
 	  kfree(scan);
 	  scan = next;
 	}
@@ -3305,9 +3348,6 @@ static int ring_release(struct socket *sock)
 
     kfree(pfr->filtering_hash);
   }
-
-  if(pfr->reflector_dev != NULL)
-    dev_put(pfr->reflector_dev); /* Release device */
 
   /* Free the ring buffer later, vfree needs interrupts enabled */
   ring_memory_ptr = pfr->ring_memory;
@@ -3943,7 +3983,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 	while(scan != NULL) {
 	  next = scan->next;
 
-	  if(scan->rule.jiffies_last_match < expire_jiffies) {
+	  if(scan->rule.private.jiffies_last_match < expire_jiffies) {
 	    /* Expired rule: free it */
 
 	    if(debug)
@@ -3951,7 +3991,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 		     /* "[last_match=%u][expire_jiffies=%u]" */
 		     "[%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][purged=%d][tot_rules=%d]\n",
 		     /*
-		       (unsigned int)scan->rule.jiffies_last_match,
+		       (unsigned int)scan->rule.private.jiffies_last_match,
 		       (unsigned int)expire_jiffies,
 		     */
 		     ((scan->rule.host_peer_a >> 24) & 0xff),
@@ -3966,9 +4006,9 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 		     scan->rule.port_peer_b,
 		     num_purged_rules, pfr->num_filtering_rules);
 
-	    if(scan->plugin_data_ptr != NULL) kfree(scan->plugin_data_ptr);
+	    free_filtering_hash_bucket(scan);	    
 	    kfree(scan);
-
+	    
 	    if(prev == NULL)
 	      pfr->filtering_hash[i] = next;
 	    else
@@ -4000,7 +4040,7 @@ static int ring_setsockopt(struct socket *sock,
   int val, found, ret = 0 /* OK */;
   u_int cluster_id, debug = 0;
   int32_t channel_id;
-  char devName[8], applName[32+1];
+  char applName[32+1];
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
   u_int16_t rule_id, rule_inactivity;
@@ -4155,38 +4195,6 @@ static int ring_setsockopt(struct socket *sock,
       }
       break;
 
-    case SO_SET_REFLECTOR:
-      if(optlen >= (sizeof(devName)-1))
-	return -EINVAL;
-
-      if(optlen > 0)
-	{
-	  if(copy_from_user(devName, optval, optlen))
-	    return -EFAULT;
-	}
-
-      devName[optlen] = '\0';
-
-#if defined(RING_DEBUG)
-      printk("[PF_RING] +++ SO_SET_REFLECTOR(%s)\n", devName);
-#endif
-
-      write_lock(&pfr->ring_rules_lock);
-      pfr->reflector_dev = dev_get_by_name(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
-					    &init_net,
-#endif
-    					    devName);
-      write_unlock(&pfr->ring_rules_lock);
-
-#if defined(RING_DEBUG)
-      if(pfr->reflector_dev != NULL)
-	printk("[PF_RING] SO_SET_REFLECTOR(%s): succeded\n", devName);
-      else
-	printk("[PF_RING] SO_SET_REFLECTOR(%s): device unknown\n", devName);
-#endif
-      break;
-
     case SO_TOGGLE_FILTER_POLICY:
       if(optlen != sizeof(u_int8_t))
 	return -EINVAL;
@@ -4213,7 +4221,7 @@ static int ring_setsockopt(struct socket *sock,
 	struct list_head *ptr, *tmp_ptr;
 	int idx = 0;
 
-	if(debug) printk("[PF_RING] Allocating memory\n");
+	if(debug) printk("[PF_RING] Allocating memory [filtering_rule]\n");
 
 	rule = (filtering_rule_element*)kcalloc(1, sizeof(filtering_rule_element), GFP_KERNEL);
 
@@ -4225,6 +4233,7 @@ static int ring_setsockopt(struct socket *sock,
 
 	INIT_LIST_HEAD(&rule->list);
 
+	/* Rule checks */
 	if(rule->rule.extended_fields.filter_plugin_id > 0) {
 	  int ret = 0;
 
@@ -4234,6 +4243,8 @@ static int ring_setsockopt(struct socket *sock,
 	    ret = -EFAULT;
 
 	  if(ret != 0) {
+	    if(debug) printk("[PF_RING] Invalid filtering plugin [id=%d]\n",
+			     rule->rule.extended_fields.filter_plugin_id);
 	    kfree(rule);
 	    return(ret);
 	  }
@@ -4248,10 +4259,28 @@ static int ring_setsockopt(struct socket *sock,
 	    ret = -EFAULT;
 
 	  if(ret != 0) {
+	    if(debug) printk("[PF_RING] Invalid action plugin [id=%d]\n", 
+			     rule->rule.plugin_action.plugin_id);
 	    kfree(rule);
 	    return(ret);
 	  }
 	}
+
+	if(rule->rule.reflector_device_name[0] != '\0') {
+	  rule->rule.private.reflector_dev = dev_get_by_name(
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+					       &init_net,
+#endif
+					       rule->rule.reflector_device_name);
+
+	  if(rule->rule.private.reflector_dev == NULL) {
+	    printk("[PF_RING] Unable to find device %s\n", 
+		   rule->rule.reflector_device_name);
+	    kfree(rule);
+	    return(-EFAULT);
+	  }
+	} else
+	  rule->rule.private.reflector_dev = NULL;
 
 	/* Compile pattern if present */
 	if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
@@ -4386,6 +4415,22 @@ static int ring_setsockopt(struct socket *sock,
 	if(copy_from_user(&rule->rule, optval, optlen))
 	  return -EFAULT;
 
+	if(rule->rule.reflector_device_name[0] != '\0') {
+	  rule->rule.private.reflector_dev = dev_get_by_name(
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+					       &init_net,
+#endif
+					       rule->rule.reflector_device_name);
+	  
+	  if(rule->rule.private.reflector_dev == NULL) {
+	    printk("[PF_RING] Unable to find device %s\n", 
+		   rule->rule.reflector_device_name);
+	    kfree(rule);
+	    return(-EFAULT);
+	  }
+	} else
+	  rule->rule.private.reflector_dev = NULL;
+
 	write_lock(&pfr->ring_rules_lock);
 	rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */);
 	pfr->num_filtering_rules++;
@@ -4431,7 +4476,9 @@ static int ring_setsockopt(struct socket *sock,
 #endif
 		list_del(ptr);
 		pfr->num_filtering_rules--;
-		if(entry->plugin_data_ptr != NULL) kfree(entry->plugin_data_ptr);
+
+		if(entry->plugin_data_ptr) kfree(entry->plugin_data_ptr);
+		free_filtering_rule(&entry->rule);
 		kfree(entry);
 		if(debug) printk("[PF_RING] SO_REMOVE_FILTERING_RULE: rule %d has been removed\n", rule_id);
 		rule_found = 1;

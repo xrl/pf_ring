@@ -23,23 +23,22 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.9.5"
-#define RING_VERSION_NUM           0x030905
+#define RING_VERSION                "3.9.6"
+#define RING_VERSION_NUM           0x030906
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
 #define SO_REMOVE_FROM_CLUSTER           100
-#define SO_SET_REFLECTOR                 101
-#define SO_SET_STRING                    102
-#define SO_ADD_FILTERING_RULE            103
-#define SO_REMOVE_FILTERING_RULE         104
-#define SO_TOGGLE_FILTER_POLICY          105
-#define SO_SET_SAMPLING_RATE             106
-#define SO_ACTIVATE_RING                 107
-#define SO_RING_BUCKET_LEN               108
-#define SO_SET_CHANNEL_ID                109
-#define SO_PURGE_IDLE_HASH_RULES         110 /* inactivity (sec) */
-#define SO_SET_APPL_NAME                 111
+#define SO_SET_STRING                    101
+#define SO_ADD_FILTERING_RULE            102
+#define SO_REMOVE_FILTERING_RULE         103
+#define SO_TOGGLE_FILTER_POLICY          104
+#define SO_SET_SAMPLING_RATE             105
+#define SO_ACTIVATE_RING                 106
+#define SO_RING_BUCKET_LEN               107
+#define SO_SET_CHANNEL_ID                108
+#define SO_PURGE_IDLE_HASH_RULES         109 /* inactivity (sec) */
+#define SO_SET_APPL_NAME                 110
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -85,7 +84,9 @@ void regerror(char *s);
  * The first byte of the regexp internal "program" is actually this magic
  * number; the start node begins in the second byte.
  */
-#define	MAGIC	0234
+#define	MAGIC	                   0234
+
+#define REFLECTOR_NAME_LEN            8
 
 /* *********************************** */
 
@@ -178,14 +179,23 @@ typedef enum {
   forward_packet_and_stop_rule_evaluation = 0,
   dont_forward_packet_and_stop_rule_evaluation,
   execute_action_and_continue_rule_evaluation,
-  forward_packet_add_rule_and_stop_rule_evaluation
+  forward_packet_add_rule_and_stop_rule_evaluation,
+  reflect_packet_and_stop_rule_evaluation,
+  reflect_packet_and_continue_rule_evaluation
 } rule_action_behaviour;
 
+#if 0
 typedef enum {
   forward_packet = 100,
   dont_forward_packet,
   use_rule_forward_policy
 } packet_action_behaviour;
+#endif
+
+typedef struct {
+  unsigned long jiffies_last_match;  /* Jiffies of the last rule match (updated by pf_ring) */
+  void *reflector_dev; /* Reflector device (struct net_device*) */
+} filtering_internals;
 
 typedef struct {
   u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
@@ -196,7 +206,9 @@ typedef struct {
   filtering_rule_core_fields     core_fields;
   filtering_rule_extended_fields extended_fields;
   filtering_rule_plugin_action   plugin_action;
-  unsigned long jiffies_last_match;  /* Jiffies of the last rule match (updated by pf_ring) */
+  char reflector_device_name[REFLECTOR_NAME_LEN];
+
+  filtering_internals private;   /* PF_RING internal fields */
 } filtering_rule;
 
 /* *********************************** */
@@ -216,7 +228,9 @@ typedef struct {
 
   rule_action_behaviour rule_action; /* What to do in case of match */
   filtering_rule_plugin_action plugin_action;
-  unsigned long jiffies_last_match;  /* Jiffies of the last rule match (updated by pf_ring) */
+  char reflector_device_name[REFLECTOR_NAME_LEN];
+
+  filtering_internals private;   /* PF_RING internal fields */
 } hash_filtering_rule;
 
 /* ************************************************* */
@@ -407,8 +421,10 @@ struct ring_opt {
   /* Channel */
   int32_t channel_id;  /* -1 = any channel */
 
+#if 0
   /* Reflector */
   struct net_device *reflector_dev; /* Reflector device */
+#endif
 
   /* Packet buffers */
   unsigned long order;
@@ -456,11 +472,6 @@ typedef struct {
 /* **************************************** */
 
 #define MAX_NUM_PATTERN   32
-#define BITMASK_LEN        8
-
-#define BITMASK_SET(n, p)       (p[n/32] |= (1<<(n % 32)))
-#define BITMASK_CLR(n, p)       (p[n/32] &= ~(1<<(n % 32)))
-#define BITMASK_ISSET(n, p)     (p[n/32] &  (1<<(n % 32)))
 
 typedef struct {
   filtering_rule rule;
@@ -470,7 +481,6 @@ typedef struct {
 #else
 #ifdef CONFIG_TEXTSEARCH
   struct ts_config *pattern[MAX_NUM_PATTERN];
-  u_int32_t bitmask[BITMASK_LEN];
 #endif
 #endif
   struct list_head list;
@@ -495,7 +505,7 @@ typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
 				 struct sk_buff *skb,
 				 u_int16_t filter_plugin_id,
 				 struct parse_buffer **filter_rule_memory_storage,
-				 packet_action_behaviour *behaviour);
+				 rule_action_behaviour *behaviour);
 /* Return 1/0 in case of match/no match for the given skb */
 typedef int (*plugin_filter_skb)(struct ring_opt *the_ring,
 				 filtering_rule_element *rule,
