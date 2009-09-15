@@ -130,7 +130,6 @@ extern "C" {
   int pfring_set_channel_id(pfring *ring, int32_t channel_id);
   int pfring_set_application_name(pfring *ring, char *name);
   int pfring_remove_from_cluster(pfring *ring);
-  int pfring_set_reflector(pfring *ring, char *reflectorDevice);
   int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec);
   pfring* pfring_open(char *device_name, u_int8_t promisc, 
 		      u_int32_t caplen, u_int8_t reentrant);

@@ -434,7 +434,6 @@ int main(int argc, char* argv[]) {
   } else {
     u_int32_t version;
 
-    pfring_set_application_name(pd, "pfcount");
     pfring_version(pd, &version);
 
     printf("Using PF_RING v.%d.%d.%d\n",
@@ -468,31 +467,21 @@ int main(int argc, char* argv[]) {
       struct dummy_filter filter;
       filtering_rule rule;
 
-      pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
-
       memset(&rule, 0, sizeof(rule));
 
-      if(1) {
+      if(0) {
 	filter.src_host = ntohl(inet_addr("192.168.1.12"));
 
 #if 1
 	rule.rule_id = 5;
 	rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	rule.core_fields.proto = 6; /* TCP */
-	// rule.core_fields.host_low = 0, rule.core_fields.host_high = 0;
-	rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
-	// rule.plugin_action.plugin_id = 1; /* Dummy plugin */
-	//rule.extended_fields.filter_plugin_id = 1; /* Dummy plugin */
+	rule.core_fields.proto = 1;
+	rule.core_fields.host_low = 0, rule.core_fields.host_high = 0;
+	rule.plugin_action.plugin_id = 1; /* Dummy plugin */
+
+	rule.extended_fields.filter_plugin_id = 1; /* Dummy plugin */
 	memcpy(rule.extended_fields.filter_plugin_data, &filter, sizeof(filter));
-
-	if(string != NULL) {
-	  int len = strlen(string);
-	  if(len > (sizeof(rule.extended_fields.payload_pattern)-1))
-	    string[sizeof(rule.extended_fields.payload_pattern)-1] = '\0';
-
-	  strcpy(rule.extended_fields.payload_pattern, string);
-	}
-
+	/* strcpy(rule.extended_fields.payload_pattern, "hello"); */
 #else
 	rule.rule_id = 5;
 	rule.rule_action = forward_packet_and_stop_rule_evaluation;

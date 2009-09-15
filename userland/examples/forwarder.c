@@ -49,11 +49,153 @@ void printHelp(void)
   printf("-n <device>     [Not promiscuous]\n");
 }
 
+/* ****************************************************** */
+
+static char hex[] = "0123456789ABCDEF";
+
+char* etheraddr_string(const u_char *ep, char *buf) {
+  u_int i, j;
+  char *cp;
+
+  cp = buf;
+  if ((j = *ep >> 4) != 0)
+    *cp++ = hex[j];
+  else
+    *cp++ = '0';
+
+  *cp++ = hex[*ep++ & 0xf];
+
+  for(i = 5; (int)--i >= 0;) {
+    *cp++ = ':';
+    if ((j = *ep >> 4) != 0)
+      *cp++ = hex[j];
+    else
+      *cp++ = '0';
+
+    *cp++ = hex[*ep++ & 0xf];
+  }
+
+  *cp = '\0';
+  return (buf);
+}
+
+/* ****************************************************** */
+
+/*
+ * A faster replacement for inet_ntoa().
+ */
+char* _intoa(unsigned int addr, char* buf, u_short bufLen) {
+  char *cp, *retStr;
+  u_int byte;
+  int n;
+
+  cp = &buf[bufLen];
+  *--cp = '\0';
+
+  n = 4;
+  do {
+    byte = addr & 0xff;
+    *--cp = byte % 10 + '0';
+    byte /= 10;
+    if (byte > 0) {
+      *--cp = byte % 10 + '0';
+      byte /= 10;
+      if (byte > 0)
+	*--cp = byte + '0';
+    }
+    *--cp = '.';
+    addr >>= 8;
+  } while (--n > 0);
+
+  /* Convert the string to lowercase */
+  retStr = (char*)(cp+1);
+
+  return(retStr);
+}
+
+/* ************************************ */
+
+char* intoa(unsigned int addr) {
+  static char buf[sizeof "ff:ff:ff:ff:ff:ff:255.255.255.255"];
+
+  return(_intoa(addr, buf, sizeof(buf)));
+}
+
+/* ****************************************************** */
+
+char* proto2str(u_short proto) {
+  static char protoName[8];
+
+  switch(proto) {
+  case IPPROTO_TCP:  return("TCP");
+  case IPPROTO_UDP:  return("UDP");
+  case IPPROTO_ICMP: return("ICMP");
+  default:
+    snprintf(protoName, sizeof(protoName), "%d", proto);
+    return(protoName);
+  }
+}
+
+/* ****************************************************** */
+
+static int32_t thiszone;
+
+int verbose = 0;
+
+void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
+  if(verbose) {
+    struct ether_header ehdr;
+    u_short eth_type, vlan_id;
+    char buf1[32], buf2[32];
+    struct ip ip;
+    int s = (h->ts.tv_sec + thiszone) % 86400;
+
+    printf("[eth_type=0x%04X]", h->parsed_pkt.eth_type);
+    printf("[l3_proto=%u]", (unsigned int)h->parsed_pkt.l3_proto);
+    printf("[%s:%d -> ", intoa(h->parsed_pkt.ipv4_src), h->parsed_pkt.l4_src_port);
+    printf("%s:%d] ", intoa(h->parsed_pkt.ipv4_dst), h->parsed_pkt.l4_dst_port);
+    printf("%02d:%02d:%02d.%06u ",
+	   s / 3600, (s % 3600) / 60, s % 60,
+	   (unsigned)h->ts.tv_usec);
+
+    memcpy(&ehdr, p+h->parsed_header_len, sizeof(struct ether_header));
+    eth_type = ntohs(ehdr.ether_type);
+    printf("[%s -> %s] ",
+	   etheraddr_string(ehdr.ether_shost, buf1),
+	   etheraddr_string(ehdr.ether_dhost, buf2));
+
+    if(eth_type == 0x8100) {
+      vlan_id = (p[14] & 15)*256 + p[15];
+      eth_type = (p[16])*256 + p[17];
+      printf("[vlan %u] ", vlan_id);
+      p+=4;
+    }
+    if(eth_type == 0x0800) {
+      memcpy(&ip, p+h->parsed_header_len+sizeof(ehdr), sizeof(struct ip));
+      printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->parsed_pkt.l4_src_port);
+      printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->parsed_pkt.l4_dst_port);
+    } else if(eth_type == 0x0806)
+      printf("[ARP]");
+    else
+      printf("[eth_type=0x%04X]", eth_type);
+
+    printf("[tos=%d][tcp_flags=%d][caplen=%d][len=%d][parsed_header_len=%d]"
+	   "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
+	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp_flags,
+	   h->caplen, h->len, h->parsed_header_len,
+	   h->parsed_pkt.pkt_detail.offset.eth_offset,
+	   h->parsed_pkt.pkt_detail.offset.l3_offset,
+	   h->parsed_pkt.pkt_detail.offset.l4_offset,
+	   h->parsed_pkt.pkt_detail.offset.payload_offset);
+  }
+}
+
 int main(int argc, char* argv[]) 
 {
-  pfring *pd, *td;
+  pfring *pd;
   char *in_dev = NULL, *out_dev = NULL, c;
-  int promisc = 1, verbose = 0;
+  int promisc = 1;
+  filtering_rule rule;
 
   while((c = getopt(argc,argv, "hi:o:c:nv")) != -1) 
   {
@@ -91,27 +233,36 @@ int main(int argc, char* argv[])
   }  else
     pfring_set_application_name(pd, "forwarder");
 
-  if ((td = pfring_open(out_dev, promisc, 1500, 0)) == NULL) {
-    printf("pfring_open error for %s\n", out_dev);
-    return -1;
-  } else
-    pfring_set_application_name(td, "forwarder");
+  /* reflect all TCP packets received on in_dev -> out_dev */
+  memset(&rule, 0, sizeof(rule));
+  rule.rule_id = 1;
+  rule.rule_action = reflect_packet_and_stop_rule_evaluation;
+  rule.core_fields.proto = 6 /* tcp */;
+  snprintf(rule.reflector_device_name, REFLECTOR_NAME_LEN, "%s", out_dev);
 
-  /* set reflector */
-  if (pfring_set_reflector(pd, out_dev) != 0)
-  {
-    printf("pfring_set_reflector error for %s\n", out_dev);
-    return -1;
-  }
+  if(pfring_add_filtering_rule(pd, &rule) < 0) {
+    printf("pfring_add_filtering_rule() failed\n");
+    pfring_close(pd);
+    return(-1);
+  } else
+    printf("Reflecting TCP packets received on %s to %s\n",
+	   in_dev, out_dev);
+ 
+  /* Receive UDP packets in userland */
+  memset(&rule, 0, sizeof(rule));
+  rule.rule_id = 2;
+  rule.rule_action = forward_packet_and_stop_rule_evaluation;
+  rule.core_fields.proto = 17 /* udp */;
+  if(pfring_add_filtering_rule(pd, &rule) < 0) {
+    printf("pfring_add_filtering_rule() failed\n");
+    pfring_close(pd);
+    return(-1);
+  } else
+    printf("Capture UDP packets\n");
 
   /* Enable rings */
   pfring_enable_ring(pd);
-  pfring_enable_ring(td);
 
-#if 1
-  while(1)
-    sleep(60);
-#else
   while(1) 
     {
       u_char buffer[2048];
@@ -119,13 +270,11 @@ int main(int argc, char* argv[])
       
       /* need this line otherwise pkts are not reflected */
       if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, 1) > 0) {
-	if(verbose) printf("got one\n");
+	dummyProcesssPacket(&hdr, buffer);
       }
     }
-#endif
 
   pfring_close(pd);
-  pfring_close(td);
 
   return 0;
 }

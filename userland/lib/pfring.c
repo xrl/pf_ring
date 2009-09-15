@@ -93,21 +93,6 @@ int pfring_remove_from_cluster(pfring *ring) {
 
 /* ******************************* */
 
-int pfring_set_reflector(pfring *ring, char *reflectorDevice) {
-#ifdef USE_PCAP
-  return(-1);
-#else
-#ifdef ENABLE_DNA_SUPPORT
-  if(ring->dna_mapped_device) return(-1);
-#endif
-  return(ring ?
-	 setsockopt(ring->fd, 0, SO_SET_REFLECTOR,
-		    reflectorDevice, strlen(reflectorDevice)) : -1);
-#endif
-}
-
-/* ******************************* */
-
 int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec) {
 #ifdef USE_PCAP
   return(-1);
@@ -243,7 +228,7 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
       if(ring->buffer == MAP_FAILED) {
 	printf("mmap() failed");
 	free(ring);
-	return (NULL);
+	return(NULL);
       }
 
       ring->slots_info = (FlowSlotInfo *)ring->buffer;
@@ -252,7 +237,7 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
 	       "kernel is %i, libpfring was compiled with %i\n",
 	       ring->slots_info->version, RING_FLOWSLOT_VERSION);
 	free(ring);
-	return (NULL);
+	return(NULL);
       }
       memSlotsLen = ring->slots_info->tot_mem;
       munmap(ring->buffer, PAGE_SIZE);
@@ -264,7 +249,7 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
       if(ring->buffer == MAP_FAILED) {
 	printf("mmap() failed");
 	free(ring);
-	return (NULL);
+	return(NULL);
       }
 
       ring->slots_info   = (FlowSlotInfo *)ring->buffer;
@@ -1010,7 +995,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
       if(ring->dna_dev.packet_memory == (unsigned long)MAP_FAILED) {
 	printf("mmap(1) failed");
 	free(ring);
-	return (NULL);
+	return(NULL);
       }
 
       ring->dna_dev.descr_packet_memory =
@@ -1021,7 +1006,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
       if(ring->dna_dev.descr_packet_memory == MAP_FAILED) {
 	printf("mmap(2) failed");
 	free(ring);
-	return (NULL);
+	return(NULL);
       }
 
       ring->dna_dev.phys_card_memory =
@@ -1032,7 +1017,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
       if(ring->dna_dev.phys_card_memory == MAP_FAILED) {
 	printf("mmap(3) failed");
 	free(ring);
-	return (NULL);
+	return(NULL);
       }
 
       init_e1000(ring); /* FIX */

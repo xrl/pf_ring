@@ -2273,16 +2273,34 @@ static int reflect_packet(struct sk_buff *skb,
       int ret;
 
       skb->pkt_type = PACKET_OUTGOING, skb->dev = reflector_dev;
-      atomic_inc(&skb->users); /* Avoid others to free the skb and crash */
+      /*
+	 Avoid others to free the skb and crash
+	 this because dev_queue_xmit (if successfull) is gonna
+	 call kfree_skb that will free the skb if users (see below)
+	 has not been incremented
+       */
+      atomic_inc(&skb->users);
       skb->data -= displ, skb->len += displ;
+
+      /*
+	NOTE
+	dev_queue_xmit() must be called with interrupts enabled
+        which means it can't be called with spinlocks held.
+       */
       ret = dev_queue_xmit(skb);
       skb->data += displ, skb->len -= displ;
       atomic_set(&pfr->num_ring_users, 0); /* Done */
       /* printk("[PF_RING] --> ret=%d\n", ret); */
       if(ret == NETDEV_TX_OK)
 	pfr->slots_info->tot_fwd_ok++;
-      else
+      else {
 	pfr->slots_info->tot_fwd_notok++;
+	/*
+	  Do not put the statement below in case of success
+	  as dev_queue_xmit has already decremented users
+	*/
+	atomic_dec(&skb->users);
+      }
 
       return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN);
     } 
