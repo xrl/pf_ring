@@ -551,7 +551,10 @@ pcap_activate_linux(pcap_t *handle)
 	}
 
 #ifdef HAVE_PF_RING
-	handle->ring = pfring_open((char*)device, handle->opt.promisc, handle->snapshot, 1);
+        if(!getenv("PCAP_NO_PF_RING"))
+	  handle->ring = pfring_open((char*)device, handle->opt.promisc, handle->snapshot, 1);
+	else
+          handle->ring = NULL;
 
 	if(handle->ring != NULL) {
 	  handle->fd = handle->ring->fd;
