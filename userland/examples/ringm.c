@@ -22,7 +22,7 @@
  * ringm: listening from eth0 using PF_RING driver ver 3.8.0
  *
  * ringm: starting to capture #434 packets per thread (please be patient)...
- *          
+ *
  *   \    maxcount    received    elapsed time
  *    +========================================
  *    |
@@ -303,6 +303,7 @@ int main (int argc, char * argv [])
   threads [t] = NULL;
 
   /* Print PF_RING driver version */
+  pfring_set_application_name(ring, argv[0]);
   pfring_version (ring, & ringdriver);
   printf ("%s: listening from %s using PF_RING driver ver %d.%d.%d\n\n", progname, interface,
 	  (ringdriver & 0xFFFF0000) >> 16, (ringdriver & 0x0000FF00) >> 8, ringdriver & 0x000000FF);

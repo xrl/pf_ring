@@ -17,14 +17,14 @@
 
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
-#define RING_FLOWSLOT_VERSION           9
+#define RING_FLOWSLOT_VERSION          10
 
 #define DEFAULT_BUCKET_LEN            128
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "3.9.6"
-#define RING_VERSION_NUM           0x030906
+#define RING_VERSION                "3.9.7"
+#define RING_VERSION_NUM           0x030907
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                99
@@ -65,7 +65,7 @@ otherwise, let us know.
 */
 
 #define NSUBEXP  10
-typedef struct regexp {
+typedef struct reg_exp {
 	char *startp[NSUBEXP];
 	char *endp[NSUBEXP];
 	char regstart;		/* Internal use only. */
@@ -73,11 +73,11 @@ typedef struct regexp {
 	char *regmust;		/* Internal use only. */
 	int regmlen;		/* Internal use only. */
 	char program[1];	/* Unwarranted chumminess with compiler. */
-} regexp;
+} reg_exp;
 
-regexp * regcomp(char *exp, int *patternsize);
-int regexec(regexp *prog, char *string);
-void regsub(regexp *prog, char *source, char *dest);
+reg_exp * regcomp(char *exp, int *patternsize);
+int regexec(reg_exp *prog, char *string);
+void regsub(reg_exp *prog, char *source, char *dest);
 void regerror(char *s);
 
 /*
@@ -477,7 +477,7 @@ typedef struct {
   filtering_rule rule;
 
 #ifdef USE_REGEX
-  regexp *pattern;
+  reg_exp *pattern;
 #else
 #ifdef CONFIG_TEXTSEARCH
   struct ts_config *pattern[MAX_NUM_PATTERN];

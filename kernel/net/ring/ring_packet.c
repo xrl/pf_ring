@@ -318,10 +318,10 @@ inline void string2lower(char* str, int str_len) {
   * Beware that the optimization-preparation code in here knows about some
   * of the structure of the compiled regexp.
   */
-regexp *
+reg_exp *
 regcomp(char *exp,int *patternsize)
 {
-  register regexp *r;
+  register reg_exp *r;
   register char *scan;
   register char *longest;
   register int len;
@@ -351,8 +351,8 @@ regcomp(char *exp,int *patternsize)
     FAIL("regexp too big");
 
   /* Allocate space. */
-  *patternsize=sizeof(regexp) + (unsigned)g.regsize;
-  r = (regexp *)malloc(sizeof(regexp) + (unsigned)g.regsize);
+  *patternsize=sizeof(reg_exp) + (unsigned)g.regsize;
+  r = (reg_exp *)malloc(sizeof(reg_exp) + (unsigned)g.regsize);
   if (r == NULL)
     FAIL("out of space");
 
@@ -803,7 +803,7 @@ regoptail(struct match_globals *g, char *p, char *val)
 /*
  * Forwards.
  */
-STATIC int regtry(struct match_globals *g, regexp *prog, char *string);
+STATIC int regtry(struct match_globals *g, reg_exp *prog, char *string);
 STATIC int regmatch(struct match_globals *g, char *prog);
 STATIC int regrepeat(struct match_globals *g, char *p);
 
@@ -811,7 +811,7 @@ STATIC int regrepeat(struct match_globals *g, char *p);
   - regexec - match a regexp against a string
 */
 int
-regexec(regexp *prog, char *string)
+regexec(reg_exp *prog, char *string)
 {
   register char *s;
   struct match_globals g;
@@ -873,7 +873,7 @@ regexec(regexp *prog, char *string)
   - regtry - try match at specific point
 */
 static int			/* 0 failure, 1 success */
-regtry(struct match_globals *g, regexp *prog, char *string)
+regtry(struct match_globals *g, reg_exp *prog, char *string)
 {
   register int i;
   register char **sp;
@@ -1533,7 +1533,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
   if(data == NULL) {
     /* /proc/net/pf_ring/info */
-    rlen = sprintf(buf,         "Version             : %s\n", RING_VERSION);
+    rlen = sprintf(buf,         "PF_RING Version     : %s\n", RING_VERSION);
     rlen += sprintf(buf + rlen, "Ring slots          : %d\n", num_slots);
     rlen += sprintf(buf + rlen, "Slot version        : %d\n", RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen, "Capture TX          : %s\n",
@@ -1553,7 +1553,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
       if(fsi) {
 	rlen = sprintf(buf,        "Bound Device   : %s\n",
 		       pfr->ring_netdev->name == NULL ? "<NULL>" : pfr->ring_netdev->name);
-	rlen += sprintf(buf + rlen, "Version        : %d\n",  fsi->version);
+	rlen += sprintf(buf + rlen, "Slot Version   : %d [%s]\n",  fsi->version, RING_VERSION);
 	rlen += sprintf(buf + rlen, "Sampling Rate  : %d\n",  pfr->sample_rate);
 	rlen += sprintf(buf + rlen, "Appl. Name     : %s\n",  pfr->appl_name ? pfr->appl_name : "<unknown>");
 	rlen += sprintf(buf + rlen, "IP Defragment  : %s\n",  enable_ip_defrag ? "Yes" : "No");

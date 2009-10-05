@@ -57,12 +57,12 @@ TARGETS    = ${STATICLIB} #${DYNAMICLIB}
 
 all: ${TARGETS}
 
-${STATICLIB}: ${OBJS}
+${STATICLIB}: Makefile ${OBJS} pfring.h ../../kernel/include/linux/ring.h
 	@echo "=*= making library $@ =*="
 	ar rs $@ ${OBJS}
 	ranlib $@
 
-${DYNAMICLIB}: ${OBJS}
+${DYNAMICLIB}: Makefile ${OBJS} pfring.h ../../kernel/include/linux/ring.h
 	@echo "=*= making library $@ =*="
 	${CC} ${LDFLAGS} $< ${SYSLIBS} -o $@
 

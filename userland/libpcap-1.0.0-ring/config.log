@@ -59,7 +59,7 @@ configure:2029: found /usr/bin/gcc
 configure:2040: result: gcc
 configure:2278: checking for C compiler version
 configure:2285: gcc --version >&5
-gcc (GCC) 4.2.4 (Ubuntu 4.2.4-1ubuntu3)
+gcc (GCC) 4.2.4 (Ubuntu 4.2.4-1ubuntu4)
 Copyright (C) 2007 Free Software Foundation, Inc.
 This is free software; see the source for copying conditions.  There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
@@ -70,7 +70,7 @@ Using built-in specs.
 Target: i486-linux-gnu
 Configured with: ../src/configure -v --enable-languages=c,c++,fortran,objc,obj-c++,treelang --prefix=/usr --enable-shared --with-system-zlib --libexecdir=/usr/lib --without-included-gettext --enable-threads=posix --enable-nls --with-gxx-include-dir=/usr/include/c++/4.2 --program-suffix=-4.2 --enable-clocale=gnu --enable-libstdcxx-debug --enable-objc-gc --enable-mpfr --enable-targets=all --enable-checking=release --build=i486-linux-gnu --host=i486-linux-gnu --target=i486-linux-gnu
 Thread model: posix
-gcc version 4.2.4 (Ubuntu 4.2.4-1ubuntu3)
+gcc version 4.2.4 (Ubuntu 4.2.4-1ubuntu4)
 configure:2298: $? = 0
 configure:2305: gcc -V >&5
 gcc: '-V' option must have argument
@@ -508,7 +508,7 @@ configure:5172: $? = 0
 configure:5190: result: yes
 configure:5110: checking for strlcpy
 configure:5166: gcc -o conftest -g -O2   conftest.c  >&5
-/tmp/ccoFEkoM.o: In function `main':
+/tmp/ccm5JIFA.o: In function `main':
 /home/deri/PF_RING/userland/libpcap-1.0.0-ring/conftest.c:60: undefined reference to `strlcpy'
 collect2: ld returned 1 exit status
 configure:5172: $? = 1
@@ -787,7 +787,7 @@ configure:8165: $? = 0
 configure:8183: result: yes
 configure:8194: checking for dag_get_stream_erf_types in -ldag
 configure:8229: gcc -o conftest -g -O2  -L/usr/local/lib conftest.c -ldag   >&5
-/tmp/ccUdC7zm.o: In function `main':
+/tmp/ccSRFPHa.o: In function `main':
 /home/deri/PF_RING/userland/libpcap-1.0.0-ring/conftest.c:49: undefined reference to `dag_get_stream_erf_types'
 collect2: ld returned 1 exit status
 configure:8235: $? = 1

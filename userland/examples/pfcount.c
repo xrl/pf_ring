@@ -434,6 +434,7 @@ int main(int argc, char* argv[]) {
   } else {
     u_int32_t version;
 
+    pfring_set_application_name(pd, "pfcount");
     pfring_version(pd, &version);
 
     printf("Using PF_RING v.%d.%d.%d\n",
@@ -447,7 +448,7 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  if(0) {
+  if(1) {
     if(0) {
       hash_filtering_rule rule;
 
@@ -469,10 +470,10 @@ int main(int argc, char* argv[]) {
 
       memset(&rule, 0, sizeof(rule));
 
-      if(0) {
-	filter.src_host = ntohl(inet_addr("192.168.1.12"));
+      if(1) {
+	filter.src_host = ntohl(inet_addr("10.100.0.238"));
 
-#if 1
+#if 0
 	rule.rule_id = 5;
 	rule.rule_action = forward_packet_and_stop_rule_evaluation;
 	rule.core_fields.proto = 1;
@@ -485,9 +486,9 @@ int main(int argc, char* argv[]) {
 #else
 	rule.rule_id = 5;
 	rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
+	rule.core_fields.port_low = 80, rule.core_fields.port_high = 520;
 	rule.core_fields.host_low = rule.core_fields.host_high = ntohl(inet_addr("192.168.0.160"));
-	snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
+	// snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
 #endif
 	if(pfring_add_filtering_rule(pd, &rule) < 0)
 	  printf("pfring_add_filtering_rule() failed\n");

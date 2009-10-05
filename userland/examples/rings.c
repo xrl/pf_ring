@@ -220,6 +220,7 @@ int main (int argc, char * argv [])
   packet = calloc (snapshot, 1);
 
   /* Print PF_RING driver version */
+  pfring_set_application_name(ringtable[0], argv[0]);
   pfring_version (ringtable [0], & ringdriver);
   printf ("%s: listening from %s using PF_RING driver ver %d.%d.%d\n\n", progname, interface,
 	  (ringdriver & 0xFFFF0000) >> 16, (ringdriver & 0x0000FF00) >> 8, ringdriver & 0x000000FF);
