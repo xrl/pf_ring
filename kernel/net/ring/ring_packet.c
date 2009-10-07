@@ -1874,7 +1874,7 @@ static int hash_bucket_match(filtering_hash_bucket *hash_bucket,
 	  && (hash_bucket->rule.host_peer_b == (mask_src ? 0 : hdr->parsed_pkt.ipv4_src))
 	  && (hash_bucket->rule.port_peer_a == (mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port))
 	  && (hash_bucket->rule.port_peer_b == (mask_src ? 0 : hdr->parsed_pkt.l4_src_port))))) {
-    hash_bucket->rule.private.jiffies_last_match = jiffies;
+    hash_bucket->rule.internals.jiffies_last_match = jiffies;
     return(1);
   } else
     return(0);
@@ -1923,7 +1923,7 @@ inline int hash_bucket_match_rule(filtering_hash_bucket *hash_bucket,
 	  && (hash_bucket->rule.host_peer_b == rule->host_peer_a)
 	  && (hash_bucket->rule.port_peer_a == rule->port_peer_b)
 	  && (hash_bucket->rule.port_peer_b == rule->port_peer_a)))) {
-    hash_bucket->rule.private.jiffies_last_match = jiffies;
+    hash_bucket->rule.internals.jiffies_last_match = jiffies;
     return(1);
   } else
     return(0);
@@ -2143,7 +2143,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 	   rule->rule.core_fields.port_high, *behaviour);
   }
 
-  rule->rule.private.jiffies_last_match = jiffies;
+  rule->rule.internals.jiffies_last_match = jiffies;
   return(1); /* match */
 }
 
@@ -2444,11 +2444,11 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	break;
       case reflect_packet_and_stop_rule_evaluation:
 	fwd_pkt = 0;
-	reflect_packet(skb, pfr, hash_bucket->rule.private.reflector_dev, displ);
+	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ);
 	break;
       case reflect_packet_and_continue_rule_evaluation:
 	fwd_pkt = 0;
-	reflect_packet(skb, pfr, hash_bucket->rule.private.reflector_dev, displ);
+	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ);
 	hash_found = 0; /* This way we also evaluate the list of rules */
 	break;
       }
@@ -2493,8 +2493,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		hash_bucket->rule.port_peer_b = hdr->parsed_pkt.l4_dst_port;
 		hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
 		hash_bucket->rule.reflector_device_name[0] = '\0';
-		hash_bucket->rule.private.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
-		hash_bucket->rule.private.reflector_dev = NULL;
+		hash_bucket->rule.internals.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
+		hash_bucket->rule.internals.reflector_dev = NULL;
 
 		rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
 		pfr->num_filtering_rules++;
@@ -2533,10 +2533,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		 will be evaluated */
 	    } else if(entry->rule.rule_action == reflect_packet_and_stop_rule_evaluation) {
 	      fwd_pkt = 0;
-	      reflect_packet(skb, pfr, entry->rule.private.reflector_dev, displ);
+	      reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ);
 	    } else if(entry->rule.rule_action == reflect_packet_and_continue_rule_evaluation) {
 	      fwd_pkt = 0;
-	      reflect_packet(skb, pfr, entry->rule.private.reflector_dev, displ);
+	      reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ);
 	      break;
 	    }
 	  }
@@ -3035,8 +3035,8 @@ static int buffer_ring_handler(struct net_device *dev,
 
 static void free_filtering_rule(filtering_rule *rule)
 { 
-  if(rule->private.reflector_dev != NULL)
-    dev_put(rule->private.reflector_dev); /* Release device */
+  if(rule->internals.reflector_dev != NULL)
+    dev_put(rule->internals.reflector_dev); /* Release device */
 }
 
 /* ************************************* */
@@ -3045,8 +3045,8 @@ static void free_filtering_hash_bucket(filtering_hash_bucket *bucket)
 {
   if(bucket->plugin_data_ptr) kfree(bucket->plugin_data_ptr);
   
-  if(bucket->rule.private.reflector_dev != NULL)
-    dev_put(bucket->rule.private.reflector_dev); /* Release device */
+  if(bucket->rule.internals.reflector_dev != NULL)
+    dev_put(bucket->rule.internals.reflector_dev); /* Release device */
 }
 
 /* ************************************* */
@@ -4001,7 +4001,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 	while(scan != NULL) {
 	  next = scan->next;
 
-	  if(scan->rule.private.jiffies_last_match < expire_jiffies) {
+	  if(scan->rule.internals.jiffies_last_match < expire_jiffies) {
 	    /* Expired rule: free it */
 
 	    if(debug)
@@ -4009,7 +4009,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr, uint16_t rule_inactivity
 		     /* "[last_match=%u][expire_jiffies=%u]" */
 		     "[%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][purged=%d][tot_rules=%d]\n",
 		     /*
-		       (unsigned int)scan->rule.private.jiffies_last_match,
+		       (unsigned int)scan->rule.internals.jiffies_last_match,
 		       (unsigned int)expire_jiffies,
 		     */
 		     ((scan->rule.host_peer_a >> 24) & 0xff),
@@ -4285,20 +4285,20 @@ static int ring_setsockopt(struct socket *sock,
 	}
 
 	if(rule->rule.reflector_device_name[0] != '\0') {
-	  rule->rule.private.reflector_dev = dev_get_by_name(
+	  rule->rule.internals.reflector_dev = dev_get_by_name(
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 					       &init_net,
 #endif
 					       rule->rule.reflector_device_name);
 
-	  if(rule->rule.private.reflector_dev == NULL) {
+	  if(rule->rule.internals.reflector_dev == NULL) {
 	    printk("[PF_RING] Unable to find device %s\n", 
 		   rule->rule.reflector_device_name);
 	    kfree(rule);
 	    return(-EFAULT);
 	  }
 	} else
-	  rule->rule.private.reflector_dev = NULL;
+	  rule->rule.internals.reflector_dev = NULL;
 
 	/* Compile pattern if present */
 	if(strlen(rule->rule.extended_fields.payload_pattern) > 0)
@@ -4434,20 +4434,20 @@ static int ring_setsockopt(struct socket *sock,
 	  return -EFAULT;
 
 	if(rule->rule.reflector_device_name[0] != '\0') {
-	  rule->rule.private.reflector_dev = dev_get_by_name(
+	  rule->rule.internals.reflector_dev = dev_get_by_name(
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 					       &init_net,
 #endif
 					       rule->rule.reflector_device_name);
 	  
-	  if(rule->rule.private.reflector_dev == NULL) {
+	  if(rule->rule.internals.reflector_dev == NULL) {
 	    printk("[PF_RING] Unable to find device %s\n", 
 		   rule->rule.reflector_device_name);
 	    kfree(rule);
 	    return(-EFAULT);
 	  }
 	} else
-	  rule->rule.private.reflector_dev = NULL;
+	  rule->rule.internals.reflector_dev = NULL;
 
 	write_lock(&pfr->ring_rules_lock);
 	rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */);

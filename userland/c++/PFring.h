@@ -48,10 +48,6 @@ class PFring {
   inline int set_channel_id(short channelId)
   { return((pcapPtr && pcapPtr->ring) ? pfring_set_channel_id(pcapPtr->ring, channelId) : -1); };
 
-  /* Reflector */
-  inline int set_reflector(char *reflectorDevice) 
-    { return((pcapPtr && pcapPtr->ring) ? pfring_set_reflector(pcapPtr->ring, reflectorDevice) : -1); };
-
   /* Read Packets */
   bool wait_for_packets(int msec = -1 /* -1 == infinite */);
   int get_next_packet(struct pfring_pkthdr *hdr, const u_char *pkt, u_int pkt_len);

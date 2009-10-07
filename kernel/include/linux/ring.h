@@ -208,7 +208,7 @@ typedef struct {
   filtering_rule_plugin_action   plugin_action;
   char reflector_device_name[REFLECTOR_NAME_LEN];
 
-  filtering_internals private;   /* PF_RING internal fields */
+  filtering_internals internals;   /* PF_RING internal fields */
 } filtering_rule;
 
 /* *********************************** */
@@ -230,7 +230,7 @@ typedef struct {
   filtering_rule_plugin_action plugin_action;
   char reflector_device_name[REFLECTOR_NAME_LEN];
 
-  filtering_internals private;   /* PF_RING internal fields */
+  filtering_internals internals;   /* PF_RING internal fields */
 } hash_filtering_rule;
 
 /* ************************************************* */
