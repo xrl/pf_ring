@@ -24,6 +24,7 @@
  * - Samir Chang <coobyhb@gmail.com>
  * - Ury Stankevich <urykhy@gmail.com>
  * - Raja Mukerji <raja@mukerji.com>
+ * - Davide Viti <zinosat@tiscali.it>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
