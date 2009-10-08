@@ -54,15 +54,16 @@ SYSLIBS   = -lpthread
 STATICLIB  = libpfring.a
 DYNAMICLIB = libpfring.so
 TARGETS    = ${STATICLIB} ${DYNAMICLIB}
+RING_H     = ../../kernel/include/linux/ring.h
 
 all: ${TARGETS}
 
-${STATICLIB}: Makefile ${OBJS} pfring.h ../../kernel/include/linux/ring.h
+${STATICLIB}: Makefile ${OBJS} pfring.h ${RING_H}
 	@echo "=*= making library $@ =*="
 	ar rs $@ ${OBJS}
 	ranlib $@
 
-${DYNAMICLIB}: Makefile ${OBJS} pfring.h ../../kernel/include/linux/ring.h
+${DYNAMICLIB}: ${OBJS} pfring.h ${RING_H} Makefile
 	@echo "=*= making library $@ =*="
 	${CC} ${LDFLAGS} $< ${SYSLIBS} -o $@
 
