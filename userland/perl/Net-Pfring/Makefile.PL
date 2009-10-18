@@ -52,7 +52,7 @@ WriteMakefile(
     DEFINE       => '',
     CCFLAGS      => '',
     LIBS         => '',
-    INC          => "-Ilib -I/lib/modules/$kernel/source/include -I../../lib",
+    INC          => "-Ilib -I../../../kernel -I../../lib",
     PM           => { 'Pfring.pm' => '$(INST_LIBDIR)/Pfring.pm' },
     XSPROTOARG   => '-noprototypes',
     clean        => { FILES => "Makefile.old" },

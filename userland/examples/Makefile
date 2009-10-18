@@ -11,17 +11,6 @@
 
 
 #
-# Kernel
-#
-#
-# Kernel
-#
-ifeq (,$(KERNELVER))
-KERNELVER=$(shell uname -r)
-endif
-KERNELDIR = /lib/modules/${KERNELVER}/source/include
-
-#
 # PF_RING
 #
 PFRINGDIR  = ../lib
@@ -40,7 +29,7 @@ LIBPCAP    = ${PCAPDIR}/libpcap.a
 #
 # Search directories
 #
-INCLUDE    = -I${KERNELDIR} -I${PFRINGDIR} -I${PCAPDIR}
+INCLUDE    = -I../../kernel -I${PFRINGDIR} -I${PCAPDIR}
 
 #
 # C compiler and flags

@@ -14,7 +14,7 @@ hostname = nbox-factory
 uname -m = i686
 uname -r = 2.6.26.2
 uname -s = Linux
-uname -v = #26 SMP Sat Jan 31 00:05:00 CET 2009
+uname -v = #27 SMP Sun Oct 18 09:45:03 CEST 2009
 
 /usr/bin/uname -p = unknown
 /bin/uname -X     = unknown
@@ -508,7 +508,7 @@ configure:5172: $? = 0
 configure:5190: result: yes
 configure:5110: checking for strlcpy
 configure:5166: gcc -o conftest -g -O2   conftest.c  >&5
-/tmp/ccW2rjPI.o: In function `main':
+/tmp/ccQ4kzGL.o: In function `main':
 /home/deri/PF_RING/userland/libpcap-1.0.0-ring/conftest.c:60: undefined reference to `strlcpy'
 collect2: ld returned 1 exit status
 configure:5172: $? = 1
@@ -787,7 +787,7 @@ configure:8165: $? = 0
 configure:8183: result: yes
 configure:8194: checking for dag_get_stream_erf_types in -ldag
 configure:8229: gcc -o conftest -g -O2  -L/usr/local/lib conftest.c -ldag   >&5
-/tmp/cccU4DYd.o: In function `main':
+/tmp/ccq52K9l.o: In function `main':
 /home/deri/PF_RING/userland/libpcap-1.0.0-ring/conftest.c:49: undefined reference to `dag_get_stream_erf_types'
 collect2: ld returned 1 exit status
 configure:8235: $? = 1

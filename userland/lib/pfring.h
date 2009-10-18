@@ -59,17 +59,14 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #endif
 
 #include <arpa/inet.h>
-#include <linux/ring.h>
 #include <sys/ioctl.h>
-
-
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/time.h>
 #include <time.h>
 #include <string.h>
 #include <pthread.h>
-
+#include <linux/pf_ring.h>
 
 
 #define MAX_CAPLEN       16384

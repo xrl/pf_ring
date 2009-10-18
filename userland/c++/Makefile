@@ -1,9 +1,6 @@
 CPP=g++ -g 
 
-ifeq (,$(KERNEL_VER))
-KERNEL_VER=$(shell uname -r)
-endif
-KERNEL_DIR=/lib/modules/$(KERNEL_VER)/source/include
+KERNEL_DIR=../../kernel
 LIBPCAP_DIR=../libpcap-1.0.0-ring
 INCLUDE=-I$(KERNEL_DIR) -I$(LIBPCAP_DIR) -I../lib
 LIBPFRING_CPP=libpfring_cpp.a

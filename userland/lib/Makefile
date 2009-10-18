@@ -11,17 +11,9 @@
 INSTDIR   = /usr/local
 
 #
-# Kernel
-#
-ifeq (,$(KERNELVER))
-KERNELVER=$(shell uname -r)
-endif
-KERNELDIR = /lib/modules/${KERNELVER}/source/include
-
-#
 # Search directories
 #
-INCLUDE   = -I${KERNELDIR}
+INCLUDE   = -I../../kernel
 
 #
 # DNA Support
@@ -54,7 +46,7 @@ SYSLIBS   = -lpthread
 STATICLIB  = libpfring.a
 DYNAMICLIB = libpfring.so
 TARGETS    = ${STATICLIB} ${DYNAMICLIB}
-RING_H     = ../../kernel/include/linux/ring.h
+RING_H     = ../../kernel/linux/pf_ring.h
 
 all: ${TARGETS}
 
