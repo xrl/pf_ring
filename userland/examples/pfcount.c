@@ -244,14 +244,13 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     struct ip ip;
     int s = (h->ts.tv_sec + thiszone) % 86400;
 
+    printf("%02d:%02d:%02d.%06u ",
+	   s / 3600, (s % 3600) / 60, s % 60,
+	   (unsigned)h->ts.tv_usec);
     printf("[eth_type=0x%04X]", h->parsed_pkt.eth_type);
     printf("[l3_proto=%u]", (unsigned int)h->parsed_pkt.l3_proto);
     printf("[%s:%d -> ", intoa(h->parsed_pkt.ipv4_src), h->parsed_pkt.l4_src_port);
     printf("%s:%d] ", intoa(h->parsed_pkt.ipv4_dst), h->parsed_pkt.l4_dst_port);
-    printf("%02d:%02d:%02d.%06u ",
-	   s / 3600, (s % 3600) / 60, s % 60,
-	   (unsigned)h->ts.tv_usec);
-
     memcpy(&ehdr, p+h->parsed_header_len, sizeof(struct ether_header));
     eth_type = ntohs(ehdr.ether_type);
     printf("[%s -> %s] ",
