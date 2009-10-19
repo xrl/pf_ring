@@ -30,8 +30,8 @@ OBJS      = pfring.o ${DNA_OBJS}
 # C compiler and flags
 #
 CC        = gcc
-CFLAGS    = -g -Wall ${INCLUDE} ${DNA_DEFINE}
-LDFLAGS   = -shared -fPIC
+CFLAGS    = -g -Wall -fPIC ${INCLUDE} ${DNA_DEFINE}
+LDFLAGS   = -shared
 
 SYSLIBS   = -lpthread
 
