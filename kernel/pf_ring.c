@@ -2348,7 +2348,9 @@ static int register_plugin(struct pfring_plugin_registration *reg)
  static int packet_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
  {
 	 /* printk("[PF_RING] packet_rcv()\n"); */
-	 return(skb_ring_handler(skb, 1, 1, -1 /* unknown channel */));
+	 return(skb_ring_handler(skb,
+				 (skb->pkt_type == PACKET_OUTGOING) ? 0 : 1, 
+				 1, -1 /* unknown channel */));
 
 	 //return(0);
  }
