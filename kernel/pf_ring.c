@@ -755,6 +755,10 @@ static int parse_pkt(struct sk_buff *skb,
 	memset(&hdr->parsed_pkt, 0, sizeof(struct pkt_parsing_info));
 	hdr->parsed_header_len = 9;
 
+	/* MAC adderess */
+	memcpy(&hdr->parsed_pkt.dmac, eh->h_dest, sizeof(eh->h_dest));
+	memcpy(&hdr->parsed_pkt.smac, eh->h_source, sizeof(eh->h_source));
+
 	hdr->parsed_pkt.eth_type = ntohs(eh->h_proto);
 	hdr->parsed_pkt.pkt_detail.offset.eth_offset = -skb_displ;
 
@@ -1012,10 +1016,19 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 				rule_action_behaviour * behaviour)
 {
 	int debug = 0;
+	u_int8_t empty_mac[6] = {0, 0, 0, 0, 0, 0}; /* NULL MAC address */
 
 	/* if (debug) printk("[PF_RING] match_filtering_rule()\n"); */
 
 	*behaviour = forward_packet_and_stop_rule_evaluation;	/* Default */
+
+	if((memcmp(rule->rule.core_fields.dmac, empty_mac, 6) != 0) 
+	   && (memcmp(hdr->parsed_pkt.dmac, rule->rule.core_fields.dmac, 6) != 0))
+		return(0);
+
+	if((memcmp(rule->rule.core_fields.smac, empty_mac, 6) != 0) 
+	   && (memcmp(hdr->parsed_pkt.smac, rule->rule.core_fields.smac, 6) != 0))
+		return(0);
 
 	if ((rule->rule.core_fields.vlan_id > 0)
 	    && (hdr->parsed_pkt.vlan_id != rule->rule.core_fields.vlan_id))
@@ -2349,7 +2362,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
  {
 	 /* printk("[PF_RING] packet_rcv()\n"); */
 	 return(skb_ring_handler(skb,
-				 (skb->pkt_type == PACKET_OUTGOING) ? 0 : 1, 
+				 (skb->pkt_type == PACKET_OUTGOING) ? 0 : 1,
 				 1, -1 /* unknown channel */));
 
 	 //return(0);
@@ -2409,7 +2422,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
  #endif
 
 	 /* Register for receiving incoming packets */
-	 r_sk = (struct ring_sock*)sk;	
+	 r_sk = (struct ring_sock*)sk;
 	 r_sk->prot_hook.func = packet_rcv;
 	 r_sk->prot_hook.af_packet_priv = sk;
 
@@ -2422,7 +2435,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 
 	 write_lock_bh(&net->packet.sklist_lock);
 	 sk_add_node(sk, &net->packet.sklist);
-	 write_unlock_bh(&net->packet.sklist_lock);	       
+	 write_unlock_bh(&net->packet.sklist_lock);
 	 /* End of registration */
 
 	 err = -ENOMEM;
@@ -2486,7 +2499,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 	 sk_del_node_init(sk);
 	 write_unlock_bh(&net->packet.sklist_lock);
 	 dev_remove_pack(&r_sk->prot_hook); /* Remove protocol hook */
-	 __sock_put(sk);	
+	 __sock_put(sk);
 
 	 /*
 	   The calls below must be placed outside the
@@ -3456,7 +3469,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 			 pfr->rules_default_accept_policy = new_policy;
 			 write_unlock(&pfr->ring_rules_lock);
 			 /*
-			   if (debug) 
+			   if (debug)
 			   printk("[PF_RING] SO_TOGGLE_FILTER_POLICY: default policy is %s\n",
 			   pfr->rules_default_accept_policy ? "accept" : "drop");
 			 */
@@ -3804,7 +3817,7 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 			 if (copy_from_user(&mapping, optval, optlen))
 				 return -EFAULT;
 			 else
-				 ret = ring_map_dna_device(pfr, &mapping), found = 1;			
+				 ret = ring_map_dna_device(pfr, &mapping), found = 1;
 		 }
 		 break;
 
@@ -4267,7 +4280,7 @@ void remove_device_from_ring_list(struct net_device *dev) {
 
 	list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
 		ring_device_element *dev_ptr;
-		
+
 		dev_ptr = list_entry(ptr, ring_device_element, list);
 		if(dev_ptr->dev == dev) {
 			list_del(ptr);
@@ -4281,15 +4294,15 @@ void remove_device_from_ring_list(struct net_device *dev) {
 
 int add_device_to_ring_list(struct net_device *dev) {
 	ring_device_element *dev_ptr;
-	
+
 	if ((dev_ptr = kmalloc(sizeof(ring_device_element),
 			       GFP_KERNEL)) == NULL)
 		return (-ENOMEM);
-	
+
 	INIT_LIST_HEAD(&dev_ptr->list);
 	dev_ptr->dev = dev;
 
-	list_add(&dev_ptr->list, &ring_aware_device_list); 
+	list_add(&dev_ptr->list, &ring_aware_device_list);
 
 	return(0);
 }
@@ -4306,7 +4319,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 	 switch(msg) {
 	 case NETDEV_UP:           break;
 	 case NETDEV_DOWN:         break;
-	 case NETDEV_REGISTER: 
+	 case NETDEV_REGISTER:
 #ifdef RING_DEBUG
 		 printk("[PF_RING] packet_notifier(%s) [REGISTER][ml_priv=%p]\n",
 			dev->name, dev->ml_priv);
@@ -4318,7 +4331,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 		 break;
 	 case NETDEV_UNREGISTER:
 #ifdef RING_DEBUG
-		 printk("[PF_RING] packet_notifier(%s) [UNREGISTER][ml_priv=%p]\n", 
+		 printk("[PF_RING] packet_notifier(%s) [UNREGISTER][ml_priv=%p]\n",
 			dev->name, dev->ml_priv);
 #endif
 		 hook = (struct pfring_hooks*)dev->ml_priv;
@@ -4328,7 +4341,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 		 }
 		 break;
 	 default:
-		 printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][ml_priv=%p]\n", 
+		 printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][ml_priv=%p]\n",
 			dev->name, msg, dev->ml_priv);
 		 break;
 	 }
@@ -4358,7 +4371,7 @@ static void __exit ring_exit(void)
 
 	list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
 		ring_device_element *dev_ptr;
-		
+
 		dev_ptr = list_entry(ptr, ring_device_element, list);
 		hook = (struct pfring_hooks*)dev_ptr->dev->ml_priv;
 		if(hook->magic == PF_RING) {
@@ -4427,7 +4440,7 @@ static int __init ring_init(void)
 	printk("[PF_RING] IP Defragment    %s\n",
 	       enable_ip_defrag ? "Yes" : "No");
 	printk("[PF_RING] Initialized correctly\n");
-	
+
 	ring_proc_init();
 	return 0;
 }

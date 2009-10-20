@@ -72,6 +72,7 @@ struct pkt_offset {
 
 struct pkt_parsing_info {
 	/* Core fields (also used by NetFlow) */
+	u_int8_t dmac[6], smac[6];  /* MAC src/dst addresses */
 	u_int16_t eth_type;   /* Ethernet type */
 	u_int16_t vlan_id;    /* VLAN Id or NO_VLAN */
 	u_int8_t  l3_proto, ipv4_tos;   /* Layer 3 protocol/TOS */
@@ -102,8 +103,10 @@ struct pfring_pkthdr {
 /* ************************************************* */
 
 typedef struct {
-	u_int8_t  proto;                   /* Use 0 for 'any' protocol */
+	u_int8_t dmac[6], smac[6];        /* Use '0' (zero-ed MAC address) for any MAC address. 
+					     This is applied to both source and destination. */   
 	u_int16_t vlan_id;                 /* Use '0' for any vlan */
+	u_int8_t  proto;                   /* Use 0 for 'any' protocol */
 	u_int32_t host_low, host_high;     /* User '0' for any host. This is applied to both source
 					      and destination. */
 	u_int16_t port_low, port_high;     /* All ports between port_low...port_high
