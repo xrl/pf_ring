@@ -437,7 +437,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
 	if (data == NULL) {
 		/* /proc/net/pf_ring/info */
-		rlen = sprintf(buf, "PF_RING Version     : %s ($Revision: 1058 $)\n", 
+		rlen = sprintf(buf, "PF_RING Version     : %s ($Revision$)\n", 
 			       RING_VERSION);
 		rlen +=
 			sprintf(buf + rlen, "Ring slots          : %d\n",
