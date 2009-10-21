@@ -10,17 +10,20 @@ endif
 
 EXTRA_CFLAGS += -I$(PWD)
 
+HERE=$(PWD)
+
 
 # set the install path
 INSTDIR := /lib/modules/$(BUILD_KERNEL)/kernel/net/pf_ring
 
 all: Makefile pf_ring.c linux/pf_ring.h
-	make -C /lib/modules/$(BUILD_KERNEL)/build SUBDIRS=$(PWD) modules
+	make -C /lib/modules/$(BUILD_KERNEL)/build SUBDIRS=$(HERE) modules
 
 clean:
-	make -C /lib/modules/$(BUILD_KERNEL)/build SUBDIRS=$(PWD) clean
+	make -C /lib/modules/$(BUILD_KERNEL)/build SUBDIRS=$(HERE) clean
 	\rm -f *~ Module.symvers  Module.markers  modules.order *#
 
-install: all
+install:
 	mkdir -p $(INSTDIR)
 	cp *.ko $(INSTDIR)
+	depmod $(BUILD_KERNEL)
