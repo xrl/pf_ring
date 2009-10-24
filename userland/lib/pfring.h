@@ -50,7 +50,6 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <linux/if.h>
-#include <linux/if_ether.h>
 #include <linux/sockios.h>
 #endif
 
@@ -67,7 +66,7 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <string.h>
 #include <pthread.h>
 #include <linux/pf_ring.h>
-
+#include <linux/if_ether.h>
 
 #define MAX_CAPLEN       16384
 #define PAGE_SIZE         4096
@@ -123,6 +122,7 @@ extern "C" {
 
   /* ********************************* */
 
+  int pfring_set_direction(pfring *ring, packet_direction direction);
   int pfring_set_cluster(pfring *ring, u_int clusterId);
   int pfring_set_channel_id(pfring *ring, int32_t channel_id);
   int pfring_set_application_name(pfring *ring, char *name);

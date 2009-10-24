@@ -26,4 +26,5 @@ clean:
 install:
 	mkdir -p $(INSTDIR)
 	cp *.ko $(INSTDIR)
+	cp linux/pf_ring.h /usr/include/linux
 	depmod $(BUILD_KERNEL)

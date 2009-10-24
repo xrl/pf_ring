@@ -32,6 +32,20 @@ unsigned long long rdtsc() {
 
 /* ******************************* */
 
+int pfring_set_direction(pfring *ring, packet_direction direction) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+#ifdef ENABLE_DNA_SUPPORT
+  if(ring->dna_mapped_device) return(-1);
+#endif
+  return(ring ? setsockopt(ring->fd, 0, SO_SET_PACKET_DIRECTION,
+			      &direction, sizeof(direction)): -1);
+#endif
+}
+
+/* ******************************* */
+
 int pfring_set_cluster(pfring *ring, u_int clusterId) {
 #ifdef USE_PCAP
   return(-1);

@@ -254,8 +254,8 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     memcpy(&ehdr, p+h->parsed_header_len, sizeof(struct ether_header));
     eth_type = ntohs(ehdr.ether_type);
     printf("[%s -> %s] ",
-	   etheraddr_string(ehdr.ether_shost, buf1),
-	   etheraddr_string(ehdr.ether_dhost, buf2));
+	   etheraddr_string(h->parsed_pkt.smac, buf1),
+	   etheraddr_string(h->parsed_pkt.dmac, buf2));
 
     if(eth_type == 0x8100) {
       vlan_id = (p[14] & 15)*256 + p[15];
@@ -324,6 +324,7 @@ void printHelp(void) {
   printf("-d              [Open the device in DNA mode]\n");
 #endif
   printf("-c <cluster id> [cluster id]\n");
+  printf("-e <direction>  [0=RX+TX, 1=RX only, 2=TX only]\n");
   printf("-s <string>     [String to search on packets]\n");
   printf("-l <len>        [Capture length]\n");
   printf("-a              [Active packet wait]\n");
@@ -334,9 +335,10 @@ void printHelp(void) {
 
 int main(int argc, char* argv[]) {
   char *device = NULL, c, *string = NULL;
-  int promisc, snaplen = DEFAULT_SNAPLEN;
+  int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   u_int clusterId = 0;
   u_char wait_for_packet = 1, dna_mode = 0;
+  packet_direction direction = rx_and_tx_direction;
 
 #if 0
   struct sched_param schedparam;
@@ -376,7 +378,7 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:dl:vs:a" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -384,6 +386,15 @@ int main(int argc, char* argv[]) {
       break;
     case 'a':
       wait_for_packet = 0;
+      break;
+    case 'e':
+      switch(atoi(optarg)) {
+      case rx_and_tx_direction:
+      case rx_only_direction:
+      case tx_only_direction:
+	direction = atoi(optarg);
+	break;
+      }
       break;
     case 'c':
       clusterId = atoi(optarg);
@@ -443,9 +454,12 @@ int main(int argc, char* argv[]) {
   }
 
   if(clusterId > 0) {
-    int rc = pfring_set_cluster(pd, clusterId);
+    rc = pfring_set_cluster(pd, clusterId);
     printf("pfring_set_cluster returned %d\n", rc);
   }
+
+  if((rc = pfring_set_direction(pd, direction)) != 0)
+    printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
 
   if(1) {
     if(0) {
