@@ -15,6 +15,13 @@
 #define SKB_DISPLACEMENT    0  /* Do NOT include MAC address information */
 #endif
 
+#ifdef __KERNEL__
+/* (Dirty) Hack */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24))
+#define ml_priv ec_ptr
+#endif
+#endif
+
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
 #define RING_FLOWSLOT_VERSION          10

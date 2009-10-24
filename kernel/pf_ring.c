@@ -42,7 +42,7 @@
  *
  */
 #include <linux/version.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
 #include <linux/autoconf.h>
 #else
 #include <linux/config.h>
@@ -218,7 +218,7 @@ MODULE_PARM_DESC(enable_ip_defrag,
 
 /* ***************** Legacy code ************************ */
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
   return (struct iphdr *)skb->nh.iph;
@@ -2423,9 +2423,6 @@ static int ring_create(
     sock_hold(sk);
   }
 
-  write_lock_bh(&net->packet.sklist_lock);
-  sk_add_node(sk, &net->packet.sklist);
-  write_unlock_bh(&net->packet.sklist_lock);
   /* End of registration */
 
   err = -ENOMEM;
@@ -2469,7 +2466,6 @@ static int ring_release(struct socket *sock)
   struct list_head *ptr, *tmp_ptr;
   void *ring_memory_ptr;
   struct ring_sock *r_sk = (struct ring_sock*)sk;
-  struct net *net = sock_net(sk);
 
   if (!sk)
     return 0;
@@ -2485,9 +2481,6 @@ static int ring_release(struct socket *sock)
 #endif
 
   /* Unregister packet receive handler */
-  write_lock_bh(&net->packet.sklist_lock);
-  sk_del_node_init(sk);
-  write_unlock_bh(&net->packet.sklist_lock);
   dev_remove_pack(&r_sk->prot_hook); /* Remove protocol hook */
   __sock_put(sk);
 
@@ -2505,8 +2498,7 @@ static int ring_release(struct socket *sock)
     device_ring_list_element *entry;
 
     list_for_each_safe(ptr, tmp_ptr,
-		       &device_ring_list[pfr->ring_netdev->
-					 ifindex]) {
+		       &device_ring_list[pfr->ring_netdev->ifindex]) {
       entry = list_entry(ptr, device_ring_list_element, list);
 
       if (entry->the_ring == pfr) {
