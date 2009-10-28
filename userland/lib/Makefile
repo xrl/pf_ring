@@ -63,6 +63,7 @@ install: ${STATICLIB} ${DYNAMICLIB}
 	cp ${STATICLIB} ${INSTDIR}/lib/
 	cp ${DYNAMICLIB} ${INSTDIR}/lib/
 	cp pfring.h ${INSTDIR}/include/
+	ldconfig
 
 clean:
 	@rm -f ${TARGETS} *.o *~
