@@ -104,7 +104,7 @@ static const char rcsid[] _U_ =
  * Got Wireless Extensions?
  */
 #ifdef HAVE_LINUX_WIRELESS_H
-#include <linux/wireless.h>
+//#include <linux/wireless.h>
 #endif
 
 #include "pcap-int.h"
@@ -696,33 +696,30 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 
 #ifdef HAVE_PF_RING
 	if(handle->ring) {
- retry:
+	  do {
+	    if (handle->break_loop) {
+	      /*
+	       * Yes - clear the flag that indicates that it
+	       * has, and return -2 as an indication that we
+	       * were told to break out of the loop.
+	       *
+	       * Patch courtesy of Michael Stiller <ms@2scale.net>
+	       */
+	      handle->break_loop = 0;
+	      return -2;
+	    }
 
-	  if (handle->break_loop) {
-	    /*
-	     * Yes - clear the flag that indicates that it
-	     * has, and return -2 as an indication that we
-	     * were told to break out of the loop.
-	     *
-	     * Patch courtesy of Michael Stiller <ms@2scale.net>
-	     */
-	    handle->break_loop = 0;
-	    return -2;
-          }
-
-	  packet_len = pfring_recv(handle->ring, (char*)handle->buffer,
-                                   handle->bufsize,
-                                   &pcap_header,
-                                   1 /* wait_for_incoming_packet */);
-          if (packet_len > 0) {
-	    bp = handle->buffer;
-	    pcap_header.caplen = min(pcap_header.caplen, handle->bufsize);
-	    caplen = pcap_header.caplen, packet_len = pcap_header.len;
-	    goto pfring_pcap_read_packet;
-          } else if (packet_len == -1 && errno == EINTR)
-            goto retry;
-	  else
-	    return(-1);
+	    packet_len = pfring_recv(handle->ring, (char*)handle->buffer,
+				     handle->bufsize,
+				     &pcap_header,
+				     1 /* wait_for_incoming_packet */);
+	    if (packet_len > 0) {
+	      bp = handle->buffer;
+	      pcap_header.caplen = min(pcap_header.caplen, handle->bufsize);
+	      caplen = pcap_header.caplen, packet_len = pcap_header.len;
+	      goto pfring_pcap_read_packet;
+	    }
+	  } while (packet_len == -1 && (errno == EINTR || errno == ENETDOWN));
 	}
 #endif
 
@@ -1139,6 +1136,15 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 		 *    getsockopt(handle->fd, SOL_PACKET, PACKET_STATISTICS, ....
 		 * resets the counters to zero.
 		 */
+#ifdef HAVE_PF_RING
+	  if(handle->ring != NULL) {
+	    handle->md.stat.ps_recv = kstats.tp_packets;
+	    handle->md.stat.ps_drop = kstats.tp_drops;
+	    *stats = handle->md.stat;
+	    return 0;
+	  }
+#endif
+
 		handle->md.stat.ps_recv += kstats.tp_packets;
 		handle->md.stat.ps_drop += kstats.tp_drops;
 		*stats = handle->md.stat;
