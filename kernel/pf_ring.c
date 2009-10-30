@@ -1343,7 +1343,7 @@ static int add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr)
   read_lock_bh(&ring_mgmt_lock);
   add_pkt_to_ring(NULL, pfr, hdr, 0, 0, 0, NULL);
   read_unlock_bh(&ring_mgmt_lock);
-  return (0);
+  return(0);
 }
 
 /* ********************************** */
@@ -2347,13 +2347,19 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 
 /* ********************************** */
 
-static int packet_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
+		      struct packet_type *pt, struct net_device *orig_dev)
 {
   int rc;
-	 
-  rc = skb_ring_handler(skb,
-			(skb->pkt_type == PACKET_OUTGOING) ? 0 : 1,
-			1, -1 /* unknown channel */);	 
+	
+  if (skb->pkt_type != PACKET_LOOPBACK) {
+    skb->dev = dev;
+    rc = skb_ring_handler(skb,
+			  (skb->pkt_type == PACKET_OUTGOING) ? 0 : 1,
+			  1, -1 /* unknown channel */);	 
+  } else
+    rc = 0;
+
   kfree_skb(skb);
   return(rc);
 }
