@@ -89,6 +89,9 @@
 static struct list_head ring_table;
 static u_int ring_table_size;
 
+/* Protocol hook */
+static struct packet_type prot_hook;
+
 /*
   For each device, pf_ring keeps a list of the number of
   available ring socket slots. So that a caller knows in advance whether
@@ -437,7 +440,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
   if (data == NULL) {
     /* /proc/net/pf_ring/info */
-    rlen = sprintf(buf, "PF_RING Version     : %s ($Revision$)\n", 
+    rlen = sprintf(buf, "PF_RING Version     : %s ($Revision$)\n",
 		   RING_VERSION);
     rlen +=
       sprintf(buf + rlen, "Ring slots          : %d\n",
@@ -766,7 +769,7 @@ static int parse_pkt(struct sk_buff *skb,
   if (hdr->parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */ ) {
     hdr->parsed_pkt.pkt_detail.offset.vlan_offset =
       hdr->parsed_pkt.pkt_detail.offset.eth_offset + sizeof(struct ethhdr);
-    hdr->parsed_pkt.vlan_id = 
+    hdr->parsed_pkt.vlan_id =
       (skb->data[hdr->parsed_pkt.pkt_detail.offset.vlan_offset] & 15) * 256 +
       skb->data[hdr->parsed_pkt.pkt_detail.offset.vlan_offset + 1];
     hdr->parsed_pkt.eth_type =
@@ -1016,11 +1019,11 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
   *behaviour = forward_packet_and_stop_rule_evaluation;	/* Default */
 
-  if((memcmp(rule->rule.core_fields.dmac, empty_mac, ETH_ALEN) != 0) 
+  if((memcmp(rule->rule.core_fields.dmac, empty_mac, ETH_ALEN) != 0)
      && (memcmp(hdr->parsed_pkt.dmac, rule->rule.core_fields.dmac, ETH_ALEN) != 0))
     return(0);
 
-  if((memcmp(rule->rule.core_fields.smac, empty_mac, ETH_ALEN) != 0) 
+  if((memcmp(rule->rule.core_fields.smac, empty_mac, ETH_ALEN) != 0)
      && (memcmp(hdr->parsed_pkt.smac, rule->rule.core_fields.smac, ETH_ALEN) != 0))
     return(0);
 
@@ -2351,17 +2354,32 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 		      struct packet_type *pt, struct net_device *orig_dev)
 {
   int rc;
-	
+
   if (skb->pkt_type != PACKET_LOOPBACK) {
-    skb->dev = dev;
     rc = skb_ring_handler(skb,
 			  (skb->pkt_type == PACKET_OUTGOING) ? 0 : 1,
-			  1, -1 /* unknown channel */);	 
+			  1, -1 /* unknown channel */);
+
   } else
     rc = 0;
 
   kfree_skb(skb);
   return(rc);
+}
+
+/* ********************************** */
+
+void register_device_handler(void) {
+  prot_hook.func = packet_rcv;
+  //prot_hook.af_packet_priv = sk;
+  prot_hook.type = htons(ETH_P_ALL);
+  dev_add_pack(&prot_hook);
+}
+
+/* ********************************** */
+
+void unregister_device_handler(void) {
+  dev_remove_pack(&prot_hook); /* Remove protocol hook */
 }
 
 /* ********************************** */
@@ -2373,10 +2391,8 @@ static int ring_create(
 		       struct socket *sock, int protocol)
 {
   struct sock *sk;
-  struct ring_sock *r_sk;
   struct ring_opt *pfr;
   int err;
-  __be16 proto = (__force __be16)protocol; /* taken from af_packet.c */
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_create()\n");
@@ -2400,15 +2416,15 @@ static int ring_create(
   sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
 #else
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24))
-  // BD: API changed in 2.6.12, ref:
-  // http://svn.clkao.org/svnweb/linux/revision/?rev=28201
-  sk = sk_alloc(PF_RING, GFP_ATOMIC, &ring_proto, 1);
+    // BD: API changed in 2.6.12, ref:
+    // http://svn.clkao.org/svnweb/linux/revision/?rev=28201
+    sk = sk_alloc(PF_RING, GFP_ATOMIC, &ring_proto, 1);
 #else
-  sk = sk_alloc(net, PF_INET, GFP_KERNEL, &ring_proto);
+    sk = sk_alloc(net, PF_INET, GFP_KERNEL, &ring_proto);
 #endif
 #endif
 
-  if (sk == NULL)
+  if(sk == NULL)
     goto out;
 
   sock->ops = &ring_ops;
@@ -2416,20 +2432,6 @@ static int ring_create(
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,11))
   sk_set_owner(sk, THIS_MODULE);
 #endif
-
-  /* Register for receiving incoming packets */
-  r_sk = (struct ring_sock*)sk;
-  r_sk->prot_hook.func = packet_rcv;
-  r_sk->prot_hook.af_packet_priv = sk;
-
-  if (proto) {
-    r_sk->prot_hook.type = proto;
-    /* printk("[PF_RING] ring_create(proto=%d/%d|protocol=%d)\n", proto, ntohs(proto), protocol); */
-    dev_add_pack(&r_sk->prot_hook);
-    sock_hold(sk);
-  }
-
-  /* End of registration */
 
   err = -ENOMEM;
   ring_sk(sk) = ring_sk_datatype(kmalloc(sizeof(*pfr), GFP_KERNEL));
@@ -2471,7 +2473,6 @@ static int ring_release(struct socket *sock)
   struct ring_opt *pfr = ring_sk(sk);
   struct list_head *ptr, *tmp_ptr;
   void *ring_memory_ptr;
-  struct ring_sock *r_sk = (struct ring_sock*)sk;
 
   if (!sk)
     return 0;
@@ -2485,10 +2486,6 @@ static int ring_release(struct socket *sock)
 #if defined(RING_DEBUG)
   printk("[PF_RING] called ring_release\n");
 #endif
-
-  /* Unregister packet receive handler */
-  dev_remove_pack(&r_sk->prot_hook); /* Remove protocol hook */
-  __sock_put(sk);
 
   /*
     The calls below must be placed outside the
@@ -2998,8 +2995,10 @@ unsigned int ring_poll(struct file *file,
     pfr->ring_active = 1;
     slot = get_remove_slot(pfr);
 
-    if ((slot != NULL) && (slot->slot_state == 0))
+    if ((slot != NULL) && (slot->slot_state == 0)) {
       poll_wait(file, &pfr->ring_slots_waitqueue, wait);
+      smp_mb();
+    }
 
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll returning %d\n", slot->slot_state);
@@ -4318,8 +4317,6 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   struct net_device *dev = data;
   struct pfring_hooks *hook;
 
-  //struct net *net = dev_net(dev);
-
   switch(msg) {
   case NETDEV_UP:           break;
   case NETDEV_DOWN:         break;
@@ -4366,6 +4363,8 @@ static void __exit ring_exit(void)
   struct list_head *ptr, *tmp_ptr;
   struct ring_element *entry;
   struct pfring_hooks *hook;
+
+  unregister_device_handler();
 
   list_for_each_safe(ptr, tmp_ptr, &ring_table) {
     entry = list_entry(ptr, struct ring_element, list);
@@ -4419,7 +4418,7 @@ static int __init ring_init(void)
 {
   int i, rc;
 
-  printk("[PF_RING] Welcome to PF_RING %s\n"
+  printk("[PF_RING] Welcome to PF_RING %s ($Revision$)\n"
 	 "(C) 2004-09 L.Deri <deri@ntop.org>\n", RING_VERSION);
 
   if((rc = proto_register(&ring_proto, 0)) != 0)
@@ -4446,6 +4445,7 @@ static int __init ring_init(void)
   printk("[PF_RING] Initialized correctly\n");
 
   ring_proc_init();
+  register_device_handler();
   return 0;
 }
 

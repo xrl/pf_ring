@@ -30,8 +30,8 @@
 #define MAX_NUM_DEVICES               256
 
 /* Versioning */
-#define RING_VERSION                "4.0.0"
-#define RING_VERSION_NUM           0x040000
+#define RING_VERSION                "4.0.1"
+#define RING_VERSION_NUM           0x040001
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
