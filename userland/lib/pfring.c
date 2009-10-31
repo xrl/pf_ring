@@ -20,6 +20,11 @@
 #include "pfring_e1000_dna.h"
 #endif
 
+#define USE_ADAPTIVE_WAIT
+
+#define MAX_NUM_LOOPS    1000000000
+#define YIELD_MULTIPLIER      10000
+
 // #define RING_DEBUG
 
 /* ******************************* */
@@ -784,84 +789,102 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
   } else
 #endif /* ENABLE_DNA_SUPPORT */
     {
-    FlowSlot *slot;
-    u_int32_t queuedPkts;
-
-    if((ring == NULL) || (ring->buffer == NULL)) return(-1);
-
-  do_pfring_recv:
-    if(ring->reentrant)
-      pthread_spin_lock(&ring->spinlock);
-
-    slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
-
-    if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
-      queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
-    else
-      queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
-
-    if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
-      char *bucket = (char*)&slot->bucket;
-      struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
-      int bktLen = _hdr->caplen+_hdr->parsed_header_len;
-
-      if(bktLen > buffer_len) bktLen = buffer_len-1;
-
-      if(buffer && (bktLen > 0)) {
-	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
-	bucket[bktLen] = '\0';
-      }
-
-      if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
-	ring->slots_info->remove_idx = 0;
-	ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
-      } else {
-	ring->slots_info->remove_idx++;
-	ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
-      }
-
-      if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
-
-      ring->slots_info->tot_read++;
-      slot->slot_state = 0; /* Empty slot */
-      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
-      return(1);
-    } else if(wait_for_incoming_packet) {
-      struct pollfd pfd;
-      int rc;
-
-      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
-
-      /* Sleep when nothing is happening */
-      pfd.fd      = ring->fd;
-      pfd.events  = POLLIN|POLLERR;
-      pfd.revents = 0;
-
-#ifdef RING_DEBUG
-      printf("==>> poll [remove_idx=%u][insert_idx=%u][loss=%d][queuedPkts=%u]"
-	     "[slot_state=%d][tot_insert=%u][tot_read=%u]\n",
-	     ring->slots_info->remove_idx,
-	     ring->slots_info->insert_idx,
-	     ring->slots_info->tot_lost,
-	     queuedPkts, slot->slot_state,
-	     ring->slots_info->tot_insert,
-	     ring->slots_info->tot_read);
+      FlowSlot *slot;
+      u_int32_t queuedPkts;
+#ifdef USE_ADAPTIVE_WAIT
+      u_int32_t num_loops = 0;
 #endif
 
-      errno = 0;
+      if((ring == NULL) || (ring->buffer == NULL)) return(-1);
 
-      rc = poll(&pfd, 1, -1);
+    do_pfring_recv:
+      if(ring->reentrant)
+	pthread_spin_lock(&ring->spinlock);
 
-      ring->num_poll_calls++;
+      slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
 
-      if(rc == -1)
-	return(-1);
+      if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
+	queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
       else
-	goto do_pfring_recv;
-    }
+	queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
 
-    return(-1); /* Not reached */
-  }
+      if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
+	char *bucket = (char*)&slot->bucket;
+	struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
+	int bktLen = _hdr->caplen+_hdr->parsed_header_len;
+
+	if(bktLen > buffer_len) bktLen = buffer_len-1;
+
+	if(buffer && (bktLen > 0)) {
+	  memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
+	  bucket[bktLen] = '\0';
+	}
+
+	if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
+	  ring->slots_info->remove_idx = 0;
+	  ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
+	} else {
+	  ring->slots_info->remove_idx++;
+	  ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
+	}
+
+	if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
+
+	ring->slots_info->tot_read++;
+	slot->slot_state = 0; /* Empty slot */
+	if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+	return(1);
+      } else if(wait_for_incoming_packet) {
+	struct pollfd pfd;
+	int rc;
+
+	if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+
+#ifdef USE_ADAPTIVE_WAIT
+	/*
+	  Spin in userland for a while and if no packet arrives then
+	  it's time to poll the kernel. I have to do this as a call to
+	  poll() is too costly hence I do call poll() if and only if
+	  I have no chance to avoid it.
+	*/
+	if(num_loops < MAX_NUM_LOOPS) {
+	  num_loops++;
+	  if(num_loops % YIELD_MULTIPLIER) {	  
+	    sched_yield();
+	  }
+	}
+#endif
+
+	/* Sleep when nothing is happening */
+	pfd.fd      = ring->fd;
+	pfd.events  = POLLIN|POLLERR;
+	pfd.revents = 0;
+
+#ifdef RING_DEBUG
+	printf("==>> poll [remove_idx=%u][insert_idx=%u][loss=%d][queuedPkts=%u]"
+	       "[slot_state=%d][tot_insert=%u][tot_read=%u]\n",
+	       ring->slots_info->remove_idx,
+	       ring->slots_info->insert_idx,
+	       ring->slots_info->tot_lost,
+	       queuedPkts, slot->slot_state,
+	       ring->slots_info->tot_insert,
+	       ring->slots_info->tot_read);
+#endif
+
+	errno = 0;
+
+	rc = poll(&pfd, 1, -1);
+
+	ring->num_poll_calls++;
+
+	if(rc == -1)
+	  return(-1);
+	else
+	  goto do_pfring_recv;
+      }
+
+      return(-1); /* Not reached */
+    }
 #endif
 }
 

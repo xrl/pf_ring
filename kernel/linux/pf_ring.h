@@ -15,13 +15,6 @@
 #define SKB_DISPLACEMENT    0  /* Do NOT include MAC address information */
 #endif
 
-#ifdef __KERNEL__
-/* (Dirty) Hack */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24))
-#define ml_priv ec_ptr
-#endif
-#endif
-
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
 #define RING_FLOWSLOT_VERSION          10
@@ -29,9 +22,12 @@
 #define DEFAULT_BUCKET_LEN            128
 #define MAX_NUM_DEVICES               256
 
+/* Dirty hack I know, but what else shall I do man? */
+#define pfring_ptr ec_ptr
+
 /* Versioning */
-#define RING_VERSION                "4.0.1"
-#define RING_VERSION_NUM           0x040001
+#define RING_VERSION                "4.1.0"
+#define RING_VERSION_NUM           0x040100
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -169,6 +165,12 @@ typedef enum {
   rx_only_direction,
   tx_only_direction
 } packet_direction;
+
+typedef enum {
+  standard_linux_path = 0, /* Business as usual */
+  driver2pf_ring_transparent = 1, /* Packets are still delivered to the kernel */
+  driver2pf_ring_non_transparent = 2 /* Packets not delivered to the kernel */
+} direct2pf_ring;
 
 typedef struct {
   unsigned long jiffies_last_match;  /* Jiffies of the last rule match (updated by pf_ring) */
@@ -580,27 +582,18 @@ extern void do_ring_dna_device_handler(dna_device_operation operation,
 
 typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet,
 			       u_char real_skb, short channel_id);
-extern handle_ring_skb get_skb_ring_handler(void);
-extern void set_skb_ring_handler(handle_ring_skb the_handler);
-extern void do_skb_ring_handler(struct sk_buff *skb,
-				u_char recv_packet, u_char real_skb);
-
 typedef int (*handle_ring_buffer)(struct net_device *dev,
 				  char *data, int len);
-extern handle_ring_buffer get_buffer_ring_handler(void);
-extern void set_buffer_ring_handler(handle_ring_buffer the_handler);
-extern int do_buffer_ring_handler(struct net_device *dev,
-				  char *data, int len);
-
 typedef int (*handle_add_hdr_to_ring)(struct ring_opt *pfr,
 				      struct pfring_pkthdr *hdr);
-extern handle_add_hdr_to_ring get_add_hdr_to_ring(void);
-extern void set_add_hdr_to_ring(handle_add_hdr_to_ring the_handler);
-extern int do_add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr);
 
 /* Hack to jump from a device directly to PF_RING */
 struct pfring_hooks {
-  u_int32_t magic; /* It should be set to PF_RING */
+  u_int32_t magic; /* 
+		      It should be set to PF_RING 
+		      and be the first one on this struct
+		   */
+  unsigned int *transparent_mode;
   handle_ring_skb ring_handler;
   handle_ring_buffer buffer_ring_handler;
   handle_add_hdr_to_ring buffer_add_hdr_to_ring;
@@ -637,7 +630,7 @@ int add_plugin_to_device_list(struct net_device *dev) {
 
 void remove_plugin_from_device_list(struct net_device *dev) {
   struct list_head *ptr, *tmp_ptr;
-  struct pfring_hooks* hook = (struct pfring_hooks*)dev->ml_priv;
+  struct pfring_hooks* hook = (struct pfring_hooks*)dev->pfring_ptr;
 
   if(hook && (hook->magic == PF_RING)) {
     hook->pfring_unregistration(pfring_plugin_id);
@@ -664,7 +657,7 @@ static int ring_plugin_notifier(struct notifier_block *this, unsigned long msg, 
 
   switch(msg) {
   case NETDEV_REGISTER:
-    hook = (struct pfring_hooks*)dev->ml_priv;
+    hook = (struct pfring_hooks*)dev->pfring_ptr;
     if(hook && (hook->magic == PF_RING)) {
       hook->pfring_registration(&plugin_reg);
       add_plugin_to_device_list(dev);
@@ -672,7 +665,7 @@ static int ring_plugin_notifier(struct notifier_block *this, unsigned long msg, 
     break;
 
   case NETDEV_UNREGISTER:
-    hook = (struct pfring_hooks*)dev->ml_priv;
+    hook = (struct pfring_hooks*)dev->pfring_ptr;
     if(hook && (hook->magic == PF_RING)) {
       hook->pfring_unregistration(pfring_plugin_id);
     }
@@ -703,7 +696,7 @@ static void unregister_plugin(int pfring_plugin_id) {
     struct pfring_hooks *hook;
 
     dev_ptr = list_entry(ptr, ring_device_element, list);
-    hook = (struct pfring_hooks*)dev_ptr->dev->ml_priv;
+    hook = (struct pfring_hooks*)dev_ptr->dev->pfring_ptr;
     if(hook && (hook->magic == PF_RING)) {
       printk("[PF_RING] Unregister plugin_id %d for %s\n", 
 	     pfring_plugin_id, dev_ptr->dev->name);

@@ -85,6 +85,9 @@
 #define PROC_INFO         "info"
 #define PROC_PLUGINS_INFO "plugins_info"
 /* ************************************************* */
+
+static u_int8_t pfring_enabled = 0;
+
 /* List of all ring sockets. */
 static struct list_head ring_table;
 static u_int ring_table_size;
@@ -185,7 +188,7 @@ ip_defrag(struct sk_buff *skb, u32 user);
 static unsigned int num_slots = 4096;
 static unsigned int enable_tx_capture = 1;
 static unsigned int enable_ip_defrag = 0;
-static unsigned int transparent_mode = 1;
+static unsigned int transparent_mode = standard_linux_path;
 static u_int32_t ring_id_serial = 0;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
@@ -202,8 +205,8 @@ MODULE_PARM(enable_ip_defrag, "i");
 
 MODULE_PARM_DESC(num_slots, "Number of ring slots");
 MODULE_PARM_DESC(transparent_mode,
-		 "Set to 1 to set transparent mode "
-		 "(slower but backwards compatible)");
+		 "0=standard Linux, 1=direct2pfring+transparent, 2=direct2pfring+non transparent"
+		 "For 1 and 2 you need to use a PF_RING aware driver");
 MODULE_PARM_DESC(enable_tx_capture, "Set to 1 to capture outgoing packets");
 MODULE_PARM_DESC(enable_ip_defrag,
 		 "Set to 1 to enable IP defragmentation"
@@ -1437,7 +1440,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
      has been handled
   */
 
-  if (!pfr->ring_active)
+  if((!pfring_enabled) || (!pfr->ring_active))
     return (-1);
 
   atomic_set(&pfr->num_ring_users, 1);
@@ -2148,7 +2151,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     kfree_skb(skk);
 
   if (rc == 1) {
-    if (transparent_mode) {
+    if(transparent_mode != driver2pf_ring_non_transparent) {
       rc = 0;
     } else {
       if (recv_packet && real_skb) {
@@ -2370,8 +2373,9 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 /* ********************************** */
 
 void register_device_handler(void) {
+  if(transparent_mode != standard_linux_path) return;
+
   prot_hook.func = packet_rcv;
-  //prot_hook.af_packet_priv = sk;
   prot_hook.type = htons(ETH_P_ALL);
   dev_add_pack(&prot_hook);
 }
@@ -2379,6 +2383,7 @@ void register_device_handler(void) {
 /* ********************************** */
 
 void unregister_device_handler(void) {
+  if(transparent_mode != standard_linux_path) return;
   dev_remove_pack(&prot_hook); /* Remove protocol hook */
 }
 
@@ -4267,6 +4272,7 @@ static struct proto ring_proto = {
 
 static struct pfring_hooks ring_hooks = {
   .magic = PF_RING,
+  .transparent_mode = &transparent_mode,
   .ring_handler = skb_ring_handler,
   .buffer_ring_handler = buffer_ring_handler,
   .buffer_add_hdr_to_ring = add_hdr_to_ring,
@@ -4322,28 +4328,28 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   case NETDEV_DOWN:         break;
   case NETDEV_REGISTER:
 #ifdef RING_DEBUG
-    printk("[PF_RING] packet_notifier(%s) [REGISTER][ml_priv=%p]\n",
-	   dev->name, dev->ml_priv);
+    printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p]\n",
+	   dev->name, dev->pfring_ptr);
 #endif
-    if(dev->ml_priv == NULL) {
-      dev->ml_priv = &ring_hooks;
+    if(dev->pfring_ptr == NULL) {
+      dev->pfring_ptr = &ring_hooks;
       add_device_to_ring_list(dev);
     }
     break;
   case NETDEV_UNREGISTER:
 #ifdef RING_DEBUG
-    printk("[PF_RING] packet_notifier(%s) [UNREGISTER][ml_priv=%p]\n",
-	   dev->name, dev->ml_priv);
+    printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
+	   dev->name, dev->pfring_ptr);
 #endif
-    hook = (struct pfring_hooks*)dev->ml_priv;
+    hook = (struct pfring_hooks*)dev->pfring_ptr;
     if(hook->magic == PF_RING) {
       remove_device_from_ring_list(dev);
-      dev->ml_priv = NULL;
+      dev->pfring_ptr = NULL;
     }
     break;
   default:
-    printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][ml_priv=%p]\n",
-	   dev->name, msg, dev->ml_priv);
+    printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
+	   dev->name, msg, dev->pfring_ptr);
     break;
   }
 
@@ -4364,6 +4370,8 @@ static void __exit ring_exit(void)
   struct ring_element *entry;
   struct pfring_hooks *hook;
 
+  pfring_enabled = 0;
+
   unregister_device_handler();
 
   list_for_each_safe(ptr, tmp_ptr, &ring_table) {
@@ -4376,10 +4384,10 @@ static void __exit ring_exit(void)
     ring_device_element *dev_ptr;
 
     dev_ptr = list_entry(ptr, ring_device_element, list);
-    hook = (struct pfring_hooks*)dev_ptr->dev->ml_priv;
+    hook = (struct pfring_hooks*)dev_ptr->dev->pfring_ptr;
     if(hook->magic == PF_RING) {
       printk("[PF_RING] Unregister hook for %s\n", dev_ptr->dev->name);
-      dev_ptr->dev->ml_priv = NULL; /* Unhook PF_RING */
+      dev_ptr->dev->pfring_ptr = NULL; /* Unhook PF_RING */
     }
 
     list_del(ptr);
@@ -4435,17 +4443,25 @@ static int __init ring_init(void)
   sock_register(&ring_family_ops);
   register_netdevice_notifier(&ring_netdev_notifier);
 
+  /* Sanity check */
+  if(transparent_mode > driver2pf_ring_non_transparent)
+    transparent_mode = standard_linux_path;
+
   printk("[PF_RING] Ring slots       %d\n", num_slots);
   printk("[PF_RING] Slot version     %d\n",
 	 RING_FLOWSLOT_VERSION);
   printk("[PF_RING] Capture TX       %s\n",
 	 enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
+  printk("[PF_RING] Transparent Mode %d\n",
+	 transparent_mode);
   printk("[PF_RING] IP Defragment    %s\n",
 	 enable_ip_defrag ? "Yes" : "No");
   printk("[PF_RING] Initialized correctly\n");
 
   ring_proc_init();
   register_device_handler();
+
+  pfring_enabled = 1;
   return 0;
 }
 
