@@ -45,7 +45,7 @@ srcdir = .
 #
 
 CC = gcc
-CCOPT = -g
+CCOPT = -O2 -fPIC
 PF_RING_INCLUDES=-I ../../kernel -I ../lib
 PF_RING_LIBS=../lib/libpfring.a
 INCLS = -I.  $(PF_RING_INCLUDES)
