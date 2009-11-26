@@ -5,3 +5,8 @@ the packets into PF_RING without passing through TNAPI. This results in
 much faster operations as you can read from the PF_RING web page.
 
 Luca Deri <deri@ntop.org> - October 2009
+
+-----
+
+e1000 and tg3 PF_RING drivers courtesy of Alexander Didebulidze <didebuli@net.in.tum.de>
+November 2009

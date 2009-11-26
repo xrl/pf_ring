@@ -102,8 +102,9 @@ void print_stats() {
 	    "Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
 	    "Total Pkts=%u/Dropped=%.1f %%\n",
 	    (unsigned int)pfringStat.recv, (unsigned int)pfringStat.drop,
-	    (unsigned int)(pfringStat.recv-pfringStat.drop),
-	    pfringStat.recv == 0 ? 0 : (double)(pfringStat.drop*100)/(double)pfringStat.recv);
+	    (unsigned int)(pfringStat.recv+pfringStat.drop),
+	    pfringStat.recv == 0 ? 0 : 
+	    (double)(pfringStat.drop*100)/(double)(pfringStat.recv+pfringStat.drop));
     fprintf(stderr, "%llu pkts - %llu bytes", numPkts, numBytes);
     fprintf(stderr, " [%.1f pkt/sec - %.2f Mbit/sec]\n",
 	    (double)(numPkts*1000)/deltaMillisec, thpt);

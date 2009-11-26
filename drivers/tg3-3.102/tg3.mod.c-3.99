@@ -1,0 +1,218 @@
+#include <linux/module.h>
+#include <linux/vermagic.h>
+#include <linux/compiler.h>
+
+MODULE_INFO(vermagic, VERMAGIC_STRING);
+
+struct module __this_module
+__attribute__((section(".gnu.linkonce.this_module"))) = {
+ .name = KBUILD_MODNAME,
+ .init = init_module,
+#ifdef CONFIG_MODULE_UNLOAD
+ .exit = cleanup_module,
+#endif
+ .arch = MODULE_ARCH_INIT,
+};
+
+static const struct modversion_info ____versions[]
+__used
+__attribute__((section("__versions"))) = {
+	{ 0x5963e877, "module_layout" },
+	{ 0x46a4354c, "eth_validate_addr" },
+	{ 0x1f97647d, "ethtool_op_get_tso" },
+	{ 0xeaa23c40, "ethtool_op_set_sg" },
+	{ 0x3d6860, "ethtool_op_get_sg" },
+	{ 0xacdd691, "ethtool_op_get_tx_csum" },
+	{ 0xdf6ecb91, "ethtool_op_get_link" },
+	{ 0x6980fe91, "param_get_int" },
+	{ 0xff964b25, "param_set_int" },
+	{ 0xa68124fa, "hweight8" },
+	{ 0xb5fefc0b, "pci_enable_msi_block" },
+	{ 0xdaf5acdf, "init_timer_key" },
+	{ 0x635895ed, "kmem_cache_alloc" },
+	{ 0xaf5d52f7, "kmalloc_caches" },
+	{ 0xe2d5255a, "strcmp" },
+	{ 0x895e6697, "pci_restore_state" },
+	{ 0xbdd22f4b, "netif_device_attach" },
+	{ 0x48e9b970, "pci_target_state" },
+	{ 0x38e50489, "netif_device_detach" },
+	{ 0xade7b38b, "pci_save_state" },
+	{ 0x4389ab10, "mod_timer" },
+	{ 0x578b3a8b, "pci_disable_msi" },
+	{ 0x23869dc7, "cancel_work_sync" },
+	{ 0x3b32e90c, "dev_close" },
+	{ 0x32c62e78, "del_timer_sync" },
+	{ 0xf378c9c8, "x86_dma_fallback_dev" },
+	{ 0x61651be, "strcat" },
+	{ 0x820d225f, "print_mac" },
+	{ 0x153f73fd, "pci_set_consistent_dma_mask" },
+	{ 0xe992dacc, "register_netdev" },
+	{ 0xf5f51822, "netif_napi_add" },
+	{ 0xbc69b629, "dma_release_from_coherent" },
+	{ 0x9f841ae, "dma_alloc_from_coherent" },
+	{ 0x8fe71bc2, "pci_set_dma_mask" },
+	{ 0x347e517b, "pci_ioremap_bar" },
+	{ 0xc2379467, "alloc_etherdev_mq" },
+	{ 0xffb128b2, "pci_set_master" },
+	{ 0xf8937e3b, "pci_request_regions" },
+	{ 0x19dad8a9, "pci_enable_device" },
+	{ 0x24ce614b, "napi_gro_receive" },
+	{ 0x8235805b, "memmove" },
+	{ 0xa60b058e, "vlan_gro_receive" },
+	{ 0x4892e0, "eth_type_trans" },
+	{ 0xef589020, "napi_complete" },
+	{ 0x5096f03f, "add_timer" },
+	{ 0x9cdb2966, "pci_bus_write_config_byte" },
+	{ 0xb8d0ba2d, "pcie_set_readrq" },
+	{ 0x8e6455e9, "pci_get_slot" },
+	{ 0x1b0baa33, "pci_bus_read_config_byte" },
+	{ 0x3145216f, "pci_dev_present" },
+	{ 0x73aafd99, "pci_dev_put" },
+	{ 0x99a23ad1, "pci_get_device" },
+	{ 0x3d4fbdc, "pci_pme_capable" },
+	{ 0x8e47e9b4, "pci_set_power_state" },
+	{ 0xa3e56756, "pci_enable_wake" },
+	{ 0xd47544fb, "netif_carrier_on" },
+	{ 0x17dc7118, "netif_carrier_off" },
+	{ 0xf20dabd8, "free_irq" },
+	{ 0x1d43b31c, "__napi_schedule" },
+	{ 0x83a7c92f, "dev_kfree_skb_any" },
+	{ 0x35b03478, "__pci_register_driver" },
+	{ 0xd0d8621b, "strlen" },
+	{ 0x701d0ebd, "snprintf" },
+	{ 0xf86dfd77, "pci_bus_read_config_word" },
+	{ 0x2ef71663, "pci_bus_write_config_word" },
+	{ 0xbf081ae6, "pci_find_capability" },
+	{ 0xe914e41e, "strcpy" },
+	{ 0xbac1f4db, "ethtool_op_set_tx_ipv6_csum" },
+	{ 0x45cc654b, "ethtool_op_set_tx_csum" },
+	{ 0x53aa0f87, "skb_put" },
+	{ 0xcc5005fe, "msleep_interruptible" },
+	{ 0xfda85a7d, "request_threaded_irq" },
+	{ 0x12da5bb2, "__kmalloc" },
+	{ 0x37a0cba, "kfree" },
+	{ 0x16305289, "warn_slowpath_null" },
+	{ 0x7dceceac, "capable" },
+	{ 0xcd5d1a20, "ethtool_op_set_tso" },
+	{ 0xc633495b, "schedule_work" },
+	{ 0x927d5c46, "skb_gso_segment" },
+	{ 0x6c9b69fb, "skb_copy" },
+	{ 0x7aba2105, "skb_dma_unmap" },
+	{ 0x7ede96e8, "skb_copy_expand" },
+	{ 0xb5bb707c, "__netif_schedule" },
+	{ 0x9dc0278c, "consume_skb" },
+	{ 0x3c70fd11, "pskb_expand_head" },
+	{ 0xf4a0e4e9, "skb_dma_map" },
+	{ 0x34e25996, "dev_set_drvdata" },
+	{ 0x8660deae, "pci_disable_device" },
+	{ 0x996f2566, "pci_release_regions" },
+	{ 0x8f0fa442, "free_netdev" },
+	{ 0xedc03953, "iounmap" },
+	{ 0x76d3f6b7, "unregister_netdev" },
+	{ 0x801678, "flush_scheduled_work" },
+	{ 0xe918c70, "dev_get_drvdata" },
+	{ 0x799aca4, "local_bh_enable" },
+	{ 0x973873ab, "_spin_lock" },
+	{ 0x9629486a, "per_cpu__cpu_number" },
+	{ 0x3ff62317, "local_bh_disable" },
+	{ 0x3aa1dbcf, "_spin_unlock_bh" },
+	{ 0xfd606a62, "dma_ops" },
+	{ 0x316479d0, "mem_map" },
+	{ 0x4ae45971, "__netdev_alloc_skb" },
+	{ 0xe523ad75, "synchronize_irq" },
+	{ 0x93cbd1ec, "_spin_lock_bh" },
+	{ 0xb72397d5, "printk" },
+	{ 0xf9a482f9, "msleep" },
+	{ 0x9e7d6bd0, "__udelay" },
+	{ 0xa532702e, "pci_bus_read_config_dword" },
+	{ 0x4b07e779, "_spin_unlock_irqrestore" },
+	{ 0x151392b0, "pci_bus_write_config_dword" },
+	{ 0x712aa29b, "_spin_lock_irqsave" },
+	{ 0x7f24de73, "jiffies_to_usecs" },
+	{ 0x7d11c268, "jiffies" },
+	{ 0xb54533f7, "usecs_to_jiffies" },
+	{ 0xeae3dfd6, "__const_udelay" },
+	{ 0x3eae2931, "pci_unregister_driver" },
+};
+
+static const char __module_depends[]
+__used
+__attribute__((section(".modinfo"))) =
+"depends=";
+
+MODULE_ALIAS("pci:v000014E4d00001644sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001645sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001646sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001647sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001648sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000164Dsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001653sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001654sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000165Dsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000165Esv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016A6sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016A7sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016A8sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016C6sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016C7sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001696sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000169Csv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000169Dsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000170Dsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000170Esv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001649sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000166Esv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001658sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001659sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000165Asv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001676sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001677sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000167Csv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000167Dsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000167Esv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001600sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001601sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016F7sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016FDsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016FEsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000167Asv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001672sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000167Bsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001673sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001674sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000169Asv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000169Bsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001693sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000167Fsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001668sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001669sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001678sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001679sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000166Asv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000166Bsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016DDsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001712sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001713sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001698sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001684sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000165Bsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001681sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001680sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001688sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001689sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001692sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001690sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001694sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d0000168Csv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001691sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d00001699sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v000014E4d000016A0sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v00001148d00004400sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v00001148d00004500sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v0000173Bd000003E8sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v0000173Bd000003E9sv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v0000173Bd000003EBsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v0000173Bd000003EAsv*sd*bc*sc*i*");
+MODULE_ALIAS("pci:v0000106Bd00001645sv*sd*bc*sc*i*");
+
+MODULE_INFO(srcversion, "8F60B08730BA0EFD8ABEE68");
