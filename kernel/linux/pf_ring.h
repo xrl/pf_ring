@@ -90,6 +90,8 @@ struct pkt_parsing_info {
   u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
 
   u_int16_t last_matched_plugin_id; /* If > 0 identifies a plugin to that matched the packet */
+  u_int16_t last_matched_rule_id; /* If > 0 identifies a rule that matched the packet */
+
   union {
     struct pkt_offset offset; /* Offsets of L3/L4/payload elements */
     struct pkt_aggregation_info aggregation; /* Future or plugin use */
@@ -652,8 +654,6 @@ static int ring_plugin_notifier(struct notifier_block *this, unsigned long msg, 
 {
   struct net_device *dev = data;
   struct pfring_hooks *hook;
-
-  printk("[PF_RING] [dummy_plugin] ring_plugin_notifier(%s) [msg=%lu]\n", dev->name, msg);
 
   switch(msg) {
   case NETDEV_REGISTER:

@@ -1443,6 +1443,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
   if((!pfring_enabled) || (!pfr->ring_active))
     return (-1);
 
+  hdr->parsed_pkt.last_matched_rule_id = (u_int16_t)-1;
+
   atomic_set(&pfr->num_ring_users, 1);
 
   /* [1] BPF Filtering (from af_packet.c) */
@@ -1603,8 +1605,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
 			       &last_matched_plugin,
 			       &behaviour)) {
 	if (debug)
-	  printk("[PF_RING] behaviour=%d\n",
-		 behaviour);
+	  printk("[PF_RING] behaviour=%d\n", behaviour);
+	
+	hdr->parsed_pkt.last_matched_rule_id = entry->rule.rule_id;
 
 	if (behaviour ==
 	    forward_packet_and_stop_rule_evaluation) {
