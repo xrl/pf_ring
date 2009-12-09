@@ -1,0 +1,17 @@
+#!/bin/sh
+
+. ./VERSION
+
+if [ "$1" != "" ]; then
+	MYRI10GE_VERSION_SUFFIX=`echo "${MYRI10GE_VERSION_SUFFIX}-$1"`
+fi
+
+echo "#ifndef MYRI10GE_VERSION_H" > myri10ge_version.h
+echo "#define MYRI10GE_VERSION_H" >> myri10ge_version.h
+echo "#define MYRI10GE_MAJOR_VERSION $MYRI10GE_MAJOR_VERSION" >> myri10ge_version.h
+echo "#define MYRI10GE_MINOR_VERSION $MYRI10GE_MINOR_VERSION" >> myri10ge_version.h
+echo "#define MYRI10GE_TEENY_VERSION $MYRI10GE_TEENY_VERSION" >> myri10ge_version.h
+echo "#define MYRI10GE_VERSION_SUFFIX \"$MYRI10GE_VERSION_SUFFIX\"" >> myri10ge_version.h
+echo "#define MYRI10GE_VERSION_STR \"$MYRI10GE_MAJOR_VERSION.$MYRI10GE_MINOR_VERSION.$MYRI10GE_TEENY_VERSION$MYRI10GE_VERSION_SUFFIX\"" >> myri10ge_version.h
+echo "#define MYRI10GE_SHORT_VERSION_STR \"$MYRI10GE_MAJOR_VERSION.$MYRI10GE_MINOR_VERSION.$MYRI10GE_TEENY_VERSION\"" >> myri10ge_version.h
+echo "#endif" >> myri10ge_version.h

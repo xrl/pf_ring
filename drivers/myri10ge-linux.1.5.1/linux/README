@@ -1,0 +1,551 @@
+README - Myricom 10GbE driver for Linux
+
+Contents:
+
+  I. Installation
+ II. Performance Tuning
+III. Troubleshooting
+ IV. Compiling against another kernel
+  V. Compile-time options
+ VI. Load-time options
+
+This Myricom 10GbE driver for Myri-10G NICs is intended for use only with
+Linux kernel version 2.6 or later.  It has been tested with Red Hat 
+Enterprise Linux 4, and several kernel.org kernels.
+
+I. Installation
+===============
+
+To build the driver, type
+
+  % cd myri10ge/linux
+
+  % make clean
+  % make
+  % su root
+  # make install-only
+
+To compile against a kernel that is different than the current running 
+kernel, see the "Compiling against another kernel" section below.
+
+To load the Myricom 10GbE driver, type the command
+
+  # modprobe myri10ge
+
+A new ethernet interface, having a MAC address beginning with 00:60:DD,
+should now appear in the output of ifconfig -a . For example:
+
+   # ifconfig -a | grep 00:60:DD
+   eth2      Link encap:Ethernet  HWaddr 00:60:DD:47:E5:31
+
+In the examples below, we will assume our device is named "eth2".
+
+If the driver fails to load, refer to the "Troubleshooting" section
+below. If an error occurs during the installation procedure or at run-time, 
+please send the output of myri10ge_bugreport.sh to help@myri.com.
+
+II. Performance Tuning
+======================
+
+In addition to the suggestions below, please see 
+http://www.myri.com/cgi-bin/fom?file=511#linux for additional performance 
+tuning recommendations.
+
+A. Jumbo Frames
+------------------
+
+Using jumbo frames can greatly reduce the host overhead for 10 Gigabit
+ethernet.  To use jumbo frames, you must ensure all layer-2 equipment
+(switches, bridges, etc) on your local LAN are configured to also 
+use jumbo frames.  Jumbo frames can be enabled in any of 3 ways:
+
+- Compile time:  Build and install the driver as follows, and it
+will use jumbo frames by default:
+	$ make MYRI10GE_JUMBO=1
+	$ su
+	# make install-only
+
+- Load time:  Use the myri10ge_initial_mtu module parameter to enable
+jumbo frames:
+	modprobe myri10ge myri10ge_initial_mtu=9000
+
+- Distribution network configuration files: You can also enable jumbo
+frames in a distribution dependent way by editing the appropriate
+configuration file.  This will vary by Linux distribution.  
+
+Red Hat based distributions (RHEL, Centos, and Fedora Core) typically
+configure the MTU using a line in the appropriate
+/etc/sysconfig/network-script/ifcfg-ethX file.  Assuming the myri10ge
+interface is named eth2, you would edit
+/etc/sysconfig/network-scripts/ifcfg-eth2 file, and add the line:
+         MTU=9000
+and then reboot the system.
+
+We suggest you consult your Linux vendor's documentation for specifics
+on enabling jumbo frames in your specific Linux version.
+
+B. Write Combining
+------------------
+
+Enabling Write Combining (WC) on the device's memory range will
+improve performance. 
+
+Running the command
+   ethtool -S eth2 | grep WC
+will indicate if the driver was able to enable WC.
+
+If WC is disabled, please see http://www.myri.com/cgi-bin/fom?file=416 
+for tips on how to allow the driver to enable it.  
+
+C. Network Buffer Sizes
+-----------------------
+
+For best performance, we recommend increasing several network buffer 
+sizes from their default values.  Add the following lines to
+/etc/sysctl.conf and execute the command "sysctl -p /etc/sysctl.conf".
+
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 65536 16777216
+net.core.netdev_max_backlog = 250000
+
+For best performance with a 1500 byte MTU on a LAN, we suggest
+disabling TCP timestamps by adding the following line to
+/etc/sysctl.conf and executing the command "sysctl -p /etc/sysctl.conf".
+
+net.ipv4.tcp_timestamps = 0
+
+D. Interrupt Coalescing
+-----------------------
+
+This driver is ethtool compliant, and the interrupt coalescing parameter 
+can be adjusted via "ethtool -C $DEVNAME rx-usecs $VALUE".  
+
+The default setting is a compromise between latency and cpu overhead.  
+You may wish to reduce rx-usecs if latency is more important and you are
+using a low-latency switch or a point-to-point connection.  Similarly,
+you may wish to increase rx-usecs if you are interested in reducing
+CPU overhead for large transfers.  Note that rx-usecs controls both
+transmit and receive coalescing.  
+
+If you are using a kernel prior to 2.6.15, and notice that increasing
+rx-usecs results in a sharp decline in TCP performance, you may want
+to increase the TSO window divisor by adding the following line to
+/etc/sysctl.conf and executing the command "sysctl -p /etc/sysctl.conf".
+
+net.ipv4.tcp_tso_win_divisor = 32
+
+For example, for the best performance on opterons, you should set
+rx-usecs to at least 75us (ethtool -C ethX rx-usecs 75). Also, we've
+found that disabling TCP timestamps is very important on opterons.
+Try sysctl net.ipv4.tcp_timestamps=0.
+
+E. MSI versus Legacy Interrupts
+-------------------------------
+
+Enabling MSI interrupts will lower interrupt latency and can improve
+performance under some workloads.  Our driver will only request MSI
+interrupts on chipsets it has confidence will work with MSI interrupts.  
+To use MSI interrupts, the Linux kernel must be compiled with MSI support
+(CONFIG_PCI_MSI=y).  To see if MSI interrupts were enabled, check
+ethtool for the myri10ge device:
+
+   # ethtool -S eth2 | grep MSI
+     MSI: 1
+
+A non-zero value indicates that an MSI interrupt is being used by our
+device.  However, if the value is 0 and dmesg shows a message like the
+following, it means that the Linux kernel did not allow our device to
+use MSI interrupts:
+
+   myri10ge: Error setting up MSI on device 0000:05:00.0, falling back to
+xPIC
+
+If you would like to force the use of MSI interrupts, you should load
+the driver using:
+    
+    # modprobe myri10ge myri10ge_msi=1
+
+If MSI interrupts are still not enabled even when setting
+myri10ge_msi=1, this may mean your Linux distribution disables MSI by
+default on a global basis.  Recent Ubuntu and Fedora Core versions are
+known to do this.  To enable MSI, you must add pci=msi to the kernel
+parameters and reboot.
+
+Note that if MSI interrupts were forced to be enabled, but the
+interface now fails to pass traffic, you should revert to using xPIC
+interrupts by reloading the driver without using myri10ge_msi=1,
+and remove pci=msi from your kernel parameters.
+
+If it's not possible to enable MSI interrupts with the specific Linux 
+release that you're using, you can make xPIC interrupts less expensive 
+by loading the driver with: 
+
+# modprobe myri10ge myri10ge_deassert_wait=0
+
+or set it at runtime via 
+'echo 0 > /sys/module/myri10ge/myri10ge_deassert_wait'
+
+Not using MSI or myri10ge_deassert_wait=0 costs about 500Mb/s in our 
+performance measurements for a single stream. 
+
+F. Module compilation
+---------------------
+
+If you are using Linux kernel version 2.6.16 or higher, you will see
+improved receive performance if you change the definition of
+MYRI10GE_ALLOC_ORDER to 2 or more.  This will cause the driver to
+allocate receive buffers from 2^MYRI10GE_ALLOC_ORDER contiguous pages.
+This reduces the number of allocations that the driver will make, as
+well as potentially reducing the number of IOMMU manipulations, at the
+cost of making each allocation more expensive.  Please note that if
+the system is under heavy memory load, you will have an increased
+likelihood of allocation failures because it is harder for the kernel
+to provide contiguous pages.
+
+To change the this parameter, rebuild by:
+
+  % make clean
+  % make MYRI10GE_ALLOC_ORDER=$ORDER
+  % su root
+  # make install-only
+  # rmmod myri10ge
+  # modprobe myri10ge
+
+Where $ORDER ranges in value from 1..3. 
+
+A good value to choose is MYRI10GE_ALLOC_ORDER=2, as it results in
+16KB allocations. This is the same size allocation as a driver which
+does not use PAGE_SIZE buffers, and simply allocates 9KB jumbo
+frames. You may want to experiment with making MYRI10GE_ALLOC_ORDER=3,
+but this is a bit more likely to fail under heavy memory pressure.
+
+G. Packet forwarding
+---------------------
+
+If your workload is primarily traffic forwarding or traffic analysis,
+you should build the driver using the MYRI10GE_RX_SKBS=1 compile
+option.  This causes the driver to receive into standard skbufs,
+rather than into pages attached to an skbuf.  Using this option is
+critical for forwarding standard MTU frames at line rate, and for
+forwarding frames to interfaces whose drivers do not support
+scatter-gather DMA.  However, this option is incompatible with LRO,
+and should therefor not be used on an endstation.
+
+To change this parameter, rebuild by:
+
+  % make clean
+  % make MYRI10GE_RX_SKBS=1  MYRI10GE_LRO=0
+  % su root
+  # make install-only
+  # rmmod myri10ge
+  # modprobe myri10ge
+
+H. MSI-X interrupts and Multiple Receive Queues
+-------------------------------------------------
+
+If your kernel, motherboard and NIC are MSI-X capable, you can take
+advantage of hardware steering of incoming IPv4 traffic into multiple
+sets of receive queues.
+
+To check if your NIC is capable of MSIX, use lspci:
+   # lspci -v -d 14c1: | grep 'MSI-X'
+
+If your NIC is MSI-X capable, you should see:
+   Capabilities: [d0] MSI-X: Enable- Mask- TabSize=128
+
+To enable multiple sets of receive queues (called slices), load the
+driver with the module parameter myri10ge_max_slices set to the number
+of slices you want to use, or to -1, which will pick the optimal
+number.  Note that the driver will use a number of slices which is the
+largest power of two equal to or below myri10ge_max_slices that it can
+successfully configure.  After loading the driver, you should see a
+line mentioning the number of MSI-X IRQs in use in your kernel
+messages log:
+
+    myri10ge 0000:05:00.0: 4 MSI-X IRQs, tx bndry 4096, fw myri10ge_rss_eth_z8e.dat, WC Enabled
+
+Most Linux kernel versions with which we have tested will deliver all
+MSI-X interrupts to the same CPU by default, which defeats the purpose
+of steering packets into multiple queues.  To achieve optimal results
+you should manually bind the interrupt from each slice to a different
+CPU core.  We include an example script, msixbind.sh, which will bind
+slice 0 to CPU 0, slice 1 to CPU 1, etc.
+
+I. Intel Direct Cache Access (DCA)
+----------------------------------
+
+If you have a recent Intel server or workstation chipset, you may be
+able to take advantage of DCA.  DCA causes DMA writes posted by the
+NIC to be prefetched into a CPU's cache, thereby reducing cache misses
+and increasing CPU efficiency for received network traffic.
+
+Support for DCA is provided by the Intel ioatdma driver.  DCA support
+was added to the ioatdma in the 2.6.24 series.  Please make sure you
+have both ioatdma and dca configured.  Note that we have also found
+that using ioatdma's copy offload for TCP actually degrades
+performance at 10GbE speeds, so make sure to avoid configuring that
+(or disable it at runtime via sysctl net.ipv4.tcp_dma_copybreak=2147483647)
+
+Here is a snippet from a 2.6.24 .config file showing an optimal
+configuration:
+	#
+	# DMA Devices
+	#
+	CONFIG_INTEL_IOATDMA=m
+	CONFIG_DMA_ENGINE=y
+
+	#
+	# DMA Clients
+	#
+	# CONFIG_NET_DMA is not set
+	CONFIG_DCA=m
+
+If you have an older kernel or prefer not to recompile your 2.6.24 or
+newer kernel, you may download the ioatdma driver from Intel (version
+2.15 or newer).  Build and install the ioatdma driver prior to
+installing the myri10ge driver.  Save the ioatdma source directory,
+and point the Myri10GE build at it when building the Myri10GE driver
+via the DCA_FLAGS argument to make.
+
+	 # make DCA_FLAGS="-DCONFIG_DCA -I/path/to/ioatdma-<vers>/include"
+	 # make install-only
+
+After loading the driver, you can confirm that DCA is enabled via:
+	 # ethtool -S eth2 | grep dca
+	      dca_capable: 1
+	      dca_enabled: 1
+
+III. Troubleshooting
+====================
+
+If the recommendations below do not resolve the problem you have
+encountered, please send a full description, along with the output of
+myri10ge_bugreport.sh, to help@myri.com.
+
+
+Large Receive Offload (LRO) is enabled by default.  This will
+interfere with forwarding TCP traffic.  If you plan to forward TCP
+traffic (using the host with the Myri10GE NIC as a router or bridge),
+you must disable LRO.  To disable LRO, load the myri10ge driver
+with myri10ge_lro set to 0:
+
+         # modprobe myri10ge myri10ge_lro=0
+
+Alternatively, you can disable LRO at runtime by disabling
+receive checksum offloading via ethtool:
+
+   # ethtool -K eth2 rx off
+
+The ability to saturate a 10GbE link depends on having sufficient
+PCI-Express bandwidth. When loaded, our driver calculates the
+available bus bandwidth (read DMA, write DMA, and simultaneous read
+and write DMA) and stores it so that ethtool may retrieve it later. To
+view the bus bandwidth, use the following command:
+
+   # ethtool -S eth2 | grep dma
+
+Note that the reported bandwidth is measured in megabytes per second,
+not megabits.  This means that 10Gb/s corresponds to 1280MB/s.
+
+This driver uses the Linux hotplug facility to load its firmware by
+default.  It will look in /lib/firmware (Redhat), or
+/usr/lib/hotplug/firmware (SuSE) for a firmware image.  The firmware
+images are copied there at install time.  If there is a problem
+locating the firmware, the driver will fail to load, and you will see
+a message like this on the console:
+
+Myricom MYRI10GE driver 0000:05:00.0: Unable to load myri10ge_eth_z8e.dat
+firmware image, status = -2
+
+This may be caused by your distribution using a different location for
+firmware.  Please contact help@myri.com if you have a problem loading
+firmware.
+
+If the driver fails to load because of the unknown symbols
+"release_firmware" and "request_firmware", this means that you need to
+install the firmware loading module via "modprobe firmware_class".
+Also, make sure your kernel is built with CONFIG_FW_LOADER= 'y' or 'm'.
+
+As a workaround, you may wish to build the firmware into the myri10ge
+kernel module itself.  To do this, build the module using
+MYRI10GE_BUILTIN_FW=1
+	# make MYRI10GE_BUILTIN_FW=1
+
+If the driver fails to load because of the unknown symbols
+"zlib_inflate", "zlib_inflateInit2", and "zlib_inflate_workspacesize",
+this means you need to install the zlib module via 
+       # modprobe zlib_inflate
+
+If MSI interrupts were automatically enabled, but the interface fails
+to pass traffic, you should revert to using xPIC interrupts by
+reloading the driver using:
+
+         # modprobe myri10ge myri10ge_msi=0
+
+If you are using 802.1q VLANs, and you see an error message in the
+kernel log which looks like:
+
+      hw tcp v4 csum failed
+
+you need to adjust the myri10ge_vlan_csum_fixup parameter.  This
+tunable parameter controls whether or not the driver corrects the
+hardware checksum of received 802.1q VLAN tagged frames to account for
+the extra 4 bytes of VLAN header.  In kernel.org kernels 2.6.14 and
+later, the Linux 802.1q VLAN module automatically does this
+correction, so our driver does not need to. In earlier Linux kernels
+(2.6.13 and earlier), however, the correction is not included, so our
+driver needs to perform this modification.  Thus, the
+myri10ge_vlan_csum_fixup parameter defaults to true (non-zero) on
+kernel versions prior to 2.6.14, and to false (zero) on newer kernel
+versions.  To enable the correction in the Myri10GE driver, reload the
+driver using:
+
+         # modprobe myri10ge myri10ge_vlan_csum_fixup=1
+
+Or you can adjust this at runtime using:
+          # echo 1 > /sys/module/myri10ge/myri10ge_vlan_csum_fixup
+         Or (depending on your kernel version):
+          # echo 1 >
+/sys/module/myri10ge/parameters/myri10ge_vlan_csum_fixup
+
+Similarly, replace "0" with "1" above to disable the correction. 
+
+TSO can potentially overwhelm the receiver and lead to packet loss and
+retransmissions.  If you see an increase in bandwidth after disabling
+TSO, check your switch counters and settings to ensure flow control is
+enabled.  TSO can be disabled as follows:
+
+   # ethtool -K eth2 tso off
+
+
+If you are using another vendor's driver which also sets up PAT write
+combining, and that vendor's driver uses a different PAT index than
+our driver, the other vendor's driver may note a conflict and run in
+reduced performance mode.  Examples of other drivers which use PAT
+include the Nvidia graphics driver, and various Infiniband drivers.
+
+One way to work around this PAT conflict is to change the PAT index
+used by the Myri10GE driver by rebooting, and loading the module using
+the myri10ge_pat_idx modparam to specify a different PAT index.  We
+currently default to 6, while some other vendors use 1.  Good values
+to try are 1, 4, 5, and 7.
+
+IV. Compiling against another kernel
+====================================
+
+To build for kernel different than the installed kernel, assuming its `uname
+-r` is 2.6.12-1-686 and its modules have been installed into
+/lib/modules/2.6.12-1-686,
+type
+
+  % make clean
+  % make KVER=2.6.12-1-686
+  ...
+
+To build against a kernel that has not been installed yet, but whose sources
+are in <src> and have been built in <build> (possibly the same directory),
+type
+
+  % make clean
+  % make KSRC=<src> KDIR=<build>
+  ...
+
+Be sure to always 'make clean' before compiling against another kernel since
+the myri10ge_checks.h has to be regenerated according to the right kernel
+headers before compiling.
+
+V. Compile-time options
+=======================
+
+To rebuild the module in a non-default manner, simply type:
+  % make OPTION=value
+  % su root
+  # make install-only
+  # rmmod myri10ge
+  # modprobe myri10ge
+
+where the following OPTIONs are available:
+
+Option			Values	Default	Meaning
+------------	    	------  ------- ---------
+MYRI10GE_LRO		0, 1	1	Enable or disable LRO
+MYRI10GE_BUILTIN_FW	0, 1	0	Build in firmware? (see above)
+MYRI10GE_ALLOC_ORDER	0..3	0	Allocate pages of this "order", see
+					explanation above. 
+MYRI10GE_RX_SKBS	0, 1	0	Receive into skbufs? (see above)
+MYRI10GE_THROTTLE	0, 1	0	Throttle transmit bandwidth
+MYRI10GE_JUMBO		0, 1	0	Default to using a 9000 byte MTU
+
+After rebuilding and re-installing the module, you can confirm the
+module was built correctly by checking the compile options using
+ethtool -S.  The presence of LRO flushed indicates LRO is compiled
+in, for all others, simply look for the option name in lower case
+without the leading MYRI10GE_.  For example, to confirm a driver is
+compiled with MYRI10GE_ALLOC_ORDER=3, do the following:
+
+  # ethtool -S eth2 | grep alloc_order
+     alloc_order: 3
+
+And to confirm the driver is using LRO:
+
+  # ethtool -S eth1 | grep 'LRO flushed'
+     LRO flushed: 11320658
+
+
+VI. Load-time options
+=====================
+
+When loading the myri10ge module, you may change a variety of options
+by appending them to the modprobe line:
+	# modprobe myri10ge OPTION=value
+
+Option			Values  Default	Meaning
+------------	    	------  ------- ---------
+myri10ge_force_firmware 0, 1	0	Force firmware to assume that the
+ 					host provides aligned PCIe
+ 					completions.
+myri10ge_fw_name	string	[a]	Name of firmware image to load via
+					hotplug.
+myri10ge_fw_names	string	[d]	Comma separated list of names
+					of firmware images to load via
+					hotplug. 
+myri10ge_ecrc_enable	0,1	1	Enable ECRC on parent bridge if
+ 					needed.
+myri10ge_msi		-1,0,1	-1	Enable use of MSI interrupts.
+
+myri10ge_force_nvidia_msi 0,1	0	Forcibly enable MSI on Nvidia chipsets.
+
+myri10ge_intr_coal_delay 0..N	[b]	Initial interrupt coalescing delay
+  					in usecs.
+myri10ge_flow_control	0, 1	1	Enable flow control.
+
+myri10ge_deassert_wait  0, 1	1	Wait for xPIC interrupt 
+					deassertion before exiting
+ 					interrupt handler.
+myri10ge_initial_mtu	128..9000 9000	Initial default MTU.
+
+myri10ge_vlan_csum_fixup 0,1	[c]	Do VLAN Checksum fixup for
+ 					received frames.
+myri10ge_max_slices	-1,1..N	1	How many sets of receive
+					queues to use per NIC.
+myri10ge_pat_idx	1,4..7	6	Which PAT idx to use to setup WC
+
+myri10ge_big_skb_limit  0,2-512 0	Limit number of skbs allocated
+					to big rx ring.  0 means unlimited.
+myri10ge_lro		0,1	1	Use TCP LRO (where available)
+myri10ge_gro		0,1	1	Use GRO (where available)
+
+a:  This defaults to myri10ge_eth_z8e.dat or myri10ge_ethp_z8e.dat depending
+	on the host bridge chip in your machine.
+b:  This defaults to 25us for kernels older than 2.6.15, and 75us for
+	 newer kernels.
+c:  This defaults to 1 for kernels older than 2.6.14
+d:  Firmware images are specified as myri10ge_fw_names=image1.dat,image2.dat
+    In this example, image1.dat is loaded on the first myri10ge NIC found by
+    the driver, and image2.dat is loaded on the next myri10ge NIC
+    found.  Note that this option overrides both the defaults [a] and
+    any global default specified by myri10ge_fw_name.
+	
+	

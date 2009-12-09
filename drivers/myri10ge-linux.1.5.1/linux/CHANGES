@@ -1,0 +1,362 @@
+Myri10GE 1.5.1 Linux (October 7, 2009)
+-------------------
+ENHANCEMENTS:
+1) Firmware version 1.4.45.  See ../firmware/CHANGES for details.
+2) Support for host driven adaptive interrupt coalescing.
+3  Detect and optionally fix inconsistent MSI configuration in
+   some Nvidia chipsets.
+4) Improved support for parity recovery.
+5) Added module parameter (myri10ge_gro) to control enabling
+   or disabling GRO at driver load time.
+
+BUG FIXES:
+1) Fixed GRO related compilation issues with RHEL5 kernels.
+2) Eliminate a rare null skb dereference in the GRO frags
+   codepath.
+3) Worked around panic in -RT kernels caused by using spinlocks
+   to enable PAT.
+
+
+Myri10GE 1.5.0 Linux (June 5, 2009)
+-------------------
+ENHANCEMENTS:
+1) Default MTU changed to non-jumbo (1500 bytes).  
+2) Added a new compile time flag (MYRI10GE_JUMBO) to enable
+   a default jumbo MTU at compile time.
+3) Firmware version 1.4.43.  See ../firmware/CHANGES for details.
+4) Added the ability to specify the firmware image to load on a
+   per-NIC basis using the myri10ge_fw_names module parameter.
+5) Added ability to enable or disable LRO with ethtool.
+6) Added support for stateless offloads in combination with vlans.
+   (dependent on kernel version).
+7) Improved accuracy of informing user if WC is enabled.
+8) Added support for GRO (dependent on kernel version).
+9) Added PCI alias information to modinfo output.
+
+BUG FIXES:
+1) Fixed a compilation problem on RHEL5 Update 3
+2) Fixed a bug where ethool -S might report stale packet
+   and byte counters.
+3) Fixed a bug where myri10ge_vlan_csum_fixup was not honored
+   for some frames, leading to "hw tcp v4 csum failed" messages when
+   using vlans with LRO on RHEL4 Update 7.
+4) Fixed a bug where the transmit ring size was reported incorrectly
+   via ethtool -g.
+5) Fixed a bug which could prevent bonding from working in arp
+   monitoring mode when LRO was enabled.
+6) Fixed a bug which could lead to a NULL pointer dereference when
+   LRO was enabled on kernel 2.6.17 or older.
+7) Fixed compilation problems on ia64.
+8) Worked around a rare RHEL5 deadlock caused by updating carrier state
+   from an irq context.
+
+Myri10GE 1.4.4 Linux (Jan 9, 2009)
+-------------------
+ENHANCEMENTS:
+1) Firmware version 1.4.38.  See ../firmware/CHANGES for details.
+
+BUG FIXES:
+1) Fixed a bug which prevented host packet drops from being reported.
+
+Myri10GE 1.4.3 Linux (November 4, 2008)
+-------------------
+ENHANCEMENTS:
+1) Removed obsolete myri10ge_wcfifo code and module parameter.
+2) Added support for multiple transmit queues on kernel 2.6.27 or newer.
+3) Firmware version 1.4.36.  See ../firmware/CHANGES for details.
+
+BUG FIXES:
+1) Fixed a bug which prevented the driver from functioning on
+   32-bit powerpc machines.
+
+Myri10GE 1.4.2 Linux (April 17, 2008)
+-------------------
+ENHANCEMENTS:
+1) Added support for Intel DCA (Direct Cache Access).
+2) Firmware version 1.4.31.  See ../firmware/CHANGES for details.
+
+BUG FIXES:
+1) Fixed a bug where myri10ge_vlan_csum_fixup was not honored
+   for some frames, leading to "hw tcp v4 csum failed" messages when
+   using vlans with LRO on older kernels.
+2) Fixed a compilation problem on ia64.
+
+Myri10GE 1.4.1 Linux (Feb 12, 2008)
+-------------------
+ENHANCEMENTS:
+
+1) Generalized the PAT implementation so as to better coexist with
+   other vendors' drivers.
+2) Firmware version 1.4.30.  See ../firmware/CHANGES for details.
+
+BUG FIXES:
+1) Fixed an MTRR setup bug introduced in 1.4.0 which caused write
+   combining to always fail to be enabled when PAT setup failed.
+2) Fixed compilation problems introduced in 1.4.0.
+
+Myri10GE 1.4.0 Linux (Jan 10, 2008)
+-------------------
+ENHANCEMENTS:
+
+1) The driver now uses the inet_lro Linux kernel LRO.
+2) Added support for TSO when using TCP over IPv6.
+3) Added support for MSI-X interrupts and multiple receive queues.
+4) Added support for transmit rate throttling.
+5) Added support for Linux kernel 2.6.24
+6) Added support for new device id 9.
+7) Firmware version 1.4.29.
+
+BUG FIXES:
+1) Fixed spurious watchdog resets triggered by a non-consuming link
+   partner. 
+2) Fixed a bug that could prevent the driver from working
+   on MIPS based machines.
+3) Fixed unaligned access warnings on sparc64 hosts.
+
+
+Myri10GE 1.3.1 Linux (July 17, 2007)
+-------------------
+ENHANCEMENTS:
+
+1) The driver now automatically selects which firmware image to use,
+   rather than relying on a whitelist of PCIe chipsets.
+2) Restored support for receiving into skbufs via the 
+   MYRI10GE_RX_SKBS compile-time option.
+3) Added make install-only target to simplify installation.
+4) Exported tunable settings via ethtool.
+5) PAT is used in preference to MTRRs.
+6) Ethtool now reports link status.
+7) Firmware version 1.4.21.
+
+BUG FIXES:
+1) Fixed a bug where promiscuous mode settings could be
+   lost across a device reset.
+2) Fixed a bug in the LRO code which could result in a null pointer
+   dereference.
+3) Fixed a bug where 16MB of kernel memory would be leaked per
+   NIC at module unload time when using PAT.
+
+Myri10GE 1.3.0 Linux (April 12, 2007)
+-------------------
+ENHANCEMENTS:
+1) Added support for building the firmware into the myri10ge
+   kernel module.
+2) Packets constructed by LRO now have their TCP checksums
+   updated, rather than simply verified.
+3) Integrated PAT support to automatically enable write combining on 
+   x86 and x86_64.
+4) Adjusted interrupt coalescing (myri10ge_intr_coal_delay)
+   and write combining fifo (myri10ge_wcfifo) defaults to provide
+   improved performance with 1500 byte MTUs.
+5) Firmware version 1.4.14.
+
+BUG FIXES:
+1) Worked around a bug where broadcast packets would be incorrectly
+   treated as multicast packets and filtered when adopting older
+   firmware. 
+2) Fixed a bug which could negatively impact communications between
+   hosts with different MTUs when TSO is enabled.
+3) Fixed a bug which could lead to incorrect hardware checksums being
+   reported for frames padded with non-zero data when LRO was enabled.
+4) Worked around bugs present in kernels older than 2.6.18 which are
+   triggered by receiving non-IP traffic into fragmented skbs.
+5) Fixed a bug which could result in memory corruption when our device
+   was configured with an MTU between 5996 and 8044 bytes on a machine
+   using 16KB pages.
+
+Myri10GE 1.2.0 Linux (January 10, 2007)
+-------------------
+
+ENHANCEMENTS:
+1) LRO is now supported for 802.1q vlan tagged frames.
+2) Support for Linux kernel versions up to 2.6.20.
+3) Firmware version 1.4.11.
+
+BUG FIXES:
+1) Fixed a bug where the watchdog hander could race
+   with the interrupt handler.
+2) Fixed a bug where frames received via LRO were not reflected
+   in our interface statistics counters.
+3) Fixed a bug where padded frames were treated improperly by
+   the LRO code.
+4) Fixed handling of reserved ethernet packets (01:80:c2:00:00:0X)
+   which had been silently dropped.  They will now increment the
+   dropped_link_error_or_filtered counter unless the device is 
+   in promisc mode, in which case they will be passed up to the driver.
+5) Workaround PCIE deadlock for some PM transitions sequence.
+6) Firmware ensures -0 is never used in the ipv4 header checksum field 
+   (TSO case). Known receivers don't distinguish between +0 and -0, but
+   RFC1624 recommends to be safe.
+
+
+Myri10GE 1.1.0 Linux (September 8, 2006)
+-------------------
+
+BUG FIXES:
+1) Fixed a bug where the watchdog reset handler might
+   be invoked spuriously.
+2) Fixed firmware bug where the firmware could send runt
+   frames when TSO is enabled.
+
+ENHANCEMENTS:
+1) Multicast filtering support.
+2) TCP Large Receive Offload support.  This support is
+   presently limited to TCP over IPv4, with no VLANs. It is
+   done entirely within the driver.
+3) The receive portion of the driver was re-written so as to
+   avoid large physically contiguous skb allocations for jumbo
+   frames by using multiple pages attached to the skb.
+4) Firmware version 1.4.6.
+
+Myri10GE 1.0.0 Linux (June 8, 2006)
+-------------------
+
+BUG FIXES:
+1) Fixed a bug where ethtool would incorrectly report
+   that transmit checksum offload was disabled, when in
+   fact it was enabled on older 2.6 kernels.
+
+ENHANCEMENTS:
+1) NAPI receive interrupt support is enabled and 
+   no longer optional.
+2) Many source code cleanups.
+3) Modinfo now reports module parameter information.
+4) Firmware version 1.4.3.
+
+Myri10GE 0.9.2rc0 Beta (May 31, 2006)
+-------------------
+BUG FIXES:
+1) Firmware fixes a PCI-Express send fifo overrun triggered by
+   ethernet interrupt DMAs. This could lead to lockups on Intel E7520
+   motherboards when the interrupt coalescing timer is set to 1.
+
+2) Fixed a bug in the Solaris driver which could lead to 
+   a null pointer dereference when unplumbing the interface
+   under heavy receive load.
+3) Fixed a bug in the Solaris driver which could lead to a
+   null pointer dereference when the interface  attaches to
+   a busy shared interrupt line.
+
+ENHANCEMENTS:
+1) Support for MSI interrupts on Solaris.
+
+Myri10GE 0.9.1 Beta (May 25, 2006)
+-------------------
+BUG FIXES:
+
+1) Firmware fixes a PCI-Express resending bug that shows up on some
+   E7520 machines
+2) Fixed a bug in the Solaris driver which could lead to 
+   a null pointer dereference when plumbing the interface
+   if our device is assigned a shared interrupt.
+
+ENHANCEMENTS:
+1) Doubled transmit performance on CoolThreads-based UltraSparcs
+   by deserializing the Solaris driver's transmit routine.
+
+Myri10GE 0.9.0 Beta (April 15, 2006)
+-------------------
+BUG FIXES:
+1) Fixed a bug where firmware would drop frames when it ran
+   out of host buffers to DMA them to even when flow control
+   was enabled.
+
+ENHANCEMENTS:
+1) Power management support added to firmware and Linux driver.
+2) Linux driver will attempt to fall back to using the firmware
+   resident in the NIC if hotplug fails to find a firmware image.
+3) Linux NAPI support added.
+4) Linux driver support for IPv6 checksum offload added.
+5) Linux driver now uses a more aggressive watchdog which will catch 
+   problems before the kernel's netdev watchdog.
+6) Preliminary Linux driver support for parity error recovery added.
+7) Firmware version 1.4.0
+
+Myri10GE 0.8.1 Beta (April 6, 2006)
+-------------------
+BUG FIXES:
+1) Fixed a bug where interrupt livelock could prematurely trigger 
+   the driver's watchdog timer, causing the nic to be needlessly 
+   reset on Linux, Solaris, and MacOSX.
+2) Fixed a non-compliance with PCI-Express specification, where the link
+   retraining was not being initiated upon REPLAY_NUM Rollover.  This fix
+   resolves the hung-network-connections problem observed on Sun T2000
+   (Ontario) machines.
+3) Fixed two bugs in PCI-Express resending code, which show up when
+   it is stressed on Intel 7520 based machine.
+
+ENHANCEMENTS:
+
+1) PCI-Express DMA bandwidth is measured and reported in an OS dependent
+   way by the driver.
+2) Improved 802.1q VLAN support on Linux.
+3) Firmware support for PCI-Express relaxed ordering added to Solaris
+   driver.
+
+Myri10GE 0.8.0 Beta (March 29, 2006)
+-------------------
+BUG FIXES:
+1) Linux MSI enablement heuristic sometimes gave incorrect results
+   on machines with multiple chipsets.
+
+ENHANCEMENTS:
+1) TCP Segmentation Offload (also known as Large Send Offload)
+   implemented on Linux and Windows.
+2) Interrupt method changed to allow for more events to be 
+   processed per interrupt. 
+3) MacOSX support added.
+
+Myri10GE 0.7.2 Beta (March 8, 2006)
+-------------------
+BUG FIXES:
+1) Fixed a memory leak which would happen when plumbing
+   and unplumbing the Solaris driver.
+2) Fixed a potential double free which could happen in
+   the error path if plumbing the Solaris driver failed.
+
+ENHANCEMENTS:
+1) Improved receive performance on CoolThreads-based UltraSparc 
+   systems by optionally doing receive side scaling in the 
+   Solaris driver.
+2) Improved transmit performance on CoolThreads based UltraSparc 
+   systems by optionally doing transmit complete interrupt 
+   processing in a different context, and by copying small packets.
+3) Firmware bug fixes and optimizations.
+
+Myri10GE 0.7.1 Beta (February 2, 2006)
+-------------------
+
+BUG FIXES:
+1) Fixed erratic TCP receive performance on Linux caused by the
+driver confusing the kernel algorithm which calculates socket buffer
+sizes.
+
+Myri10GE 0.7.0 Beta (January 25, 2006)
+-------------------
+BUG FIXES:
+1) Interrupt handler now issues PIO reads when using xPIC interrupts
+   to ensure interrupt line is low by the time the handler returns.
+2) Driver initializes Max Read Request size in PCI config space.
+3) Firmware fix for NIC hang under load on machines with Serverworks 
+   HT2000 chipset
+
+ENHANCEMENTS:
+1) Heuristic to decide whether to use MSIs or INTx interrupts on 
+   Linux to work around interrupt delivery problems on some chipsets.
+
+Myri10GE 0.6.0 Beta (December 23, 2005)
+-------------------
+
+BUG FIXES:
+1) Fix a bug which prevented flow control from being enabled.
+
+ENHANCEMENTS:
+1) Windows support added
+2) Solaris/sparc support added
+3) Dropped packet counters exported to driver from NIC
+4) Flow control can now be enabled or disabled at driver
+   load time on all platforms, and at runtime on Linux.
+
+Myri10GE 0.5.0 Beta (December 8, 2005)
+-------------------
+Initial Release 

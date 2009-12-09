@@ -10,3 +10,8 @@ Luca Deri <deri@ntop.org> - October 2009
 
 e1000 and tg3 PF_RING drivers courtesy of Alexander Didebulidze <didebuli@net.in.tum.de>
 November 2009
+
+-----
+
+Myricom 10G driver courtesy of Todd Carrozzi <carrozzi@gmail.com>
+December 2009

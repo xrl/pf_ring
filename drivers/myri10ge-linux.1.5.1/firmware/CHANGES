@@ -1,0 +1,426 @@
+Myri10GE Firmware 1.4.45 (August 22th, 2009)
+-----------------------
+
+1) Fix a bug where packets dropped because of link_overflow could
+     be occasionally reported as bad_crc32
+
+2) Add selectable failover strategy for dual-port chip: symmetric or primary/backup
+
+3) pcie-2.0 additions for pcie-2.0 compliance
+
+4) Switch to NoSoftReset=1 behavior on D3hot->D0 (to avoid problem on some Windows platform).
+
+5) Add Function-Level-Reset (optional PCIe feature)
+
+
+Myri10GE Firmware 1.4.44 (June 8th, 2009)
+-----------------------
+
+Eeprom version (add atmel eeprom init)
+
+
+Myri10GE Firmware 1.4.43 (May 27th, 2009)
+-----------------------
+
+1) Fix a bug when ECRC checking is enabled (so far problem has been
+  triggered with IBM X3 architecture with OSes enabling ecrc), which
+  would cause some spurious ecrc errors to be reported.
+
+2) Fix a bug that can cause the NIC to stop receiving in a
+  Windows/NDIS multi-slice configuration with heavy loads of small
+  packets.
+
+
+Myri10GE Firmware 1.4.42 (March 31st, 2009)
+-----------------------
+
+1) On failover, send RARP broadcast to make the change immediately
+  known to the network
+
+
+2) Change endianess for PCI Device Serial Number
+
+Myri10GE Firmware 1.4.41 (February 26th, 2009)
+-----------------------
+
+1) Support for 10G-PCIE*-8B*-C NICs
+
+2) For dual-port NICs, time to failover is now a few microsecs 
+    instead of a few millisecs.
+
+
+Myri10GE Firmware 1.4.40b (February 13th, 2009)
+-----------------------
+
+Eeprom version for 10G-PCIE*-8B-* (use reliable serdes settings).
+
+
+Myri10GE Firmware 1.4.39 (January 20th, 2009)
+-----------------------
+
+1) Fix a bug introduced in 1.4.37 which could lead to
+  incorrect IP checksums in TSO packets when drivers use TSO mode 1
+  (which is used only by Solaris and Windows).  No firmware
+  distributed with those drivers was affected.
+
+Myri10GE Firmware 1.4.38 (December 18th, 2008)
+-----------------------
+
+1) Use smaller read-speed for new NICs with 1MB eeproms.
+
+
+Myri10GE Firmware 1.4.37 (December 12th, 2008)
+-----------------------
+
+1) Fix a theoretical bug when IPv6+VLAN+TSO are used together
+   (never observed in any supported OS)
+
+2) Fix a bug that would cause the revision-id for -8B NIC to change
+   upon handoff
+
+3) Add support for dual-chip NIC (10G-PCIE2-xxx)
+
+4) Add i2c/smbus general-purpose interface so host can 
+  access all transceiver info and more easily.
+  Make sure myri10ge special-purpose interface is available on both 
+   'S' and 'R' (SFP+ and XFP).
+
+5) Use 6dB preemphasis on QSFP cards to support QSFP copper-cables
+
+6) Big eeprom-reprogramming speed improvement on 8B NICs.
+
+7) More power-saving items on 8B NICs.
+
+8) For PHY where the transceivers is kept up (quad/QSFP/CX4), send
+  REMOTE-FAULT notification when interface is down (rather than
+   unaligned COMMA stream)
+
+9) Add PCI-VPD capability for identification purposes.
+
+10) Add new optional command that allows the driver to provide
+  unaligned buffers in rx-rings (with a trade-off in perf)
+
+
+Myri10GE Firmware 1.4.36 (October 14th, 2008)
+-----------------------
+
+1) Fix possible bug on tx with multi-slice firmware
+ on pcie platforms where RDMAs complete out of order
+
+2) Prevent harmless "never got down irq" message from driver
+   on multi-slice shutdown
+
+3) Better support for new NIC models (10G-PCIE-8Bxxxx)
+
+Myri10GE Firmware 1.4.35 (October 8th, 2008)
+-----------------------
+
+Eeprom version for 10G-PCIE-8B-2S (final rev)
+
+Production-eeprom with PCI-ROM 5.4.3i
+
+
+Myri10GE Firmware 1.4.34 (October 2nd, 2008)
+-----------------------
+
+Myricom-internal release candidate
+
+
+Myri10GE Firmware 1.4.33 (October 1st, 2008)
+-----------------------
+
+1) Support for 10G-PCIE-8B NICs
+
+2) Add option for Open-MX specific hashing to multi-queue firmware
+
+3) multi-slice firmware: fix a bug when the presence of 32-bit or
+ 64-bit addresses for interrupt queues and data is not uniform across
+ slices
+
+
+Myri10GE Firmware 1.4.32 (July 29, 2008)
+-----------------------
+
+1) Minor changes for strict pcie-1.1 compliance (more pcie test suites)
+
+2) Support multiple send queues as well as receive queues (netq firmware)
+
+3) Handle TSO on tagged VLANs
+
+
+Myri10GE Firmware 1.4.31 (April 14, 2008)
+-----------------------
+
+1) Add support for DCA
+
+2) Use relaxed-ordering by default (unless explicitely disabled by config-space)
+
+3) Improves automatic selection between ethp_z8e/eth_z8e
+    (eth_z8e is better for almost all chipsets except E7520)
+
+4) Refuse ethernet initialization on misnegotiated pcie-link
+
+
+5) Initialize Quake i2c burst mode 16 (was defaulting to 256) for compliance
+    with XFP-MSA spec and all XPF brand (i2c is only used for diagnostics).
+ 
+
+6) Minor pcie-1.1 spec config-space changes (only relevant for pcie test suites)
+
+Production-eeprom with PCI-ROM 5.4.3i
+
+
+Myri10GE Firmware 1.4.30 (February 11, 2008)
+-----------------------
+
+1) For eeprom usage, modification to low-level pcie initialization to fix:
+   * pcie-link occasionally negotiating with suboptimal width
+      (x1/x2/x4 sometimes seen were x8 was expected),
+   * NIC rarely not initializating in pcie-2.0 (5GT/s-able) slots.
+
+2) Add partial-write counter to analyze host write-combining properties.
+
+
+Myri10GE Firmware 1.4.29 (January 2, 2007)
+-----------------------
+
+1) Increase an internal timing (dispatch engine): fix possible spurious reset
+   (seen on very few cards).
+
+Production-eeprom with PCI-ROM 5.4.3g
+
+Myri10GE Firmware 1.4.28 (December 20, 2007)
+-----------------------
+
+1) Fix support for AEL1010-based cards.
+
+2) Add "relaxed-ordering" variant of multi-slice firmware.
+
+3) Make sure MSI-X works even with some buggy Linux version that don't mask
+    the interrupt while updating the MSI-X vector.
+
+4) When using "relaxed-ordering", make use of it during initial DMA benchs.
+
+
+
+Myri10GE Firmware 1.4.27 (December 12, 2007)
+-----------------------
+
+1) Add support for new revisions of -R cards (with AEL1002/AEL1010 xaui->xfi)
+
+2) Add MXGEFW_CMD_SET_THROTTLE_FACTOR to fix a maximum tx speed for the NIC
+
+
+Myri10GE Firmware 1.4.26 (October 30, 2007)
+-----------------------
+
+1) Fix a bug introduced in 1.4.20 where speculative read by the processor in the
+   write-only doorbell region would cause a target-abort (as opposed to simply
+   returning random data). This could manifest itself as NMI or machine freeze
+   depending on how the BIOS/OS/chipset configuration handles target-abort.
+
+2) Fix a bug in MSI-X processing (no released driver was using that feature yet)
+
+Myri10GE Firmware 1.4.25 (August 17, 2007)
+-----------------------
+
+1) Add ipv6 TSO support
+
+2) Add MDIO command to allow driver to access Quake (xaui-xfi converter) chip on -R cards.
+
+3) If the host stops consuming for too long, starts dropping packets rather than 
+   indefinitely blocking the rx path with flow-control. That protects the network
+   in the case of host crash.
+
+4) Add new commands to allow the driver to access the XFP "i2c" tables on -R cards.
+
+Myri10GE Firmware 1.4.24 (August 12, 2007)
+-----------------------
+
+Production-eeprom with PCI-ROM 5.4.3g
+ 
+Myri10GE Firmware 1.4.23 (August 3, 2007)
+-----------------------
+1) For eeprom usage, combine with etherboot PCI-ROM ether5.4.3f
+
+Myri10GE Firmware 1.4.22 (July 6, 2007)
+-----------------------
+
+1) For eeprom usage, combine with etherboot PCI-ROM ether5.4.3e.
+
+Myri10GE Firmware 1.4.21 (June 6, 2007)
+-----------------------
+
+1) On -R cards, fix bug that might cause laser to stay off when downgrading
+  to firmware version <= 1.4.15 (happens when older driver is loaded):
+  Versions between 1.4.16 and 1.4.20 would leave laser off when handoff'ing to
+  another firmware, firmware <= 1.4.15 would never turn it back on.
+  
+2) Fix problem with 1.4.20 which would refuse any runtime firmware downgrade.
+ We now allow any firmware downgrade compatible with pci-conf-space layout
+  (defined by eeprom contents at last fundamental reset).
+  
+3) For eeprom usage, combine with etherboot PCI-ROM ether5.4.3d
+
+Myri10GE Firmware 1.4.20 (June 3, 2007)
+-----------------------
+
+1) Fix possible NIC-failure on platforms using ethp and using
+   pcie in-band hot-reset (no known platform match that description)
+
+2) Runs on NICs with MSI-X support in eeprom
+
+3) Make the NIC compliant with PCI-e 1.1 (upgrade from 1.0a)
+
+
+Myri10GE Firmware 1.4.19 (May 23, 2007)
+-----------------------
+
+1) Make firmware usable as eeprom firmware (1.4.17 and 1.4.18 are only
+  suitable as runtime loaded firmware).
+
+
+Myri10GE Firmware 1.4.18 (May 17, 2007)
+-----------------------
+
+1) Optionally support new rx ring allocation strategy for big buffers
+
+2) Increase tx send ring to 16K
+
+3) Fix for harmless pcie compliance issue: when enabled, make sure a
+   correctable error message is sent to the pcie hierarchy for replay-timer 
+   and replay-rollover events.
+
+4) Support NICs with Completion-Timeout extentions enabled in eeprom.
+
+Myri10GE Firmware 1.4.17 (April 27, 2007)
+-----------------------
+
+1) Add individual counters for "pause" packets and "unicast_filtered"
+
+2) Detect and report when NIC is plugged into a Myrinet fabric
+
+3) Ensure optimized firmware is reported as compatible with 631xESB southbridge
+
+Myri10GE Firmware 1.4.16 (April 23, 2007)
+-----------------------
+
+1) While interface is down, xaui port now emits a stream of K28.5
+  symbols to prevent incorrect signal-tuning when plugged in a xg-fujitsu 700
+
+2) Add invidual firmware counters for bad_crc32 and bad_phy frames
+
+3) On R-cards, turn laser-off when interface is down
+
+Transparent for end-user (change affect driver writers only):
+4) Add ability to auto-detect aligned chipset in cooperation with
+   driver (avoid the need for driver whitelist)
+5) Remove the need for driver initiated "dummy_rdma"
+   (mcp automatically works around pcie-retransmit bug in some chipsets
+    by forcing spurious nak).
+
+Myri10GE Firmware 1.4.15 (March 24, 2007)
+-----------------------
+
+Production-eeprom with PCI-ROM 5.4.3c
+
+Myri10GE Firmware 1.4.14 (March 20, 2007)
+-----------------------
+
+1) Allows capture of Reserved Ethernet packets 01:80:c2:00:00:0X through multicast-filter
+   (previously available only in promiscuous mode)
+2) Fix rare spurious of pcie-TLP retransmit (was completely harmless and invisible to the host)
+
+Myri10GE Firmware 1.4.13 (March 13, 2007)
+-----------------------
+
+1) fix for special debug/diagnostic mode with BAR2 access (irrelevant for end-user)
+
+Myri10GE Firmware 1.4.12 (February 7, 2007)
+-----------------------
+
+1) By default, disable the 20us firmware pause every 50ms (JTAG access).
+2) Use  maximum TLP size of 256 when doing wdma.
+3) fix broadcast rx problem with adopted firmware
+
+Myri10GE Firmware 1.4.11 (January 9, 2007)
+-----------------------
+
+1) Ensure -0 is never used in the ipv4 header checksum field (TSO case)
+ Known receivers don't distinguish between +0 and -0, but
+ RFC1624 recommends to be safe.
+
+Myri10GE Firmware 1.4.10 (December 5, 2006)
+-----------------------
+
+BUG FIXES
+1) Fix capability inheritance bug upon firmware loading
+   bug was introduced between 1.4.7 and 1.4.8
+
+Myri10GE Firmware 1.4.9 (November 30, 2006)
+-----------------------
+
+BUG FIXES
+1) Fix handling of Reserved Ethernet packets 01:80:c2:00:00:0X
+ (which were silently dropped)
+- They now increment the dropped_link_error_or_filtered counter.
+- In promisc mode, they are forwarded to the driver.
+
+Myri10GE Firmware 1.4.8 (November 20, 2006)
+-----------------------
+ version number incremented for PCI-ROM change
+
+Myri10GE Firmware 1.4.7 (October 5, 2006)
+-----------------------
+
+BUG FIXES
+1) Workaround PCIE deadlock for some PM transitions sequence.
+
+Myri10GE Firmware 1.4.6 (September 7, 2006)
+-----------------------
+
+BUG FIXES
+1) Fixed a bug where the firmware could send runt frames
+   when TSO is enabled.
+
+
+Myri10GE Firmware 1.4.5 (August 18, 2006)
+-----------------------
+
+ENHANCEMENTS
+1) Additional diagnostic features added.
+
+Production-eeprom with PCI-ROM 5.4.1
+
+Myri10GE Firmware 1.4.4 (July 21, 2006)
+-----------------------
+
+ENHANCEMENTS
+1) Multicast support added.
+
+
+Myri10GE Firmware 1.4.3 (May 26, 2006)
+-----------------------
+
+BUG FIXES
+1) Additional PCI-Express resending bugs fixed.
+
+
+Myri10GE Firmware 1.4.2 (May 24, 2006)
+-----------------------
+
+BUG FIXES
+1) Additional PCI-Express resending bugs fixed.
+
+
+Myri10GE Firmware 1.4.1 (May 24, 2006)
+-----------------------
+
+BUG FIXES
+1) Firmware fixes a PCI-Express resending bug that shows up on some
+   E7520 machines.
+
+
+Myri10GE Firmware 1.4.0 (April 9, 2006)
+-----------------------
+Initial Release
