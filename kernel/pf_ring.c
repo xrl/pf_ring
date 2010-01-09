@@ -1,6 +1,6 @@
 /* ***************************************************************
  *
- * (C) 2004-09 - Luca Deri <deri@ntop.org>
+ * (C) 2004-10 - Luca Deri <deri@ntop.org>
  *
  * This code includes contributions courtesy of
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
@@ -444,8 +444,8 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
   if(data == NULL) {
     /* /proc/net/pf_ring/info */
-    rlen = sprintf(buf, "PF_RING Version     : %s ($Revision$)\n",
-		   RING_VERSION);
+    rlen = sprintf(buf, "PF_RING Version     : %s ($Revision: %s$)\n",
+		   RING_VERSION, SVN_REV);
     rlen +=
       sprintf(buf + rlen, "Ring slots          : %d\n",
 	      num_slots);
@@ -3223,7 +3223,11 @@ static void purge_idle_hash_rules(struct ring_opt *pfr,
 /* Code taken/inspired from core/sock.c */
 static int ring_setsockopt(struct socket *sock,
 			   int level, int optname,
-			   char __user * optval, int optlen)
+			   char __user * optval,
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32))
+			   unsigned 
+#endif
+			   int optlen)
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */ ;
@@ -4363,8 +4367,9 @@ static int __init ring_init(void)
 {
   int i, rc;
 
-  printk("[PF_RING] Welcome to PF_RING %s ($Revision$)\n"
-	 "(C) 2004-09 L.Deri <deri@ntop.org>\n", RING_VERSION);
+  printk("[PF_RING] Welcome to PF_RING %s ($Revision: %s$)\n"
+	 "(C) 2004-10 L.Deri <deri@ntop.org>\n",
+	 RING_VERSION, SVN_REV);
 
   if((rc = proto_register(&ring_proto, 0)) != 0)
     return(rc);
