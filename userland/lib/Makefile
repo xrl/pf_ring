@@ -8,7 +8,7 @@
 #
 # Installation directory
 #
-INSTDIR   = /usr/local
+INSTDIR   = ${DESTDIR}/usr/local
 
 #
 # Search directories

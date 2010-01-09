@@ -26,7 +26,7 @@ libpfring_clean:
 	cd lib; make clean
 
 pcap_clean:
-	cd libpcap-1.0.0-ring; make clean
+	if test -f libpcap-1.0.0-ring/config.status; then cd libpcap-1.0.0-ring; make clean; fi
 
 ring_examples_clean:
 	cd examples; make clean
@@ -35,4 +35,4 @@ lib_c++_clean:
 	cd c++; make clean
 
 mod_perl_clean:
-	cd perl; make clean
+	if test -f perl/Net-Pfring/Makefile; then cd perl; make clean; fi

@@ -16,7 +16,7 @@ HERE=$(PWD)
 
 
 # set the install path
-INSTDIR := /lib/modules/$(BUILD_KERNEL)/kernel/net/pf_ring
+INSTDIR := $(DESTDIR)/lib/modules/$(BUILD_KERNEL)/kernel/net/pf_ring
 
 all: Makefile pf_ring.c linux/pf_ring.h
 	make -C /lib/modules/$(BUILD_KERNEL)/build SUBDIRS=$(HERE) EXTRA_CFLAGS='$(EXTRA_CFLAGS)' modules
@@ -28,5 +28,7 @@ clean:
 install:
 	mkdir -p $(INSTDIR)
 	cp *.ko $(INSTDIR)
-	cp linux/pf_ring.h /usr/include/linux
+	cp linux/pf_ring.h $(DESTDIR)/usr/include/linux
+ifeq (,$(DESTDIR))
 	/sbin/depmod $(BUILD_KERNEL)
+endif
