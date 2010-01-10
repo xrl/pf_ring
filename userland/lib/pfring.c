@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-09 - Luca Deri <deri@ntop.org>
+ * (C) 2005-10 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -327,6 +327,46 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
 
 /* **************************************************** */
 
+u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
+				  u_int32_t caplen, u_int8_t _reentrant,
+				  pfring* ring[MAX_NUM_RX_CHANNELS]) {
+  u_int8_t num_channels, i, num = 0;
+  char *at;
+  char base_device_name[32];
+
+  snprintf(base_device_name, sizeof(base_device_name), "%s", device_name);
+  at = strchr(base_device_name, '@');
+  if(at != NULL)
+    at[0] = '\0';
+
+  /* Count how many RX channel the specified device supports */
+  ring[0] = pfring_open(base_device_name, promisc, caplen, _reentrant);
+  
+  if(ring[0] == NULL) 
+    return(0);
+  else
+    num_channels = pfring_get_num_rx_channels(ring[0]);
+
+  pfring_close(ring[0]);
+
+  /* Now do the real job */
+  for(i=0; i<num_channels; i++) {
+    char dev[32];
+
+    snprintf(dev, sizeof(dev), "%s@%d", base_device_name, i);
+    ring[i] = pfring_open(dev, promisc, caplen, _reentrant);
+
+    if(ring[i] == NULL)
+      return(num);
+    else
+      num++;
+  }
+
+  return(num);
+}
+
+/* **************************************************** */
+
 void pfring_close(pfring *ring) {
 #ifdef USE_PCAP
   pcap_t *pcapPtr = (pcap_t*)ring;
@@ -392,6 +432,24 @@ int pfring_version(pfring *ring, u_int32_t *version) {
   else {
     socklen_t len = sizeof(u_int32_t);
     return(getsockopt(ring->fd, 0, SO_GET_RING_VERSION, version, &len));
+  }
+#endif
+}
+
+/* **************************************************** */
+
+u_int8_t pfring_get_num_rx_channels(pfring *ring) {
+#ifdef USE_PCAP
+  return(1);
+#else
+  if(ring == NULL)
+    return(1);
+  else {
+    socklen_t len = sizeof(u_int32_t);
+    u_int8_t num_rx_channels;
+    int rc = getsockopt(ring->fd, 0, SO_GET_NUM_RX_CHANNELS, &num_rx_channels, &len);
+
+    return((rc == 0) ? num_rx_channels : 1);
   }
 #endif
 }

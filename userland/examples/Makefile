@@ -63,43 +63,33 @@ RPOBJS    = pcaps.o interval.o
 all: ${TARGETS}
 
 ringc: ${RCOBJS} ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} ${RCOBJS} ${LIBS} -o $@
 
 rings: ${RSOBJS} ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} ${RSOBJS} ${LIBS} -o $@
 
 ringm: ${RMOBJS} ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} ${RMOBJS} ${LIBS} -o $@
 
 pcaps: ${RPOBJS}
-	@echo "=*= making program $@ =*="
 	${CC} ${RPOBJS} ${LIBPCAP} ${LIBS} -o $@
 
 pfcount: pfcount.o ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} pfcount.o ${LIBS} -o $@
 
 pfmap: pfmap.o ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} pfmap.o ${LIBS} -o $@
 
 forwarder: forwarder.o ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} forwarder.o ${LIBS} -o $@
 
 pcount: pcount.o ${LIBPCAP} ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} pcount.o ${LIBPCAP} ${LIBS} -o $@
 
 alldevs: alldevs.o ${LIBPCAP} ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} alldevs.o ${LIBPCAP} ${LIBS} -o $@
 
 pwrite: pwrite.o ${LIBPCAP} ${LIBPFRING}
-	@echo "=*= making program $@ =*="
 	${CC} pwrite.o ${LIBPCAP} ${LIBS} -o $@
 
 clean:

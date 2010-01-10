@@ -4643,7 +4643,7 @@ static int tg3_rx(struct tg3_napi *tnapi, int budget)
 			      printk(KERN_INFO "[PF_RING] alive [%s][len=%d]\n", tp->dev->name, skb->len);
 		
 			    if(*hook->transparent_mode != standard_linux_path) {
-			      rc = hook->ring_handler(skb, 1, 1, -1);
+			      rc = hook->ring_handler(skb, 1, 1, -1, 1);
 			      
 			      if(rc == 1 /* Packet handled by PF_RING */) {
 				if(*hook->transparent_mode == driver2pf_ring_non_transparent) {

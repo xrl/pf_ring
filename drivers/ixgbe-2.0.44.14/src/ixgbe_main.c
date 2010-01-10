@@ -533,7 +533,7 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 		     skb->dev->name, skb->len);
 
 	    if(*hook->transparent_mode != standard_linux_path) {
-	      rc = hook->ring_handler(skb, 1, 1, skb->iif);
+	      rc = hook->ring_handler(skb, 1, 1, skb->iif, adapter->num_rx_queues);
 	      
 	      if(rc == 1 /* Packet handled by PF_RING */) {
 		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {

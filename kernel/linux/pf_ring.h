@@ -1,7 +1,7 @@
 /*
  * Definitions for packet ring
  *
- * 2004-09 Luca Deri <deri@ntop.org>
+ * 2004-10 Luca Deri <deri@ntop.org>
  */
 
 #ifndef __RING_H
@@ -49,6 +49,7 @@
 #define SO_GET_FILTERING_RULE_STATS      121
 #define SO_GET_HASH_FILTERING_RULE_STATS 122
 #define SO_GET_MAPPED_DNA_DEVICE         123
+#define SO_GET_NUM_RX_CHANNELS           124
 
 /* Map */
 #define SO_MAP_DNA_DEVICE                130
@@ -334,6 +335,13 @@ typedef struct {
 
 /* ************************************************* */
 
+#define RING_ANY_CHANNEL          ((u_int8_t)-1)
+#define UNKNOWN_RX_CHANNEL        RING_ANY_CHANNEL
+#define MAX_NUM_RX_CHANNELS       256
+#define UNKNOWN_NUM_RX_CHANNELS   1
+
+/* ************************************************* */
+
 #ifdef __KERNEL__
 
 enum cluster_type {
@@ -396,13 +404,11 @@ typedef int (*do_handle_filtering_hash_bucket)(struct ring_opt *pfr,
 
 /* ************************************************* */
 
-#define RING_ANY_CHANNEL  -1
-
 /*
  * Ring options
  */
 struct ring_opt {
-  u_int8_t ring_active;
+  u_int8_t ring_active, num_rx_channels;
   struct net_device *ring_netdev;
   u_short ring_pid;
   u_int32_t ring_id;
@@ -583,7 +589,8 @@ extern void do_ring_dna_device_handler(dna_device_operation operation,
 				       dna_wait_packet wait_packet_function_ptr);
 
 typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet,
-			       u_char real_skb, short channel_id);
+			       u_char real_skb, u_int8_t channel_id,
+			       u_int8_t num_rx_channels);
 typedef int (*handle_ring_buffer)(struct net_device *dev,
 				  char *data, int len);
 typedef int (*handle_add_hdr_to_ring)(struct ring_opt *pfr,

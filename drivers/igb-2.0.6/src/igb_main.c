@@ -5258,7 +5258,7 @@ static void igb_receive_skb(struct igb_ring *ring, u8 status,
 	    // printk(KERN_INFO "[PF_RING] queue_index=%d\n", ring->queue_index);
 
 	    if(*hook->transparent_mode != standard_linux_path) {
-	      rc = hook->ring_handler(skb, 1, 1, ring->queue_index);
+	      rc = hook->ring_handler(skb, 1, 1, ring->queue_index, adapter->num_rx_queues);
 	      
 	      if(rc == 1 /* Packet handled by PF_RING */) {
 		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {

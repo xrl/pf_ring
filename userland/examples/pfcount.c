@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-09 - Luca Deri <deri@ntop.org>
+ * (C) 2005-10 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -46,13 +46,16 @@
 #define ALARM_SLEEP       1
 #define DEFAULT_SNAPLEN 128
 pfring  *pd;
-int verbose = 0;
+int verbose = 0, num_threads = 1;
 pfring_stat pfringStats;
+pthread_rwlock_t statsLock;
 
 static struct timeval startTime;
 unsigned long long numPkts = 0, numBytes = 0;
+u_int8_t wait_for_packet = 1, dna_mode = 0, do_shutdown = 0;
 
-#define DEFAULT_DEVICE "eth0"
+#define DEFAULT_DEVICE     "eth0"
+#define MAX_NUM_THREADS        64
 
 /* *************************************** */
 /*
@@ -132,9 +135,12 @@ void sigproc(int sig) {
 
   fprintf(stderr, "Leaving...\n");
   if(called) return; else called = 1;
-
+  do_shutdown = 1;
   print_stats();
-  pfring_close(pd);
+
+  if(num_threads == 1)
+    pfring_close(pd);
+
   exit(0);
 }
 
@@ -282,8 +288,10 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
 	   h->parsed_pkt.pkt_detail.offset.l4_offset,
 	   h->parsed_pkt.pkt_detail.offset.payload_offset);
   }
- 
+
+  if(num_threads > 0) pthread_rwlock_wrlock(&statsLock);
   numPkts++, numBytes += h->len;
+  if(num_threads > 0) pthread_rwlock_unlock(&statsLock);
 }
 
 /* *************************************** */
@@ -317,19 +325,61 @@ int32_t gmt2local(time_t t) {
 /* *************************************** */
 
 void printHelp(void) {
-  printf("pfcount\n(C) 2005-09 Deri Luca <deri@ntop.org>\n");
-  printf("-h              [Print help]\n");
-  printf("-i <device>     [Device name. Use device@channel for channels]\n");
+  printf("pfcount\n(C) 2005-10 Deri Luca <deri@ntop.org>\n\n");
+  printf("-h              Print this help\n");
+  printf("-i <device>     Device name. Use device@channel for channels\n");
+  printf("-n <threads>    Number of polling threads (default %d)\n", num_threads);
+
   /* printf("-f <filter>     [pfring filter]\n"); */
+
 #ifdef ENABLE_DNA_SUPPORT
-  printf("-d              [Open the device in DNA mode]\n");
+  printf("-d              Open the device in DNA mode\n");
 #endif
-  printf("-c <cluster id> [cluster id]\n");
-  printf("-e <direction>  [0=RX+TX, 1=RX only, 2=TX only]\n");
-  printf("-s <string>     [String to search on packets]\n");
-  printf("-l <len>        [Capture length]\n");
-  printf("-a              [Active packet wait]\n");
-  printf("-v              [Verbose]\n");
+  printf("-c <cluster id> cluster id\n");
+  printf("-e <direction>  0=RX+TX, 1=RX only, 2=TX only\n");
+  printf("-s <string>     String to search on packets\n");
+  printf("-l <len>        Capture length\n");
+  printf("-a              Active packet wait\n");
+  printf("-v              Verbose\n");
+}
+
+/* *************************************** */
+
+void* packet_consumer_thread(void* _id) {
+  //u_int thread_id = (u_int)_id;
+  
+  while(1) {
+    struct simple_stats {
+      u_int64_t num_pkts, num_bytes;
+    };
+
+    u_char buffer[2048];
+    struct simple_stats stats;
+    struct pfring_pkthdr hdr;
+    int rc;
+    u_int len;
+
+    if(do_shutdown) break;
+
+    if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0) {
+      if(do_shutdown) break;
+      dummyProcesssPacket(&hdr, buffer);
+    }
+
+    if(0) {
+      len = sizeof(stats);
+      rc = pfring_get_filtering_rule_stats(pd, 5, (char*)&stats, &len);
+      if(rc < 0)
+	printf("pfring_get_filtering_rule_stats() failed [rc=%d]\n", rc);
+      else {
+	printf("[Pkts=%u][Bytes=%u]\n",
+	       (unsigned int)stats.num_pkts,
+	       (unsigned int)stats.num_bytes);
+      }
+    }
+  }
+
+  return(NULL);
 }
 
 /* *************************************** */
@@ -338,7 +388,6 @@ int main(int argc, char* argv[]) {
   char *device = NULL, c, *string = NULL;
   int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   u_int clusterId = 0;
-  u_char wait_for_packet = 1, dna_mode = 0;
   packet_direction direction = rx_and_tx_direction;
 
 #if 0
@@ -379,7 +428,7 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -411,6 +460,9 @@ int main(int argc, char* argv[]) {
     case 'i':
       device = strdup(optarg);
       break;
+    case 'n':
+      num_threads = atoi(optarg);
+      break;
     case 'v':
       verbose = 1;
       break;
@@ -426,14 +478,18 @@ int main(int argc, char* argv[]) {
   }
 
   if(device == NULL) device = DEFAULT_DEVICE;
+  if(num_threads > MAX_NUM_THREADS) num_threads = MAX_NUM_THREADS;
 
   printf("Capturing from %s\n", device);
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
 
+  if(num_threads > 0)
+    pthread_rwlock_init(&statsLock, NULL);
+
   if(!dna_mode)
-    pd = pfring_open(device, promisc,  snaplen, 0 /* we don't use threads */);
+    pd = pfring_open(device, promisc,  snaplen, (num_threads > 0) ? 1 : 0);
 #ifdef ENABLE_DNA_SUPPORT
   else
     pd = pfring_open_dna(device, 0 /* we don't use threads */);
@@ -454,6 +510,9 @@ int main(int argc, char* argv[]) {
 	   version & 0x000000FF);
   }
 
+  printf("# Device RX channels: %d\n", pfring_get_num_rx_channels(pd));
+  printf("# Polling threads:    %d\n", num_threads);
+
   if(clusterId > 0) {
     rc = pfring_set_cluster(pd, clusterId);
     printf("pfring_set_cluster returned %d\n", rc);
@@ -462,7 +521,7 @@ int main(int argc, char* argv[]) {
   if((rc = pfring_set_direction(pd, direction)) != 0)
     printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
 
-  if(1) {
+  if(0) {
     if(0) {
       hash_filtering_rule rule;
 
@@ -527,36 +586,22 @@ int main(int argc, char* argv[]) {
     alarm(ALARM_SLEEP);
   }
 
+  if(num_threads > 0) wait_for_packet = 1;
   if(!wait_for_packet) pfring_enable_ring(pd);
 
-  while(1) {
-    struct simple_stats {
-      u_int64_t num_pkts, num_bytes;
-    };
+  if(num_threads > 1) {
+    pthread_t my_thread;
+    int i;
 
-    u_char buffer[2048];
-    struct simple_stats stats;
-    struct pfring_pkthdr hdr;
-    int rc;
-    u_int len;
-
-    if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0)
-      dummyProcesssPacket(&hdr, buffer);
-
-    if(0) {
-      len = sizeof(stats);
-      rc = pfring_get_filtering_rule_stats(pd, 5, (char*)&stats, &len);
-      if(rc < 0)
-	printf("pfring_get_filtering_rule_stats() failed [rc=%d]\n", rc);
-      else {
-	printf("[Pkts=%u][Bytes=%u]\n",
-	       (unsigned int)stats.num_pkts,
-	       (unsigned int)stats.num_bytes);
-      }
-    }
+    for(i=1; i<num_threads; i++)
+      pthread_create(&my_thread, NULL, packet_consumer_thread, (void*)i);
   }
 
+  packet_consumer_thread(0);
+
   pfring_close(pd);
+
+  sleep(3);
 
   return(0);
 }

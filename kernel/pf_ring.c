@@ -170,7 +170,9 @@ static struct proto ring_proto;
 #endif
 
 static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
-			    u_char real_skb, short channel_id);
+			    u_char real_skb,
+			    u_int8_t channel_id,
+			    u_int8_t num_rx_channels);
 static int buffer_ring_handler(struct net_device *dev, char *data, int len);
 static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
 
@@ -1389,7 +1391,9 @@ static int reflect_packet(struct sk_buff *skb,
 static int add_skb_to_ring(struct sk_buff *skb,
 			   struct ring_opt *pfr,
 			   struct pfring_pkthdr *hdr,
-			   int is_ip_pkt, int displ, short channel_id)
+			   int is_ip_pkt, int displ, 
+			   u_int8_t channel_id,
+			   u_int8_t num_rx_channels)
 {
   int fwd_pkt = 0;
   struct list_head *ptr, *tmp_ptr;
@@ -1406,6 +1410,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
   if((!pfring_enabled) || (!pfr->ring_active))
     return(-1);
 
+  pfr->num_rx_channels = num_rx_channels; /* Constantly updated */
   hdr->parsed_pkt.last_matched_rule_id = (u_int16_t)-1;
 
   atomic_set(&pfr->num_ring_users, 1);
@@ -1512,8 +1517,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				      plugin_id],
 				     &behaviour);
 
-	if(parse_memory_buffer
-	    [hash_bucket->rule.plugin_action.plugin_id])
+	if(parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id])
 	  free_parse_mem = 1;
 	last_matched_plugin =
 	  hash_bucket->rule.plugin_action.plugin_id;
@@ -1870,7 +1874,8 @@ inline int is_valid_skb_direction(packet_direction direction, u_char recv_packet
 static int skb_ring_handler(struct sk_buff *skb,
 			    u_char recv_packet,
 			    u_char real_skb /* 1=real skb, 0=faked skb */ ,
-			    short channel_id)
+			    u_int8_t channel_id,
+			    u_int8_t num_rx_channels)
 {
   struct sock *skElement;
   int rc = 0, is_ip_pkt;
@@ -2034,7 +2039,7 @@ static int skb_ring_handler(struct sk_buff *skb,
       /* We've found the ring where the packet can be stored */
       int old_caplen = hdr.caplen;	/* Keep old lenght */
       hdr.caplen = min(hdr.caplen, pfr->bucket_len);
-      add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id);
+      add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id, num_rx_channels);
       hdr.caplen = old_caplen;
       rc = 1;	/* Ring found: we've done our job */
     }
@@ -2066,7 +2071,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	  /* We've found the ring where the packet can be stored */
 	  add_skb_to_ring(skb, pfr, &hdr,
 			  is_ip_pkt, displ,
-			  channel_id);
+			  channel_id, num_rx_channels);
 	  rc = 1;	/* Ring found: we've done our job */
 	}
       }
@@ -2140,7 +2145,9 @@ static int buffer_ring_handler(struct net_device *dev, char *data, int len)
 #endif
 
   return(skb_ring_handler
-	  (&skb, 1, 0 /* fake skb */ , -1 /* Unknown channel */ ));
+	 (&skb, 1, 0 /* fake skb */ , 
+	  UNKNOWN_RX_CHANNEL,  
+	  UNKNOWN_NUM_RX_CHANNELS));
 }
 
 /* ************************************* */
@@ -2298,7 +2305,7 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
   if(skb->pkt_type != PACKET_LOOPBACK) {
     rc = skb_ring_handler(skb,
 			  (skb->pkt_type == PACKET_OUTGOING) ? 0 : 1,
-			  1, -1 /* unknown channel */);
+			  1, UNKNOWN_RX_CHANNEL, UNKNOWN_NUM_RX_CHANNELS);
 
   } else
     rc = 0;
@@ -2384,6 +2391,7 @@ static int ring_create(
   }
   memset(pfr, 0, sizeof(*pfr));
   pfr->ring_active = 0;	/* We activate as soon as somebody waits for packets */
+  pfr->num_rx_channels = UNKNOWN_NUM_RX_CHANNELS;
   pfr->channel_id = RING_ANY_CHANNEL;
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
   pfr->handle_hash_rule = handle_filtering_hash_bucket;
@@ -2665,6 +2673,14 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     the ring_netdev != NULL the socket is ready to be used.
   */
   pfr->ring_netdev = dev;
+
+  /*
+    As the 'struct net_device' does not contain the number
+    of RX queues, we can guess that its number is the same as the number
+    of TX queues. After the first packet has been received by the adapter
+    the num of RX queues is updated with the real value
+   */
+  pfr->num_rx_channels = pfr->ring_netdev->real_num_tx_queues;
 
   return(0);
 }
@@ -3936,24 +3952,18 @@ static int ring_getsockopt(struct socket *sock,
       list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
 	filtering_rule_element *rule;
 
-	rule =
-	  list_entry(ptr, filtering_rule_element,
-		     list);
+	rule = list_entry(ptr, filtering_rule_element, list);
+
 	if(rule->rule.rule_id == rule_id) {
 	  buffer = kmalloc(len, GFP_ATOMIC);
 
 	  if(buffer == NULL)
 	    rc = -EFAULT;
 	  else {
-	    if((plugin_registration
-		 [rule->rule.plugin_action.
-		  plugin_id] == NULL)
+	    if((plugin_registration[rule->rule.plugin_action.plugin_id] == NULL)
 		||
-		(plugin_registration
-		 [rule->rule.plugin_action.
-		  plugin_id]->
-		 pfring_plugin_get_stats ==
-		 NULL)) {
+		(plugin_registration[rule->rule.plugin_action.plugin_id]->
+		 pfring_plugin_get_stats == NULL)) {
 	      printk("[PF_RING] Found rule %d but pluginId %d is not registered\n",
 		     rule_id,
 		     rule->rule.
@@ -3962,13 +3972,8 @@ static int ring_getsockopt(struct socket *sock,
 	      rc = -EFAULT;
 	    } else
 	      rc = plugin_registration
-		[rule->rule.
-		 plugin_action.
-		 plugin_id]
-		->
-		pfring_plugin_get_stats
-		(pfr, rule, NULL,
-		 buffer, len);
+		[rule->rule.plugin_action.plugin_id]->
+		pfring_plugin_get_stats(pfr, rule, NULL, buffer, len);
 
 	    if(rc > 0) {
 	      if(copy_to_user
@@ -4004,6 +4009,22 @@ static int ring_getsockopt(struct socket *sock,
 
       break;
     }
+
+  case SO_GET_NUM_RX_CHANNELS:
+    {
+      u_int8_t num_rx_channels;
+
+      if(pfr->ring_netdev->name == NULL) {
+	/* Device not yet bound */
+	num_rx_channels = UNKNOWN_NUM_RX_CHANNELS;
+      } else {
+	num_rx_channels = pfr->num_rx_channels;
+      }
+
+      if(copy_to_user(optval, &num_rx_channels, sizeof(num_rx_channels)))
+	return -EFAULT;
+    }
+    break;
 
   default:
     return -ENOPROTOOPT;

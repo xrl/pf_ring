@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-09 - Luca Deri <deri@ntop.org>
+ * (C) 2005-10 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -130,6 +130,9 @@ extern "C" {
   int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec);
   pfring* pfring_open(char *device_name, u_int8_t promisc, 
 		      u_int32_t caplen, u_int8_t reentrant);
+  u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
+				    u_int32_t caplen, u_int8_t _reentrant,
+				    pfring* ring[MAX_NUM_RX_CHANNELS]);
   pfring* pfring_open_dna(char *device_name, u_int8_t reentrant);
   void pfring_close(pfring *ring);
   int pfring_stats(pfring *ring, pfring_stat *stats);
@@ -137,6 +140,7 @@ extern "C" {
 		  struct pfring_pkthdr *hdr, u_int8_t wait_for_incoming_packet);
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 				      char* stats, u_int *stats_len);
+  u_int8_t pfring_get_num_rx_channels(pfring *ring);
   int pfring_get_hash_filtering_rule_stats(pfring *ring,
 					   hash_filtering_rule* rule,
 					   char* stats, u_int *stats_len);
