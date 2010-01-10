@@ -1224,7 +1224,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 static void add_pkt_to_ring(struct sk_buff *skb,
 			    struct ring_opt *pfr,
 			    struct pfring_pkthdr *hdr,
-			    int displ, short channel_id,
+			    int displ, u_int8_t channel_id,
 			    int offset, void *plugin_mem)
 {
   char *ring_bucket;
@@ -1409,6 +1409,11 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
   if((!pfring_enabled) || (!pfr->ring_active))
     return(-1);
+
+#if defined(RING_DEBUG)
+  printk("[PF_RING] --> add_skb_to_ring(len=%d) [channel_id=%d/%d]\n",
+	 hdr->len, channel_id, num_rx_channels);
+#endif
 
   pfr->num_rx_channels = num_rx_channels; /* Constantly updated */
   hdr->parsed_pkt.last_matched_rule_id = (u_int16_t)-1;
@@ -1889,6 +1894,11 @@ static int skb_ring_handler(struct sk_buff *skb,
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
 #endif
 
+#if defined(RING_DEBUG)
+  printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n",
+	 channel_id, num_rx_channels);
+#endif
+
   if((!skb)		/* Invalid skb */
       ||((!enable_tx_capture) && (!recv_packet))) {
     /*
@@ -1910,11 +1920,6 @@ static int skb_ring_handler(struct sk_buff *skb,
        skb->dev->name == NULL ? "<NULL>" : skb->dev->name,
        skb->csum);
   }
-#endif
-
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,21))
-  if(channel_id == RING_ANY_CHANNEL /* Unknown channel */ )
-    channel_id = skb->iif;	/* Might have been set by the driver */
 #endif
 
 #if defined (RING_DEBUG)
