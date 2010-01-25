@@ -89,7 +89,8 @@ extern "C" {
 #endif
 
   /* ********************************* */
-  #define MAX_NUM_CHANNELS        256
+
+#define MAX_NUM_RX_CHANNELS        256
 
   typedef struct {
 #ifdef ENABLE_DNA_SUPPORT
@@ -97,7 +98,7 @@ extern "C" {
     u_char dna_mapped_device;    
     u_int32_t tot_dna_read_pkts, rx_reg;
     dna_device dna_dev;    
-    u_int32_t *rx_reg_ptr[MAX_NUM_CHANNELS];
+    u_int32_t *rx_reg_ptr[MAX_NUM_RX_CHANNELS];
 #endif
 
     char *buffer, *slots, *device_name;
