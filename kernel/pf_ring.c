@@ -2420,6 +2420,42 @@ static int ring_create(
   return err;
 }
 
+/* 
+   NOTE
+
+   I jeopardize the get_coalesce/set_coalesce fields for my purpose
+   until hw filtering support is part of the kernel
+   
+*/
+
+/* ************************************* */
+
+int hw_remove_filtering_rule(struct ring_opt *pfr, filtering_rule_element *entry) {
+  int debug = 1;
+
+  if(debug) printk("[PF_RING] hw_remove_filtering_rule[%s][id=%d][%p]\n",
+		   pfr->ring_netdev->name, entry->rule.rule_id,
+		   pfr->ring_netdev->ethtool_ops->set_coalesce);
+
+  if(pfr->ring_netdev->ethtool_ops->set_coalesce == NULL) return(-1);
+
+  return(0);
+}
+
+/* ************************************* */
+
+int hw_add_filtering_rule(struct ring_opt *pfr, filtering_rule_element *entry) {
+  int debug = 1;
+
+  if(debug) printk("[PF_RING] hw_add_filtering_rule[%s][id=%d][%p]\n",
+		   pfr->ring_netdev->name, entry->rule.rule_id,
+		   pfr->ring_netdev->ethtool_ops->set_coalesce);
+
+  if(pfr->ring_netdev->ethtool_ops->set_coalesce == NULL) return(-1);
+
+  return(0);
+}
+
 /* *********************************************** */
 
 static int ring_release(struct socket *sock)
@@ -2489,8 +2525,7 @@ static int ring_release(struct socket *sock)
 	pfring_plugin_free_ring_mem) {
       /* Custom free function */
       plugin_registration[rule->rule.plugin_action.
-			  plugin_id]->
-	pfring_plugin_free_ring_mem(rule);
+			  plugin_id]->pfring_plugin_free_ring_mem(rule);
     } else {
 #ifdef DEBUG
       printk("[PF_RING] --> default_free [rule->rule.plugin_action.plugin_id=%d]\n",
@@ -2502,8 +2537,9 @@ static int ring_release(struct socket *sock)
       }
     }
 
-    for (i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL);
-	 i++)
+    hw_remove_filtering_rule(pfr, rule);
+
+    for (i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++)
       textsearch_destroy(rule->pattern[i]);
 
     list_del(ptr);
@@ -2848,9 +2884,7 @@ static int ring_mmap(struct file *file,
 	   pfr->ring_netdev->name);
 #endif
 
-    if((rc =
-	 do_memory_mmap(vma, size, pfr->ring_memory, VM_LOCKED,
-			0)) < 0)
+    if((rc = do_memory_mmap(vma, size, pfr->ring_memory, VM_LOCKED, 0)) < 0)
       return(rc);
   } else {
     /* DNA Device */
@@ -3493,12 +3527,9 @@ static int ring_setsockopt(struct socket *sock,
       if(rule->rule.plugin_action.plugin_id > 0) {
 	int ret = 0;
 
-	if(rule->rule.plugin_action.plugin_id >=
-	    MAX_PLUGIN_ID)
+	if(rule->rule.plugin_action.plugin_id >= MAX_PLUGIN_ID)
 	  ret = -EFAULT;
-	else if(plugin_registration
-		 [rule->rule.plugin_action.plugin_id] ==
-		 NULL)
+	else if(plugin_registration[rule->rule.plugin_action.plugin_id] == NULL)
 	  ret = -EFAULT;
 
 	if(ret != 0) {
@@ -3579,9 +3610,7 @@ static int ring_setsockopt(struct socket *sock,
 
       /* Implement an ordered add */
       list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-	entry =
-	  list_entry(ptr, filtering_rule_element,
-		     list);
+	entry = list_entry(ptr, filtering_rule_element, list);
 
 	if(debug)
 	  printk("[PF_RING] SO_ADD_FILTERING_RULE: [current rule %d][rule to add %d]\n",
@@ -3591,8 +3620,9 @@ static int ring_setsockopt(struct socket *sock,
 	if(entry->rule.rule_id == rule->rule.rule_id) {
 	  int i;
 
-	  memcpy(&entry->rule, &rule->rule,
-		 sizeof(filtering_rule));
+	  hw_remove_filtering_rule(pfr, entry);
+
+	  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
 
 	  for (i = 0; (i < MAX_NUM_PATTERN)
 		 && (entry->pattern[i] != NULL); i++)
@@ -3602,6 +3632,8 @@ static int ring_setsockopt(struct socket *sock,
 
 	  kfree(rule);
 	  rule = NULL;
+
+	  hw_add_filtering_rule(pfr, entry);
 	  if(debug)
 	    printk("[PF_RING] SO_ADD_FILTERING_RULE: overwritten rule_id %d\n",
 		   entry->rule.rule_id);
@@ -3609,6 +3641,7 @@ static int ring_setsockopt(struct socket *sock,
 	} else if(entry->rule.rule_id >rule->rule.rule_id) {
 	  if(prev == NULL) {
 	    list_add(&rule->list, &pfr->rules);	/* Add as first entry */
+	    hw_add_filtering_rule(pfr, rule);
 	    pfr->num_filtering_rules++;
 	    if(debug)
 	      printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as head rule\n",
@@ -3616,6 +3649,7 @@ static int ring_setsockopt(struct socket *sock,
 		     rule_id);
 	  } else {
 	    list_add(&rule->list, prev);
+	    hw_add_filtering_rule(pfr, rule);
 	    pfr->num_filtering_rules++;
 	    if(debug)
 	      printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d\n",
@@ -3632,12 +3666,14 @@ static int ring_setsockopt(struct socket *sock,
       if(rule != NULL) {
 	if(prev == NULL) {
 	  list_add(&rule->list, &pfr->rules);	/* Add as first entry */
+	  hw_add_filtering_rule(pfr, rule);
 	  pfr->num_filtering_rules++;
 	  if(debug)
 	    printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as first rule\n",
 		   rule->rule.rule_id);
 	} else {
 	  list_add_tail(&rule->list, &pfr->rules);	/* Add as first entry */
+	  hw_add_filtering_rule(pfr, rule);
 	  pfr->num_filtering_rules++;
 	  if(debug)
 	    printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as last rule\n",
@@ -3710,8 +3746,9 @@ static int ring_setsockopt(struct socket *sock,
 	if(entry->rule.rule_id == rule_id) {
 	  int i;
 
-	  for (i = 0; (i < MAX_NUM_PATTERN)
-		 && (entry->pattern[i] != NULL); i++)
+	  hw_remove_filtering_rule(pfr, entry);
+
+	  for (i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
 	    textsearch_destroy(entry->pattern[i]);
 	  list_del(ptr);
 	  pfr->num_filtering_rules--;
@@ -3891,9 +3928,7 @@ static int ring_getsockopt(struct socket *sock,
 	  while (bucket != NULL) {
 	    if(hash_bucket_match_rule
 		(bucket, &rule)) {
-	      char *buffer =
-		kmalloc(len,
-			GFP_ATOMIC);
+	      char *buffer = kmalloc(len, GFP_ATOMIC);
 
 	      if(buffer == NULL) {
 		printk("[PF_RING] so_get_hash_filtering_rule_stats() no memory failure\n");
@@ -3970,10 +4005,7 @@ static int ring_getsockopt(struct socket *sock,
 		(plugin_registration[rule->rule.plugin_action.plugin_id]->
 		 pfring_plugin_get_stats == NULL)) {
 	      printk("[PF_RING] Found rule %d but pluginId %d is not registered\n",
-		     rule_id,
-		     rule->rule.
-		     plugin_action.
-		     plugin_id);
+		     rule_id, rule->rule.plugin_action.plugin_id);
 	      rc = -EFAULT;
 	    } else
 	      rc = plugin_registration
