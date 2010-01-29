@@ -2174,6 +2174,37 @@ static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
     dev_put(bucket->rule.internals.reflector_dev);	/* Release device */
 }
 
+/* 
+   NOTE
+
+   I jeopardize the get_coalesce/set_coalesce fields for my purpose
+   until hw filtering support is part of the kernel
+   
+*/
+
+/* ************************************* */
+
+int hw_filtering_rule(struct ring_opt *pfr, hash_filtering_rule *entry, u_char add_rule) {
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,26))
+  int debug = 1;
+  hw_filtering_rule_element element;
+
+  if(debug) printk("[PF_RING] hw_remove_filtering_rule[%s][id=%d][%p]\n",
+		   pfr->ring_netdev->name, entry->rule_id,
+		   pfr->ring_netdev->ethtool_ops->set_coalesce);
+
+  if(pfr->ring_netdev->ethtool_ops->set_coalesce == NULL) return(-1);
+
+  element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+  element.add_rule = add_rule;
+  memcpy(&element.rule, entry, sizeof(hash_filtering_rule));
+
+  return(pfr->ring_netdev->ethtool_ops->set_coalesce(pfr->ring_netdev, (struct ethtool_coalesce*)&element));
+#else
+  return(-1);
+#endif
+}
+
 /* ************************************* */
 
 static int handle_filtering_hash_bucket(struct ring_opt *pfr,
@@ -2187,6 +2218,8 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 				  rule->rule.port_peer_b) %
     DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 0;
+  
+  hw_filtering_rule(pfr, &rule->rule, add_rule);
 
   if(debug)
     printk
@@ -2420,42 +2453,6 @@ static int ring_create(
   return err;
 }
 
-/* 
-   NOTE
-
-   I jeopardize the get_coalesce/set_coalesce fields for my purpose
-   until hw filtering support is part of the kernel
-   
-*/
-
-/* ************************************* */
-
-int hw_remove_filtering_rule(struct ring_opt *pfr, filtering_rule_element *entry) {
-  int debug = 1;
-
-  if(debug) printk("[PF_RING] hw_remove_filtering_rule[%s][id=%d][%p]\n",
-		   pfr->ring_netdev->name, entry->rule.rule_id,
-		   pfr->ring_netdev->ethtool_ops->set_coalesce);
-
-  if(pfr->ring_netdev->ethtool_ops->set_coalesce == NULL) return(-1);
-
-  return(0);
-}
-
-/* ************************************* */
-
-int hw_add_filtering_rule(struct ring_opt *pfr, filtering_rule_element *entry) {
-  int debug = 1;
-
-  if(debug) printk("[PF_RING] hw_add_filtering_rule[%s][id=%d][%p]\n",
-		   pfr->ring_netdev->name, entry->rule.rule_id,
-		   pfr->ring_netdev->ethtool_ops->set_coalesce);
-
-  if(pfr->ring_netdev->ethtool_ops->set_coalesce == NULL) return(-1);
-
-  return(0);
-}
-
 /* *********************************************** */
 
 static int ring_release(struct socket *sock)
@@ -2536,8 +2533,6 @@ static int ring_release(struct socket *sock)
 	rule->plugin_data_ptr = NULL;
       }
     }
-
-    hw_remove_filtering_rule(pfr, rule);
 
     for (i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++)
       textsearch_destroy(rule->pattern[i]);
@@ -3624,8 +3619,6 @@ static int ring_setsockopt(struct socket *sock,
 	if(entry->rule.rule_id == rule->rule.rule_id) {
 	  int i;
 
-	  hw_remove_filtering_rule(pfr, entry);
-
 	  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
 
 	  for (i = 0; (i < MAX_NUM_PATTERN)
@@ -3637,7 +3630,6 @@ static int ring_setsockopt(struct socket *sock,
 	  kfree(rule);
 	  rule = NULL;
 
-	  hw_add_filtering_rule(pfr, entry);
 	  if(debug)
 	    printk("[PF_RING] SO_ADD_FILTERING_RULE: overwritten rule_id %d\n",
 		   entry->rule.rule_id);
@@ -3645,7 +3637,6 @@ static int ring_setsockopt(struct socket *sock,
 	} else if(entry->rule.rule_id >rule->rule.rule_id) {
 	  if(prev == NULL) {
 	    list_add(&rule->list, &pfr->rules);	/* Add as first entry */
-	    hw_add_filtering_rule(pfr, rule);
 	    pfr->num_filtering_rules++;
 	    if(debug)
 	      printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as head rule\n",
@@ -3653,7 +3644,6 @@ static int ring_setsockopt(struct socket *sock,
 		     rule_id);
 	  } else {
 	    list_add(&rule->list, prev);
-	    hw_add_filtering_rule(pfr, rule);
 	    pfr->num_filtering_rules++;
 	    if(debug)
 	      printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d\n",
@@ -3670,14 +3660,12 @@ static int ring_setsockopt(struct socket *sock,
       if(rule != NULL) {
 	if(prev == NULL) {
 	  list_add(&rule->list, &pfr->rules);	/* Add as first entry */
-	  hw_add_filtering_rule(pfr, rule);
 	  pfr->num_filtering_rules++;
 	  if(debug)
 	    printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as first rule\n",
 		   rule->rule.rule_id);
 	} else {
 	  list_add_tail(&rule->list, &pfr->rules);	/* Add as first entry */
-	  hw_add_filtering_rule(pfr, rule);
 	  pfr->num_filtering_rules++;
 	  if(debug)
 	    printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as last rule\n",
@@ -3749,8 +3737,6 @@ static int ring_setsockopt(struct socket *sock,
 
 	if(entry->rule.rule_id == rule_id) {
 	  int i;
-
-	  hw_remove_filtering_rule(pfr, entry);
 
 	  for (i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
 	    textsearch_destroy(entry->pattern[i]);

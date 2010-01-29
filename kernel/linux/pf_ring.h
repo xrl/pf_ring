@@ -204,6 +204,7 @@ typedef struct {
  * wildacards or so are accepted.
  */
 typedef struct {
+  u_int16_t rule_id; /* Future use */
   u_int16_t vlan_id;
   u_int8_t  proto;
   u_int32_t host_peer_a, host_peer_b;
@@ -479,7 +480,7 @@ typedef struct {
 
 typedef struct {
   filtering_rule rule;
-
+  
 #ifdef CONFIG_TEXTSEARCH
   struct ts_config *pattern[MAX_NUM_PATTERN];
 #endif
@@ -488,6 +489,14 @@ typedef struct {
   /* Plugin action */
   void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */
 } filtering_rule_element;
+
+#define MAGIC_HW_FILTERING_RULE_ELEMENT  0x29010020
+
+typedef struct {
+  u_int32_t magic; /* MAGIC_HW_FILTERING_RULE_ELEMENT */
+  u_int8_t add_rule, target_queue;
+  hash_filtering_rule rule;
+} hw_filtering_rule_element;
 
 struct parse_buffer {
   void      *mem;
