@@ -2185,7 +2185,7 @@ static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
 /* ************************************* */
 
 int hw_filtering_rule(struct ring_opt *pfr, hash_filtering_rule *entry, u_char add_rule) {
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,26))
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   int debug = 1;
   hw_filtering_rule_element element;
 
