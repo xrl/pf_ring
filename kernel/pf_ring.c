@@ -2716,7 +2716,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     of TX queues. After the first packet has been received by the adapter
     the num of RX queues is updated with the real value
    */
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   pfr->num_rx_channels = pfr->ring_netdev->real_num_tx_queues;
 #else
   pfr->num_rx_channels = 1;
