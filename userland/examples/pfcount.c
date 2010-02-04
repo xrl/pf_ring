@@ -130,8 +130,37 @@ void print_stats() {
 
 /* ******************************** */
 
+void add_rule(u_int add_rule) {
+#if 0
+  hash_filtering_rule rule;
+  memset(&rule, 0, sizeof(hash_filtering_rule));
+  /* 09:40:01.158112 IP 192.168.1.233.2736 > 192.168.99.1.25: Flags [P.], seq 1070303040:1070303070, ack 3485710921, win 65461, length 30 */
+  rule.proto = 6, rule.rule_id = 10; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
+  rule.host_peer_a = ntohl(inet_addr("192.168.1.233"));
+  rule.host_peer_b = ntohl(inet_addr("192.168.99.1"));
+
+  if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
+    printf("pfring_add_hash_filtering_rule(1) failed\n");
+
+  rule.proto = 6, rule.rule_id = 11; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
+  rule.host_peer_a = ntohl(inet_addr("192.168.1.233"));
+  rule.host_peer_b = ntohl(inet_addr("192.168.99.1"));
+
+  if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
+    printf("pfring_add_hash_filtering_rule(2) failed\n");
+#endif
+}
+
+/* ******************************** */
+
 void sigproc(int sig) {
   static int called = 0;
+
+ {
+   add_rule(0);
+   printf("Removing filter\n");
+   
+ }
 
   fprintf(stderr, "Leaving...\n");
   if(called) return; else called = 1;
@@ -521,19 +550,11 @@ int main(int argc, char* argv[]) {
   if((rc = pfring_set_direction(pd, direction)) != 0)
     printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
 
-  if(1) {
+  if(0) {
     if(1) {
-      hash_filtering_rule rule;
-
       pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
 
-      memset(&rule, 0, sizeof(rule));
-      /* 09:40:01.158112 IP 192.168.1.233.2736 > 192.168.99.1.25: Flags [P.], seq 1070303040:1070303070, ack 3485710921, win 65461, length 30 */
-      rule.proto = 6, rule.rule_id = 0; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-      rule.host_peer_a = ntohl(inet_addr("192.168.1.233"));
-      rule.host_peer_b = ntohl(inet_addr("192.168.99.1"));
-      if(pfring_handle_hash_filtering_rule(pd, &rule, 1) < 0)
-	printf("pfring_add_hash_filtering_rule() failed\n");
+      add_rule(1);
     } else {
       struct dummy_filter {
 	u_int32_t src_host;

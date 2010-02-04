@@ -73,7 +73,7 @@
 
 #include <linux/pf_ring.h>
 
-//#define RING_DEBUG
+// #define RING_DEBUG
 
 /* ************************************************* */
 #define TH_FIN_MULTIPLIER	0x01
@@ -88,6 +88,10 @@
 /* ************************************************* */
 
 static u_int8_t pfring_enabled = 0;
+
+/* Dummy 'any' device */
+static struct net_device any_dev;
+
 
 /* List of all ring sockets. */
 static struct list_head ring_table;
@@ -2039,6 +2043,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	&& (pfr->ring_slots != NULL)
 	&& is_valid_skb_direction(pfr->direction, recv_packet)
 	&& ((pfr->ring_netdev == skb->dev)
+	    || (pfr->ring_netdev == &any_dev) /* Socket bound to 'any' */
 	    || ((skb->dev->flags & IFF_SLAVE)
 		&& (pfr->ring_netdev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
@@ -2754,17 +2759,22 @@ static int ring_bind(struct socket *sock, struct sockaddr *sa, int addr_len)
   printk("[PF_RING] searching device %s\n", sa->sa_data);
 #endif
 
-  if((dev = __dev_get_by_name(
+  if(strcmp(sa->sa_data, "any") == 0)
+    dev = &any_dev;
+  else {
+    if((dev = __dev_get_by_name(
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
-			       &init_net,
+				&init_net,
 #endif
-			       sa->sa_data)) == NULL) {
+				sa->sa_data)) == NULL) {
 #if defined(RING_DEBUG)
-    printk("[PF_RING] search failed\n");
+      printk("[PF_RING] search failed\n");
 #endif
-    return(-EINVAL);
-  } else
-    return(packet_ring_bind(sk, dev));
+      return(-EINVAL);
+    } 
+  }
+
+  return(packet_ring_bind(sk, dev));
 }
 
 /* ************************************* */
@@ -4429,6 +4439,9 @@ static int __init ring_init(void)
 
   for (i = 0; i < MAX_NUM_DEVICES; i++)
     INIT_LIST_HEAD(&device_ring_list[i]);
+
+  memset(&any_dev, 0, sizeof(any_dev));
+  strcpy(any_dev.name, "any");
 
   sock_register(&ring_family_ops);
   register_netdevice_notifier(&ring_netdev_notifier);
