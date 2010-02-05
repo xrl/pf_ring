@@ -84,7 +84,10 @@
 #define TH_URG_MULTIPLIER	0x20
 /* ************************************************* */
 #define PROC_INFO         "info"
+#define PROC_DEV          "dev"
+#define PROC_RULES        "rules"
 #define PROC_PLUGINS_INFO "plugins_info"
+
 /* ************************************************* */
 
 static u_int8_t pfring_enabled = 0;
@@ -120,8 +123,7 @@ static u_int dna_devices_list_size = 0;
 
 /* List of all plugins */
 static u_int plugin_registration_size = 0;
-static struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] =
-  { NULL };
+static struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
 static u_short max_registered_plugin_id = 0;
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
 static rwlock_t ring_list_lock = RW_LOCK_UNLOCKED;
@@ -129,7 +131,7 @@ static rwlock_t ring_list_lock = RW_LOCK_UNLOCKED;
 /* ********************************** */
 
 /* /proc entry for ring module */
-struct proc_dir_entry *ring_proc_dir = NULL;
+struct proc_dir_entry *ring_proc_dir = NULL, *ring_proc_dev_dir = NULL;
 struct proc_dir_entry *ring_proc = NULL;
 struct proc_dir_entry *ring_proc_plugins_info = NULL;
 
@@ -441,6 +443,46 @@ inline u_int get_num_ring_free_slots(struct ring_opt * pfr)
 
 /* ********************************** */
 
+static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
+				  int len, int *unused, void *data)
+{
+  int rlen = 0;
+
+  if(data != NULL) {
+    ring_device_element *dev_ptr = (ring_device_element*)data;
+    struct net_device *dev = dev_ptr->dev;
+
+    rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
+    rlen += sprintf(buf+rlen, "Index:             %d\n", dev->ifindex);
+    rlen += sprintf(buf+rlen, "Type:              %d\n", dev->type);
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
+    rlen += sprintf(buf+rlen, "Max # TX Queues:   %d\n", dev->num_tx_queues);
+    rlen += sprintf(buf+rlen, "# Used TX Queues:  %d\n", dev->real_num_tx_queues);
+#endif
+  }
+
+  return rlen;
+}
+
+/* ********************************** */
+
+static int ring_proc_dev_rule(char *buf, char **start, off_t offset,
+			      int len, int *unused, void *data)
+{
+  int rlen = 0;
+
+  if(data != NULL) {
+    ring_device_element *dev_ptr = (ring_device_element*)data;
+    struct net_device *dev = dev_ptr->dev;
+
+    rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
+  }
+
+  return rlen;
+}
+
+/* ********************************** */
+
 static int ring_proc_get_info(char *buf, char **start, off_t offset,
 			      int len, int *unused, void *data)
 {
@@ -452,27 +494,20 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     /* /proc/net/pf_ring/info */
     rlen = sprintf(buf, "PF_RING Version     : %s ($Revision: %s$)\n",
 		   RING_VERSION, SVN_REV);
-    rlen +=
-      sprintf(buf + rlen, "Ring slots          : %d\n",
-	      num_slots);
-    rlen +=
-      sprintf(buf + rlen, "Slot version        : %d\n",
-	      RING_FLOWSLOT_VERSION);
-    rlen +=
-      sprintf(buf + rlen, "Capture TX          : %s\n",
-	      enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    rlen +=
-      sprintf(buf + rlen, "IP Defragment       : %s\n",
-	      enable_ip_defrag ? "Yes" : "No");
-    rlen +=
-      sprintf(buf + rlen, "Transparent mode    : %s\n",
-	      transparent_mode ? "Yes" : "No");
-    rlen +=
-      sprintf(buf + rlen, "Total rings         : %d\n",
-	      ring_table_size);
-    rlen +=
-      sprintf(buf + rlen, "Total plugins       : %d\n",
-	      plugin_registration_size);
+    rlen += sprintf(buf + rlen, "Ring slots          : %d\n",
+		    num_slots);
+    rlen += sprintf(buf + rlen, "Slot version        : %d\n",
+		    RING_FLOWSLOT_VERSION);
+    rlen += sprintf(buf + rlen, "Capture TX          : %s\n",
+		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
+    rlen += sprintf(buf + rlen, "IP Defragment       : %s\n",
+		    enable_ip_defrag ? "Yes" : "No");
+    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n",
+		    transparent_mode ? "Yes" : "No");
+    rlen += sprintf(buf + rlen, "Total rings         : %d\n",
+		    ring_table_size);
+    rlen += sprintf(buf + rlen, "Total plugins       : %d\n",
+		    plugin_registration_size);
   } else {
     /* detailed statistics about a PF_RING */
     pfr = (struct ring_opt *)data;
@@ -485,73 +520,53 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 		       pfr->ring_netdev->name ==
 		       NULL ? "<NULL>" : pfr->
 		       ring_netdev->name);
-	rlen +=
-	  sprintf(buf + rlen,
-		  "Slot Version   : %d [%s]\n",
-		  fsi->version, RING_VERSION);
-	rlen +=
-	  sprintf(buf + rlen, "Sampling Rate  : %d\n",
-		  pfr->sample_rate);
-	rlen +=
-	  sprintf(buf + rlen, "Appl. Name     : %s\n",
-		  pfr->appl_name ? pfr->
-		  appl_name : "<unknown>");
-	rlen +=
-	  sprintf(buf + rlen, "IP Defragment  : %s\n",
-		  enable_ip_defrag ? "Yes" : "No");
-	rlen +=
-	  sprintf(buf + rlen, "BPF Filtering  : %s\n",
-		  pfr->
-		  bpfFilter ? "Enabled" : "Disabled");
-	rlen +=
-	  sprintf(buf + rlen, "# Filt. Rules  : %d\n",
-		  pfr->num_filtering_rules);
-	rlen +=
-	  sprintf(buf + rlen, "Cluster Id     : %d\n",
-		  pfr->cluster_id);
-	rlen +=
-	  sprintf(buf + rlen, "Channel Id     : %d\n",
-		  pfr->channel_id);
-	rlen +=
-	  sprintf(buf + rlen, "Tot Slots      : %d\n",
-		  fsi->tot_slots);
-	rlen +=
-	  sprintf(buf + rlen, "Bucket Len     : %d\n",
+	rlen += sprintf(buf + rlen,
+			"Slot Version   : %d [%s]\n",
+			fsi->version, RING_VERSION);
+	rlen += sprintf(buf + rlen, "Sampling Rate  : %d\n",
+			pfr->sample_rate);
+	rlen += sprintf(buf + rlen, "Appl. Name     : %s\n",
+			pfr->appl_name ? pfr->
+			appl_name : "<unknown>");
+	rlen += sprintf(buf + rlen, "IP Defragment  : %s\n",
+			enable_ip_defrag ? "Yes" : "No");
+	rlen += sprintf(buf + rlen, "BPF Filtering  : %s\n",
+		  pfr->bpfFilter ? "Enabled" : "Disabled");
+	rlen += sprintf(buf + rlen, "# Filt. Rules  : %d\n",
+			pfr->num_filtering_rules);
+	rlen += sprintf(buf + rlen, "Cluster Id     : %d\n",
+			pfr->cluster_id);
+	rlen += sprintf(buf + rlen, "Channel Id     : %d\n",
+			pfr->channel_id);
+	rlen += sprintf(buf + rlen, "Tot Slots      : %d\n",
+			fsi->tot_slots);
+	rlen += sprintf(buf + rlen, "Bucket Len     : %d\n",
 		  fsi->data_len);
-	rlen +=
-	  sprintf(buf + rlen,
+	rlen += sprintf(buf + rlen,
 		  "Slot Len       : %d [bucket+header]\n",
 		  fsi->slot_len);
-	rlen +=
-	  sprintf(buf + rlen, "Tot Memory     : %d\n",
-		  fsi->tot_mem);
-	rlen +=
-	  sprintf(buf + rlen,
-		  "Tot Packets    : %lu\n",
-		  (unsigned long)fsi->tot_pkts);
-	rlen +=
-	  sprintf(buf + rlen,
-		  "Tot Pkt Lost   : %lu\n",
-		  (unsigned long)fsi->tot_lost);
-	rlen +=
-	  sprintf(buf + rlen,
-		  "Tot Insert     : %lu\n",
-		  (unsigned long)fsi->tot_insert);
-	rlen +=
-	  sprintf(buf + rlen,
-		  "Tot Read       : %lu\n",
-		  (unsigned long)fsi->tot_read);
-	rlen +=
-	  sprintf(buf + rlen,
-		  "Tot Fwd Ok     : %lu\n",
-		  (unsigned long)fsi->tot_fwd_ok);
-	rlen +=
-	  sprintf(buf + rlen,
-		  "Tot Fwd Errors : %lu\n",
-		  (unsigned long)fsi->tot_fwd_notok);
-	rlen +=
-	  sprintf(buf + rlen, "Num Free Slots : %u\n",
-		  get_num_ring_free_slots(pfr));
+	rlen += sprintf(buf + rlen, "Tot Memory     : %d\n",
+			fsi->tot_mem);
+	rlen += sprintf(buf + rlen,
+			"Tot Packets    : %lu\n",
+			(unsigned long)fsi->tot_pkts);
+	rlen += sprintf(buf + rlen,
+			"Tot Pkt Lost   : %lu\n",
+			(unsigned long)fsi->tot_lost);
+	rlen += sprintf(buf + rlen,
+			"Tot Insert     : %lu\n",
+			(unsigned long)fsi->tot_insert);
+	rlen += sprintf(buf + rlen,
+			"Tot Read       : %lu\n",
+			(unsigned long)fsi->tot_read);
+	rlen += sprintf(buf + rlen,
+			"Tot Fwd Ok     : %lu\n",
+			(unsigned long)fsi->tot_fwd_ok);
+	rlen += sprintf(buf + rlen,
+			"Tot Fwd Errors : %lu\n",
+			(unsigned long)fsi->tot_fwd_notok);
+	rlen += sprintf(buf + rlen, "Num Free Slots : %u\n",
+			get_num_ring_free_slots(pfr));
       } else
 	rlen = sprintf(buf, "WARNING fsi == NULL\n");
     } else
@@ -603,6 +618,10 @@ static void ring_proc_init(void)
 #if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30))
     ring_proc_dir->owner = THIS_MODULE;
 #endif
+
+    /* *********** */
+    ring_proc_dev_dir = proc_mkdir(PROC_DEV, ring_proc_dir);
+    /* *********** */
     ring_proc = create_proc_read_entry(PROC_INFO, 0,
 				       ring_proc_dir,
 				       ring_proc_get_info, NULL);
@@ -633,6 +652,10 @@ static void ring_proc_term(void)
     remove_proc_entry(PROC_PLUGINS_INFO, ring_proc_dir);
     printk("[PF_RING] removed /proc/net/pf_ring/%s\n",
 	   PROC_PLUGINS_INFO);
+
+    /* *********** */
+    remove_proc_entry(PROC_DEV, ring_proc_dir);
+    /* *********** */
 
     if(ring_proc_dir != NULL) {
       remove_proc_entry("pf_ring",
@@ -1117,7 +1140,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 	if(debug)
 	  printk("[PF_RING] Match returned: %d [payload_len=%d][%s]\n",
 		 rc, payload_len, payload);
-	
+
 	if(rc == 0)
 	  return(0);	/* No match */
       } else
@@ -1264,7 +1287,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   ring_bucket = &theSlot->bucket;
 
   if((plugin_mem != NULL) && (offset > 0))
-    memcpy(&ring_bucket[sizeof(struct pfring_pkthdr)], plugin_mem, offset);  
+    memcpy(&ring_bucket[sizeof(struct pfring_pkthdr)], plugin_mem, offset);
 
   if(skb != NULL) {
     hdr->caplen = min(pfr->bucket_len - offset, hdr->caplen);
@@ -1395,7 +1418,7 @@ static int reflect_packet(struct sk_buff *skb,
 static int add_skb_to_ring(struct sk_buff *skb,
 			   struct ring_opt *pfr,
 			   struct pfring_pkthdr *hdr,
-			   int is_ip_pkt, int displ, 
+			   int is_ip_pkt, int displ,
 			   u_int8_t channel_id,
 			   u_int8_t num_rx_channels)
 {
@@ -1582,7 +1605,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 			       &behaviour)) {
 	if(debug)
 	  printk("[PF_RING] behaviour=%d\n", behaviour);
-	
+
 	hdr->parsed_pkt.last_matched_rule_id = entry->rule.rule_id;
 
 	if(behaviour == forward_packet_and_stop_rule_evaluation) {
@@ -1624,10 +1647,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	      } else {
 		if(debug)
 		  printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
-			 ((hash_bucket->rule.host_peer_a >> 24) & 0xff), ((hash_bucket->rule.host_peer_a >> 16) & 0xff), 
-			 ((hash_bucket->rule.host_peer_a >> 8) & 0xff), ((hash_bucket->rule.host_peer_a >> 0) & 0xff), 
-			 hash_bucket->rule.port_peer_a, ((hash_bucket->rule.host_peer_b >> 24) & 0xff), 
-			 ((hash_bucket->rule.host_peer_b >> 16) & 0xff), ((hash_bucket->rule.host_peer_b >> 8) & 0xff), 
+			 ((hash_bucket->rule.host_peer_a >> 24) & 0xff), ((hash_bucket->rule.host_peer_a >> 16) & 0xff),
+			 ((hash_bucket->rule.host_peer_a >> 8) & 0xff), ((hash_bucket->rule.host_peer_a >> 0) & 0xff),
+			 hash_bucket->rule.port_peer_a, ((hash_bucket->rule.host_peer_b >> 24) & 0xff),
+			 ((hash_bucket->rule.host_peer_b >> 16) & 0xff), ((hash_bucket->rule.host_peer_b >> 8) & 0xff),
 			 ((hash_bucket->rule.host_peer_b >> 0) & 0xff), hash_bucket->rule.port_peer_b, pfr->num_filtering_rules);
 	      }
 	    }
@@ -1659,7 +1682,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		     reflect_packet_and_continue_rule_evaluation) {
 	    fwd_pkt = 0;
 	    reflect_packet(skb, pfr,
-			   entry->rule.internals.reflector_dev, 
+			   entry->rule.internals.reflector_dev,
 			   displ);
 	    break;
 	}
@@ -1689,7 +1712,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	       pfr->slots_info->insert_idx, skb->pkt_type,
 	       skb->cloned);
 #endif
-	
+
 	write_unlock_bh(&pfr->ring_index_lock);
 	if(free_parse_mem)
 	  free_parse_memory(parse_memory_buffer);
@@ -2155,8 +2178,8 @@ static int buffer_ring_handler(struct net_device *dev, char *data, int len)
 #endif
 
   return(skb_ring_handler
-	 (&skb, 1, 0 /* fake skb */ , 
-	  UNKNOWN_RX_CHANNEL,  
+	 (&skb, 1, 0 /* fake skb */ ,
+	  UNKNOWN_RX_CHANNEL,
 	  UNKNOWN_NUM_RX_CHANNELS));
 }
 
@@ -2179,12 +2202,12 @@ static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
     dev_put(bucket->rule.internals.reflector_dev);	/* Release device */
 }
 
-/* 
+/*
    NOTE
 
    I jeopardize the get_coalesce/set_coalesce fields for my purpose
    until hw filtering support is part of the kernel
-   
+
 */
 
 /* ************************************* */
@@ -2201,6 +2224,7 @@ int hw_filtering_rule(struct ring_opt *pfr, hash_filtering_rule *entry, u_char a
   if(pfr->ring_netdev->ethtool_ops->set_coalesce == NULL) return(-1);
 
   element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+  element.command = RULE_COMMAND;
   element.add_rule = add_rule;
   memcpy(&element.rule, entry, sizeof(hash_filtering_rule));
 
@@ -2223,7 +2247,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 				  rule->rule.port_peer_b) %
     DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 0;
-  
+
   hw_filtering_rule(pfr, &rule->rule, add_rule);
 
   if(debug)
@@ -2771,7 +2795,7 @@ static int ring_bind(struct socket *sock, struct sockaddr *sa, int addr_len)
       printk("[PF_RING] search failed\n");
 #endif
       return(-EINVAL);
-    } 
+    }
   }
 
   return(packet_ring_bind(sk, dev));
@@ -3289,7 +3313,7 @@ static int ring_setsockopt(struct socket *sock,
 			   int level, int optname,
 			   char __user * optval,
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32))
-			   unsigned 
+			   unsigned
 #endif
 			   int optlen)
 {
@@ -4291,6 +4315,13 @@ void remove_device_from_ring_list(struct net_device *dev) {
 
     dev_ptr = list_entry(ptr, ring_device_element, list);
     if(dev_ptr->dev == dev) {
+      if(dev_ptr->proc_entry) {
+	if(dev_ptr->has_hw_filtering)
+	  remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
+
+	remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
+	remove_proc_entry(dev_ptr->dev->name, ring_proc_dev_dir);
+      }
       list_del(ptr);
       kfree(dev_ptr);
       break;
@@ -4306,10 +4337,40 @@ int add_device_to_ring_list(struct net_device *dev) {
   if((dev_ptr = kmalloc(sizeof(ring_device_element),
 			GFP_KERNEL)) == NULL)
     return(-ENOMEM);
-  
+
   INIT_LIST_HEAD(&dev_ptr->list);
   dev_ptr->dev = dev;
-  
+  dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
+  dev_ptr->has_hw_filtering = 0;
+
+  create_proc_read_entry(PROC_INFO, 0,
+			 dev_ptr->proc_entry,
+			 ring_proc_dev_get_info /* read */, dev_ptr);
+
+  if(dev_ptr->dev->ethtool_ops->set_coalesce != NULL) {
+    hw_filtering_rule_element element;
+    int rc;
+
+    element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+    element.command = CHECK_COMMAND;
+
+    rc = dev_ptr->dev->ethtool_ops->set_coalesce(dev_ptr->dev,
+						 (struct ethtool_coalesce*)&element);
+
+    if(rc == 0) {
+      /* This device supports hardware filtering */
+
+      create_proc_read_entry(PROC_RULES, 0,
+			     dev_ptr->proc_entry,
+			     ring_proc_dev_rule /* read */, dev_ptr);
+
+      dev_ptr->has_hw_filtering = 1;
+      printk("[PF_RING] Device %s supports hw filtering\n", dev->name);
+    } else
+      printk("[PF_RING] Device %s does NOT support hw filtering [1]\n", dev->name);
+  } else
+    printk("[PF_RING] Device %s does NOT support hw filtering [2]\n", dev->name);
+
   list_add(&dev_ptr->list, &ring_aware_device_list);
 
   return(0);
@@ -4346,6 +4407,32 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
       dev->pfring_ptr = NULL;
     }
     break;
+
+  case NETDEV_CHANGEADDR: /* Interface address changed (e.g. during device probing) */
+    break;
+  case NETDEV_CHANGENAME: /* Rename interface ethX -> ethY */
+    {
+      struct list_head *ptr, *tmp_ptr;
+#if defined(RING_DEBUG)
+      printk("[PF_RING] device change name %s\n", dev->name);
+#endif
+
+      list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
+	ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
+
+	if(dev_ptr->dev == dev) {
+#if defined(RING_DEBUG)
+	  printk("[PF_RING] ==>> FOUND device change name %s\n", dev->name);
+#endif
+	  dev_ptr->proc_entry->name = dev->name;
+	  break;
+	}
+      }
+    }
+
+
+    break;
+
   default:
     printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
 	   dev->name, msg, dev->pfring_ptr);
@@ -4443,6 +4530,7 @@ static int __init ring_init(void)
   memset(&any_dev, 0, sizeof(any_dev));
   strcpy(any_dev.name, "any");
 
+  ring_proc_init();
   sock_register(&ring_family_ops);
   register_netdevice_notifier(&ring_netdev_notifier);
 
@@ -4461,7 +4549,6 @@ static int __init ring_init(void)
 	 enable_ip_defrag ? "Yes" : "No");
   printk("[PF_RING] Initialized correctly\n");
 
-  ring_proc_init();
   register_device_handler();
 
   pfring_enabled = 1;

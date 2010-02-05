@@ -382,6 +382,8 @@ typedef struct {
 
 typedef struct {
   struct net_device *dev;
+  struct proc_dir_entry *proc_entry;
+  u_int8_t has_hw_filtering;
   struct list_head list;
 } ring_device_element;
 
@@ -492,9 +494,12 @@ typedef struct {
 
 #define MAGIC_HW_FILTERING_RULE_ELEMENT  0x29010020
 
+#define RULE_COMMAND        1
+#define CHECK_COMMAND       2
+
 typedef struct {
   u_int32_t magic; /* MAGIC_HW_FILTERING_RULE_ELEMENT */
-  u_int8_t add_rule, target_queue;
+  u_int8_t add_rule, target_queue, command;
   hash_filtering_rule rule;
 } hw_filtering_rule_element;
 
