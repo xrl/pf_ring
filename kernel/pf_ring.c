@@ -491,6 +491,7 @@ int hw_filtering_rule(struct net_device *dev, hash_filtering_rule *entry,
 
 /* ********************************** */
 
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
 static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
 				    int len, int *unused, void *data)
 {
@@ -577,6 +578,7 @@ static int ring_proc_dev_rule_write(struct file *file,
   
   return((int)count);
 }
+#endif
 
 /* ********************************** */
 
@@ -4417,6 +4419,7 @@ int add_device_to_ring_list(struct net_device *dev) {
 			 dev_ptr->proc_entry,
 			 ring_proc_dev_get_info /* read */, dev_ptr);
 
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   if(dev_ptr->dev->ethtool_ops->set_coalesce != NULL) {
     hw_filtering_rule_element element;
     int rc;
@@ -4443,6 +4446,7 @@ int add_device_to_ring_list(struct net_device *dev) {
       printk("[PF_RING] Device %s does NOT support hw filtering [1]\n", dev->name);
   } else
     printk("[PF_RING] Device %s does NOT support hw filtering [2]\n", dev->name);
+#endif
 
   list_add(&dev_ptr->list, &ring_aware_device_list);
 
