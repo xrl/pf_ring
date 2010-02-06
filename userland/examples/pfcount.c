@@ -131,8 +131,10 @@ void print_stats() {
 /* ******************************** */
 
 void add_rule(u_int add_rule) {
-#if 0
   hash_filtering_rule rule;
+
+  return;
+
   memset(&rule, 0, sizeof(hash_filtering_rule));
   /* 09:40:01.158112 IP 192.168.1.233.2736 > 192.168.99.1.25: Flags [P.], seq 1070303040:1070303070, ack 3485710921, win 65461, length 30 */
   rule.proto = 6, rule.rule_id = 10; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
@@ -148,7 +150,6 @@ void add_rule(u_int add_rule) {
 
   if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
     printf("pfring_add_hash_filtering_rule(2) failed\n");
-#endif
 }
 
 /* ******************************** */

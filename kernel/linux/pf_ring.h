@@ -1,7 +1,9 @@
 /*
+ *
  * Definitions for packet ring
  *
  * 2004-10 Luca Deri <deri@ntop.org>
+ *
  */
 
 #ifndef __RING_H
@@ -384,6 +386,7 @@ typedef struct {
   struct net_device *dev;
   struct proc_dir_entry *proc_entry;
   u_int8_t has_hw_filtering;
+  u_int16_t num_hw_filters;
   struct list_head list;
 } ring_device_element;
 

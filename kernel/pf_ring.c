@@ -83,11 +83,10 @@
 #define TH_ACK_MULTIPLIER	0x10
 #define TH_URG_MULTIPLIER	0x20
 /* ************************************************* */
-#define PROC_INFO         "info"
-#define PROC_DEV          "dev"
-#define PROC_RULES        "rules"
-#define PROC_PLUGINS_INFO "plugins_info"
-
+#define PROC_INFO               "info"
+#define PROC_DEV                "dev"
+#define PROC_RULES              "rules"
+#define PROC_PLUGINS_INFO       "plugins_info"
 /* ************************************************* */
 
 static u_int8_t pfring_enabled = 0;
@@ -464,10 +463,36 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
   return rlen;
 }
 
+/* ************************************* */
+
+int hw_filtering_rule(struct net_device *dev, hash_filtering_rule *entry, 
+		      u_char add_rule, u_int8_t target_queue) {
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
+  int debug = 1;
+  hw_filtering_rule_element element;
+
+  if(debug) printk("[PF_RING] hw_filtering_rule[%s][add=%d][id=%d][%p]\n",
+		   dev->name, add_rule ? 1 : 0, entry->rule_id,
+		   dev->ethtool_ops->set_coalesce);
+
+  if(dev->ethtool_ops->set_coalesce == NULL) return(-1);
+
+  element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+  element.command = RULE_COMMAND;
+  element.add_rule = add_rule;
+  element.target_queue = target_queue;
+  memcpy(&element.rule, entry, sizeof(hash_filtering_rule));
+
+  return(dev->ethtool_ops->set_coalesce(dev, (struct ethtool_coalesce*)&element));
+#else
+  return(-1);
+#endif
+}
+
 /* ********************************** */
 
-static int ring_proc_dev_rule(char *buf, char **start, off_t offset,
-			      int len, int *unused, void *data)
+static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
+				    int len, int *unused, void *data)
 {
   int rlen = 0;
 
@@ -476,9 +501,81 @@ static int ring_proc_dev_rule(char *buf, char **start, off_t offset,
     struct net_device *dev = dev_ptr->dev;
 
     rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
+    rlen += sprintf(buf+rlen, "# Filters:         %d\n", dev_ptr->num_hw_filters);
+    rlen += sprintf(buf+rlen, "\nFiltering Rules:\n"
+		    "+|-(id,vlan,tcp|udp,src_ip/mask,src_port,dst_ip/mask,dst_port,queue)\n"
+		    "Example:\n"
+		    "+(1,0,tcp,192.168.0.10/32,32,10.6.0.0/16,0,-1) (-1 = drop)\n");
   }
 
   return rlen;
+}
+
+/* ********************************** */
+
+static int ring_proc_dev_rule_write(struct file *file,
+				    const char __user *buffer,
+				    unsigned long count, void *data)
+{
+  char buf[128], add, proto[4] = { 0 };
+  ring_device_element *dev_ptr = (ring_device_element*)data;
+  int num, id, queue_id, vlan, rc;
+  u_int32_t netmask;
+  int s_a, s_b, s_c, s_d, s_mask, s_port;
+  int d_a, d_b, d_c, d_d, d_mask, d_port;
+  hash_filtering_rule rule;
+
+  if(data == NULL) return(0);
+
+  if(count > (sizeof(buf)-1))             count = sizeof(buf) - 1;
+  if(copy_from_user(buf, buffer, count))  return(-EFAULT);
+  buf[sizeof(buf)-1] = '\0', buf[count] = '\0';
+
+  printk("[PF_RING] ring_proc_dev_rule_write(%s)\n", buf);
+
+  num = sscanf(buf, "%c(%d,%d,%c%c%c,%d.%d.%d.%d/%d,%d,%d.%d.%d.%d/%d,%d,%d)",
+	       &add, &id, &vlan, 
+	       &proto[0], &proto[1], &proto[2], 
+	       &s_a, &s_b, &s_c, &s_d, &s_mask, &s_port,
+	       &d_a, &d_b, &d_c, &d_d, &d_mask, &d_port,
+	       &queue_id);
+  printk("[PF_RING] ring_proc_dev_rule_write(%s) = %d\n", buf, num);
+
+  if(num != 19) return(-1);
+  memset(&rule, 0, sizeof(rule));
+
+  rule.rule_id = id, rule.vlan_id = vlan;
+  rule.proto = (proto[0] == 't') ? 6 : 17;
+  rule.host_peer_a = ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff); 
+  if(s_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> s_mask);
+  rule.host_peer_a &= netmask;
+
+  rule.host_peer_b = ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff);
+  if(d_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> d_mask);
+  rule.host_peer_b &= netmask;
+
+  rule.port_peer_a = s_port;
+  rule.port_peer_b = d_port;
+
+  if(queue_id == -1) /* Drop */
+    rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
+  else
+    rule.rule_action = forward_packet_and_stop_rule_evaluation;
+
+  rc = hw_filtering_rule(dev_ptr->dev, &rule, (add == '+') ? 1 : 0, queue_id);
+
+  if(rc != -1) {
+    /* Rule programmed succesfully */
+
+    if(add == '+')
+      dev_ptr->num_hw_filters++;
+    else {
+      if(dev_ptr->num_hw_filters > 0)
+	dev_ptr->num_hw_filters--;
+    }
+  }
+  
+  return((int)count);
 }
 
 /* ********************************** */
@@ -619,9 +716,8 @@ static void ring_proc_init(void)
     ring_proc_dir->owner = THIS_MODULE;
 #endif
 
-    /* *********** */
     ring_proc_dev_dir = proc_mkdir(PROC_DEV, ring_proc_dir);
-    /* *********** */
+
     ring_proc = create_proc_read_entry(PROC_INFO, 0,
 				       ring_proc_dir,
 				       ring_proc_get_info, NULL);
@@ -653,9 +749,7 @@ static void ring_proc_term(void)
     printk("[PF_RING] removed /proc/net/pf_ring/%s\n",
 	   PROC_PLUGINS_INFO);
 
-    /* *********** */
     remove_proc_entry(PROC_DEV, ring_proc_dir);
-    /* *********** */
 
     if(ring_proc_dir != NULL) {
       remove_proc_entry("pf_ring",
@@ -2212,30 +2306,6 @@ static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
 
 /* ************************************* */
 
-int hw_filtering_rule(struct ring_opt *pfr, hash_filtering_rule *entry, u_char add_rule) {
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
-  int debug = 1;
-  hw_filtering_rule_element element;
-
-  if(debug) printk("[PF_RING] hw_remove_filtering_rule[%s][id=%d][%p]\n",
-		   pfr->ring_netdev->name, entry->rule_id,
-		   pfr->ring_netdev->ethtool_ops->set_coalesce);
-
-  if(pfr->ring_netdev->ethtool_ops->set_coalesce == NULL) return(-1);
-
-  element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
-  element.command = RULE_COMMAND;
-  element.add_rule = add_rule;
-  memcpy(&element.rule, entry, sizeof(hash_filtering_rule));
-
-  return(pfr->ring_netdev->ethtool_ops->set_coalesce(pfr->ring_netdev, (struct ethtool_coalesce*)&element));
-#else
-  return(-1);
-#endif
-}
-
-/* ************************************* */
-
 static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 					filtering_hash_bucket * rule,
 					u_char add_rule)
@@ -2248,7 +2318,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 0;
 
-  hw_filtering_rule(pfr, &rule->rule, add_rule);
+  hw_filtering_rule(pfr->ring_netdev, &rule->rule, add_rule, 1 /* queueId [FIX] */);
 
   if(debug)
     printk
@@ -4334,10 +4404,10 @@ void remove_device_from_ring_list(struct net_device *dev) {
 int add_device_to_ring_list(struct net_device *dev) {
   ring_device_element *dev_ptr;
 
-  if((dev_ptr = kmalloc(sizeof(ring_device_element),
-			GFP_KERNEL)) == NULL)
+  if((dev_ptr = kmalloc(sizeof(ring_device_element), GFP_KERNEL)) == NULL)
     return(-ENOMEM);
-
+  
+  memset(dev_ptr, 0, sizeof(ring_device_element));
   INIT_LIST_HEAD(&dev_ptr->list);
   dev_ptr->dev = dev;
   dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
@@ -4359,10 +4429,13 @@ int add_device_to_ring_list(struct net_device *dev) {
 
     if(rc == 0) {
       /* This device supports hardware filtering */
+      struct proc_dir_entry *entry;
 
-      create_proc_read_entry(PROC_RULES, 0,
-			     dev_ptr->proc_entry,
-			     ring_proc_dev_rule /* read */, dev_ptr);
+      entry = create_proc_read_entry(PROC_RULES, 0,
+				     dev_ptr->proc_entry,
+				     ring_proc_dev_rule_read, dev_ptr);
+      if(entry)
+	entry->write_proc = ring_proc_dev_rule_write;
 
       dev_ptr->has_hw_filtering = 1;
       printk("[PF_RING] Device %s supports hw filtering\n", dev->name);
@@ -4408,6 +4481,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     }
     break;
 
+  case NETDEV_CHANGE:     /* Interface state change */
   case NETDEV_CHANGEADDR: /* Interface address changed (e.g. during device probing) */
     break;
   case NETDEV_CHANGENAME: /* Rename interface ethX -> ethY */
