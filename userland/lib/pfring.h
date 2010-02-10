@@ -104,6 +104,7 @@ extern "C" {
     char *buffer, *slots, *device_name;
     int  fd;
     FlowSlotInfo *slots_info;
+    FlowSlot *last_slot_to_update;
     u_int page_id, slot_id, pkts_per_page;
     u_int poll_sleep;
     u_int8_t clear_promisc, reentrant;
@@ -124,19 +125,26 @@ extern "C" {
   /* ********************************* */
 
   int pfring_set_direction(pfring *ring, packet_direction direction);
+  int pfring_set_reflection_device(pfring *ring, char *dev_name);
   int pfring_set_cluster(pfring *ring, u_int clusterId);
   int pfring_set_channel_id(pfring *ring, int32_t channel_id);
   int pfring_set_application_name(pfring *ring, char *name);
   int pfring_remove_from_cluster(pfring *ring);
-  int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec);
+  int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec);  
   pfring* pfring_open(char *device_name, u_int8_t promisc, 
 		      u_int32_t caplen, u_int8_t reentrant);
+  int pfring_bind(pfring *ring, char *device_name);
   u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
 				    u_int32_t caplen, u_int8_t _reentrant,
 				    pfring* ring[MAX_NUM_RX_CHANNELS]);
   pfring* pfring_open_dna(char *device_name, u_int8_t reentrant);
   void pfring_close(pfring *ring);
   int pfring_stats(pfring *ring, pfring_stat *stats);
+  int pfring_notify(pfring *ring, u_int8_t reflect_packet);
+  int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
+		  struct pfring_pkthdr *hdr,
+		  u_int8_t wait_for_incoming_packet,
+		  u_int8_t consume_packet_immediately);    
   int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
 		  struct pfring_pkthdr *hdr, u_int8_t wait_for_incoming_packet);
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,

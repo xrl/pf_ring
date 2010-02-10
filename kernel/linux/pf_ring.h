@@ -45,6 +45,7 @@
 #define SO_PURGE_IDLE_HASH_RULES         109 /* inactivity (sec) */
 #define SO_SET_APPL_NAME                 110
 #define SO_SET_PACKET_DIRECTION          111
+#define SO_SET_REFLECTION_DEVICE         112
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -55,6 +56,7 @@
 
 /* Map */
 #define SO_MAP_DNA_DEVICE                130
+
 
 #define REFLECTOR_NAME_LEN                 8
 
@@ -81,6 +83,8 @@ struct pkt_offset {
 #ifndef ETH_ALEN
 #define ETH_ALEN  6
 #endif
+
+#define REFLECT_PACKET_DEVICE_NONE     0
 
 struct pkt_parsing_info {
   /* Core fields (also used by NetFlow) */
@@ -256,10 +260,10 @@ typedef struct flowSlotInfo {
 
 typedef struct flowSlot {
 #ifdef RING_MAGIC
-  u_char     magic;      /* It must alwasy be zero */
+  u_int8_t     magic;      /* It must alwasy be zero */
 #endif
-  u_char     slot_state; /* 0=empty, 1=full   */
-  u_char     bucket;     /* bucket[bucketLen] */
+  u_int8_t     slot_state; /* 0=empty, 1=full, 2=reflect on the specified socket reflection device   */
+  u_int8_t     bucket;     /* bucket[bucketLen] */
 } FlowSlot;
 
 /* *********************************** */
@@ -431,10 +435,8 @@ struct ring_opt {
   /* Channel */
   int32_t channel_id;  /* -1 = any channel */
 
-#if 0
-  /* Reflector */
+  /* Reflector Device */
   struct net_device *reflector_dev; /* Reflector device */
-#endif
 
   /* Packet buffers */
   unsigned long order;

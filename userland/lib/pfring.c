@@ -51,6 +51,27 @@ int pfring_set_direction(pfring *ring, packet_direction direction) {
 
 /* ******************************* */
 
+/*
+  Device reflection is used only when pfring_notify() is called
+  with reflect_packet parameter set to 1. This function allows
+  developers to implement in userland a "filtering application"
+  that can instrument pf_ring to forward through those packets
+  that have passed the checks.
+*/
+int pfring_set_reflection_device(pfring *ring, char *dev_name) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+#ifdef ENABLE_DNA_SUPPORT
+  if(ring->dna_mapped_device) return(-1);
+#endif
+  return(ring ? setsockopt(ring->fd, 0, SO_SET_REFLECTION_DEVICE,
+			   dev_name, strlen(dev_name)): -1);
+#endif
+}
+
+/* ******************************* */
+
 int pfring_set_cluster(pfring *ring, u_int clusterId) {
 #ifdef USE_PCAP
   return(-1);
@@ -162,6 +183,68 @@ static int set_if_promisc(const char *device, int set_promisc) {
 
 /* **************************************************** */
 
+int pfring_bind(pfring *ring, char *device_name) {
+  struct sockaddr sa;
+  char *at;
+  int32_t channel_id = -1;
+  int rc = 0;
+
+  if((device_name == NULL) || (strcmp(device_name, "none") == 0))
+    return(-1);
+
+  at = strchr(device_name, '@');
+  if(at != NULL) {
+    char *tok, *pos = NULL;
+
+    at[0] = '\0';
+
+    /* Syntax
+       ethX@1,5       channel 1 and 5
+       ethX@1-5       channel 1,2...5
+       ethX@1-3,5-7   channel 1,2,3,5,6,7
+    */
+
+    tok = strtok_r(&at[1], ",", &pos);
+    channel_id = 0;
+
+    while(tok != NULL) {
+      char *dash = strchr(tok, '-');
+      int32_t min_val, max_val, i;
+
+      if(dash) {
+	dash[0] = '\0';
+	min_val = atoi(tok);
+	max_val = atoi(&dash[1]);
+
+      } else
+	min_val = max_val = atoi(tok);
+
+      for(i = min_val; i <= max_val; i++)
+	channel_id |= 1 << i;
+
+      tok = strtok_r(NULL, ",", &pos);
+    }
+  }
+
+  sa.sa_family = PF_RING;
+  snprintf(sa.sa_data, sizeof(sa.sa_data), "%s", device_name);
+
+  rc = bind(ring->fd, (struct sockaddr *)&sa, sizeof(sa));
+
+  if(rc == 0) {
+    if(channel_id != -1) {
+      int rc = pfring_set_channel_id(ring, channel_id);
+
+      if(rc != 0)
+	printf("pfring_set_channel_id() failed: %d\n", rc);
+    }
+  }
+
+  return(rc);
+}
+
+/* **************************************************** */
+
 pfring* pfring_open(char *device_name, u_int8_t promisc,
 		    u_int32_t caplen, u_int8_t _reentrant) {
 #ifdef USE_PCAP
@@ -175,7 +258,6 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
 
   return((pfring*)pcapPtr);
 #else
-  int32_t channel_id = -1;
   int err = 0;
   pfring *ring = (pfring*)malloc(sizeof(pfring));
 
@@ -192,53 +274,21 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
 #endif
 
   if(ring->fd > 0) {
-    struct sockaddr sa;
-    int             rc;
+
+    int rc;
     u_int memSlotsLen;
-    char *at;
+
 
     if(caplen > MAX_CAPLEN) caplen = MAX_CAPLEN;
     setsockopt(ring->fd, 0, SO_RING_BUCKET_LEN, &caplen, sizeof(caplen));
 
-    at = strchr(device_name, '@');
-    if(at != NULL) {
-      char *tok, *pos = NULL;
-
-      at[0] = '\0';
-
-      /* Syntax
-	  ethX@1,5       channel 1 and 5
-	  ethX@1-5       channel 1,2...5
-	  ethX@1-3,5-7   channel 1,2,3,5,6,7
-      */
-
-      tok = strtok_r(&at[1], ",", &pos);
-      channel_id = 0;
-
-      while(tok != NULL) {
-	char *dash = strchr(tok, '-');
-	int32_t min_val, max_val, i;
-
-	if(dash) {
-	  dash[0] = '\0';
-	  min_val = atoi(tok);
-	  max_val = atoi(&dash[1]);
-
-	} else
-	  min_val = max_val = atoi(tok);
-
-	for(i = min_val; i <= max_val; i++)
-	  channel_id |= 1 << i;
-
-	tok = strtok_r(NULL, ",", &pos);
-      }
-    }
-
     /* printf("channel_id=%d\n", channel_id); */
 
-    sa.sa_family   = PF_RING;
-    snprintf(sa.sa_data, sizeof(sa.sa_data), "%s", device_name);
-    rc = bind(ring->fd, (struct sockaddr *)&sa, sizeof(sa));
+    if((device_name == NULL) || (strcmp(device_name, "none") == 0)) {
+      /* No binding yet */
+      rc = 0;
+    } else
+      rc = pfring_bind(ring, device_name);
 
     if(rc == 0) {
       ring->buffer = (char *)mmap(NULL, PAGE_SIZE, PROT_READ|PROT_WRITE,
@@ -312,13 +362,6 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
     if(ring->reentrant)
       pthread_spin_init(&ring->spinlock, PTHREAD_PROCESS_PRIVATE);
 
-    if(channel_id != -1) {
-      int rc = pfring_set_channel_id(ring, channel_id);
-
-      if(rc != 0)
-	printf("pfring_set_channel_id() failed: %d\n", rc);
-    }
-
     return(ring);
   } else
     return(NULL);
@@ -341,8 +384,8 @@ u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
 
   /* Count how many RX channel the specified device supports */
   ring[0] = pfring_open(base_device_name, promisc, caplen, _reentrant);
-  
-  if(ring[0] == NULL) 
+
+  if(ring[0] == NULL)
     return(0);
   else
     num_channels = pfring_get_num_rx_channels(ring[0]);
@@ -786,9 +829,30 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 
 /* **************************************************** */
 
-int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
+int pfring_notify(pfring *ring, u_int8_t reflect_packet) {
+  if(ring->reentrant) {
+    /*
+      We do not support late packet consumers in multithreaded
+      applications as threads can steal each other's packets
+    */
+
+    return(-1);
+  }
+
+  if(ring->last_slot_to_update) {
+    ring->last_slot_to_update->slot_state = reflect_packet ? 2 : 0; /* Empty slot */
+    ring->last_slot_to_update = NULL;
+  }
+  
+  return(0);
+}
+
+/* **************************************************** */
+
+int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 		struct pfring_pkthdr *hdr,
-		u_int8_t wait_for_incoming_packet) {
+		u_int8_t wait_for_incoming_packet,
+		u_int8_t consume_packet_immediately) {
 #ifdef USE_PCAP
   pcap_t *pcapPtr = (pcap_t*)ring;
   const u_char *packet;
@@ -806,13 +870,21 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
 
   if(ring == NULL) return(-1);
 
+  if(ring->reentrant) {
+    /*
+      We do not support late packet consumers in multithreaded
+      applications as threads can steal each other's packets
+    */
+    consume_packet_immediately = 1;
+  }
+
 #ifdef ENABLE_DNA_SUPPORT
   if(ring->dna_mapped_device) {
     char *pkt;
 
     if(wait_for_incoming_packet) {
       if(ring->reentrant) pthread_spin_lock(&ring->spinlock);
-      
+
       switch(ring->dna_dev.device_model) {
       case intel_e1000:
 	e1000_there_is_a_packet_to_read(ring, wait_for_incoming_packet);
@@ -834,7 +906,7 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
     case intel_ixgbe:
       pkt = NULL, hdr->len = 0;
       break;
-    }    
+    }
 
     if(pkt && (hdr->len > 0)) {
       if(1)
@@ -854,6 +926,13 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
 #endif
 
       if((ring == NULL) || (ring->buffer == NULL)) return(-1);
+
+      /*
+	Check if the kernel needs to be notified that the previous
+	packet has been finally consumed
+      */
+      if(ring->last_slot_to_update) 
+	pfring_notify(ring, REFLECT_PACKET_DEVICE_NONE);
 
     do_pfring_recv:
       if(ring->reentrant)
@@ -889,7 +968,17 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
 	if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
 
 	ring->slots_info->tot_read++;
-	slot->slot_state = 0; /* Empty slot */
+
+	if(consume_packet_immediately) {
+	  ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
+	} else {
+	  /* We do not notify pf_ring that the packet has been read
+	     hence this slot will not be available for storing a new packet
+	     until we notify pf_ring
+	  */
+	  ring->last_slot_to_update = slot;
+	}      
+
 	if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
 	return(1);
       } else if(wait_for_incoming_packet) {
@@ -907,7 +996,7 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
 	*/
 	if(num_loops < MAX_NUM_LOOPS) {
 	  num_loops++;
-	  if(num_loops % YIELD_MULTIPLIER) {	  
+	  if(num_loops % YIELD_MULTIPLIER) {
 	    sched_yield();
 	  }
 	}
@@ -944,6 +1033,16 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
       return(-1); /* Not reached */
     }
 #endif
+}
+
+/* **************************************************** */
+
+int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
+		struct pfring_pkthdr *hdr,
+		u_int8_t wait_for_incoming_packet) {
+
+  return(pfring_read(ring, buffer, buffer_len,
+		     hdr, wait_for_incoming_packet, 1));
 }
 
 /* ******************************* */
