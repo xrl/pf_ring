@@ -1492,7 +1492,6 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   idx++, theSlot = get_insert_slot(pfr);
   pfr->slots_info->tot_pkts++;
 
-
   if((theSlot == NULL) || (theSlot->slot_state == 1 /* Full */)) {
     /* No room left */
     pfr->slots_info->tot_lost++;
@@ -1845,9 +1844,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	      hash_bucket->rule.internals.jiffies_last_match = jiffies;	/* Avoid immediate rule purging */
 	      hash_bucket->rule.internals.reflector_dev = NULL;
 
-	      rc = pfr->handle_hash_rule(pfr,
-					 hash_bucket,
-					 1 /* add_rule_from_plugin */);
+	      rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
 	      pfr->num_filtering_rules++;
 
 	      if(rc != 0) {
@@ -2315,12 +2312,16 @@ static int skb_ring_handler(struct sk_buff *skb,
 		     && (pfr->ring_netdev == skb->dev->master)))
 	     && is_valid_skb_direction(pfr->direction, recv_packet)
 	     ) {
-	    /* We've found the ring where the packet can be stored */
-	    add_skb_to_ring(skb, pfr, &hdr,
-			    is_ip_pkt, displ,
-			    channel_id, num_rx_channels);
-	    rc = 1; /* Ring found: we've done our job */
-	    break;
+	    FlowSlot *theSlot = get_insert_slot(pfr);
+
+	    if((theSlot == NULL) || (theSlot->slot_state == 0 /* Not full */)) {
+	      /* We've found the ring where the packet can be stored */
+	      add_skb_to_ring(skb, pfr, &hdr,
+			      is_ip_pkt, displ,
+			      channel_id, num_rx_channels);
+	      rc = 1; /* Ring found: we've done our job */
+	      break;
+	    }
 	  }
 	}
 
