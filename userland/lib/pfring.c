@@ -72,15 +72,19 @@ int pfring_set_reflection_device(pfring *ring, char *dev_name) {
 
 /* ******************************* */
 
-int pfring_set_cluster(pfring *ring, u_int clusterId) {
+int pfring_set_cluster(pfring *ring, u_int clusterId, cluster_type the_type) {
 #ifdef USE_PCAP
   return(-1);
 #else
 #ifdef ENABLE_DNA_SUPPORT
   if(ring->dna_mapped_device) return(-1);
 #endif
+  struct add_to_cluster cluster;
+
+  cluster.clusterId = clusterId, cluster.the_type = the_type;
+
   return(ring ? setsockopt(ring->fd, 0, SO_ADD_TO_CLUSTER,
-			      &clusterId, sizeof(clusterId)): -1);
+			   &cluster, sizeof(cluster)): -1);
 #endif
 }
 
@@ -274,10 +278,8 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
 #endif
 
   if(ring->fd > 0) {
-
     int rc;
     u_int memSlotsLen;
-
 
     if(caplen > MAX_CAPLEN) caplen = MAX_CAPLEN;
     setsockopt(ring->fd, 0, SO_RING_BUCKET_LEN, &caplen, sizeof(caplen));

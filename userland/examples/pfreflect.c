@@ -535,7 +535,7 @@ int main(int argc, char* argv[]) {
   }
 
   if(clusterId > 0) {
-    rc = pfring_set_cluster(pd, clusterId);
+    rc = pfring_set_cluster(pd, clusterId, cluster_round_robin);
     printf("pfring_set_cluster returned %d\n", rc);
   }
 

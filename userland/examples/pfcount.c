@@ -544,7 +544,7 @@ int main(int argc, char* argv[]) {
   printf("# Polling threads:    %d\n", num_threads);
 
   if(clusterId > 0) {
-    rc = pfring_set_cluster(pd, clusterId);
+    rc = pfring_set_cluster(pd, clusterId, cluster_round_robin);
     printf("pfring_set_cluster returned %d\n", rc);
   }
 

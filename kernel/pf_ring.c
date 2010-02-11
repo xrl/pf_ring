@@ -25,6 +25,7 @@
  * - Ury Stankevich <urykhy@gmail.com>
  * - Raja Mukerji <raja@mukerji.com>
  * - Davide Viti <zinosat@tiscali.it>
+ * - Will Metcalf <william.metcalf@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -3207,7 +3208,7 @@ unsigned int ring_poll(struct file *file,
 
 /* ************************************* */
 
-int add_to_cluster_list(ring_cluster_element * el, struct sock *sock)
+int add_sock_to_cluster_list(ring_cluster_element * el, struct sock *sock)
 {
   if(el->cluster.num_cluster_elements == CLUSTER_LEN)
     return(-1);	/* Cluster full */
@@ -3274,17 +3275,18 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr)
 
 /* ************************************* */
 
-static int add_to_cluster(struct sock *sock,
-			  struct ring_opt *pfr, u_short cluster_id)
+static int add_sock_to_cluster(struct sock *sock,
+			       struct ring_opt *pfr, 
+			       struct add_to_cluster *cluster)
 {
   struct list_head *ptr, *tmp_ptr;
   ring_cluster_element *cluster_ptr;
 
 #ifndef RING_DEBUG
-  printk("[PF_RING] --> add_to_cluster(%d)\n", cluster_id);
+  printk("[PF_RING] --> add_sock_to_cluster(%d)\n", cluster->clusterId);
 #endif
 
-  if(cluster_id == 0 /* 0 = No Cluster */ )
+  if(cluster->clusterId == 0 /* 0 = No Cluster */ )
     return(-EINVAL);
 
   if(pfr->cluster_id != 0)
@@ -3293,30 +3295,28 @@ static int add_to_cluster(struct sock *sock,
   list_for_each_safe(ptr, tmp_ptr, &ring_cluster_list) {
     cluster_ptr = list_entry(ptr, ring_cluster_element, list);
 
-    if(cluster_ptr->cluster.cluster_id == cluster_id) {
-      return(add_to_cluster_list(cluster_ptr, sock));
+    if(cluster_ptr->cluster.cluster_id == cluster->clusterId) {
+      return(add_sock_to_cluster_list(cluster_ptr, sock));
     }
   }
 
   /* There's no existing cluster. We need to create one */
-  if((cluster_ptr = kmalloc(sizeof(ring_cluster_element),
-			     GFP_KERNEL)) == NULL)
+  if((cluster_ptr = kmalloc(sizeof(ring_cluster_element), GFP_KERNEL)) == NULL)
     return(-ENOMEM);
 
   INIT_LIST_HEAD(&cluster_ptr->list);
 
-  cluster_ptr->cluster.cluster_id = cluster_id;
+  cluster_ptr->cluster.cluster_id = cluster->clusterId;
   cluster_ptr->cluster.num_cluster_elements = 1;
-  cluster_ptr->cluster.hashing_mode = cluster_per_flow;	/* Default */
+  cluster_ptr->cluster.hashing_mode = cluster->the_type; /* Default */
   cluster_ptr->cluster.hashing_id = 0;
 
   memset(cluster_ptr->cluster.sk, 0, sizeof(cluster_ptr->cluster.sk));
   cluster_ptr->cluster.sk[0] = sock;
-  pfr->cluster_id = cluster_id;
+  pfr->cluster_id = cluster->clusterId;
+  list_add(&cluster_ptr->list, &ring_cluster_list); /* Add as first entry */
 
-  list_add(&cluster_ptr->list, &ring_cluster_list);	/* Add as first entry */
-
-  return(0);		/* 0 = OK */
+  return(0); /* 0 = OK */
 }
 
 /* ************************************* */
@@ -3447,7 +3447,8 @@ static int ring_setsockopt(struct socket *sock,
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */ ;
-  u_int cluster_id, debug = 0;
+  u_int debug = 0;
+  struct add_to_cluster cluster;
   int32_t channel_id;
   char applName[32 + 1] = { 0 }, dev_name[8] = { 0 };
   struct list_head *prev = NULL;
@@ -3538,14 +3539,14 @@ static int ring_setsockopt(struct socket *sock,
     break;
 
   case SO_ADD_TO_CLUSTER:
-    if(optlen != sizeof(val))
+    if(optlen != sizeof(cluster))
       return -EINVAL;
 
-    if(copy_from_user(&cluster_id, optval, sizeof(cluster_id)))
+    if(copy_from_user(&cluster, optval, sizeof(cluster)))
       return -EFAULT;
 
     write_lock(&pfr->ring_rules_lock);
-    ret = add_to_cluster(sock->sk, pfr, cluster_id);
+    ret = add_sock_to_cluster(sock->sk, pfr, &cluster);
     write_unlock(&pfr->ring_rules_lock);
     break;
 

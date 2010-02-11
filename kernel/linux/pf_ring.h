@@ -28,8 +28,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.1.1"
-#define RING_VERSION_NUM           0x040101
+#define RING_VERSION                "4.1.2"
+#define RING_VERSION_NUM           0x040102
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -349,12 +349,17 @@ typedef struct {
 
 /* ************************************************* */
 
-#ifdef __KERNEL__
-
-enum cluster_type {
+typedef enum {
   cluster_per_flow = 0,
   cluster_round_robin
+} cluster_type;
+
+struct add_to_cluster {
+  u_int clusterId;
+  cluster_type the_type;
 };
+
+#ifdef __KERNEL__
 
 #define CLUSTER_LEN       8
 
@@ -366,11 +371,11 @@ enum cluster_type {
  * parameter.
  */
 struct ring_cluster {
-  u_short             cluster_id; /* 0 = no cluster */
-  u_short             num_cluster_elements;
-  enum cluster_type   hashing_mode;
-  u_short             hashing_id;
-  struct sock         *sk[CLUSTER_LEN];
+  u_short        cluster_id; /* 0 = no cluster */
+  u_short        num_cluster_elements;
+  cluster_type   hashing_mode;
+  u_short        hashing_id;
+  struct sock    *sk[CLUSTER_LEN];
 };
 
 /*
