@@ -786,7 +786,7 @@ static int ring_alloc_mem(struct sock *sk)
   struct ring_opt *pfr = ring_sk(sk);
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] ring_alloc_mem()\n");
+  printk("[PF_RING] ring_alloc_mem(bucket_len=%d)\n", pfr->bucket_len);
 #endif
 
   /* **********************************************
@@ -969,9 +969,8 @@ static inline FlowSlot *get_remove_slot(struct ring_opt *pfr)
 
   if(pfr->ring_slots != NULL)
     return((FlowSlot *) &
-	    (pfr->
-	     ring_slots[pfr->slots_info->remove_idx *
-			pfr->slots_info->slot_len]));
+	    (pfr->ring_slots[pfr->slots_info->remove_idx *
+			     pfr->slots_info->slot_len]));
   else
     return(NULL);
 }
@@ -2126,8 +2125,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n",
-	 channel_id, num_rx_channels);
+  // printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n", channel_id, num_rx_channels);
 #endif
 
   if((!skb)		/* Invalid skb */
@@ -2140,12 +2138,11 @@ static int skb_ring_handler(struct sk_buff *skb,
     return(0);
   }
 #if defined(RING_DEBUG)
-  if(1) {
+  if(0) {
     struct timeval tv;
 
     skb_get_timestamp(skb, &tv);
-    printk
-      ("[PF_RING] skb_ring_handler() [skb=%p][%u.%u][len=%d][dev=%s][csum=%u]\n",
+    printk("[PF_RING] skb_ring_handler() [skb=%p][%u.%u][len=%d][dev=%s][csum=%u]\n",
        skb, (unsigned int)tv.tv_sec, (unsigned int)tv.tv_usec,
        skb->len,
        skb->dev->name == NULL ? "<NULL>" : skb->dev->name,
@@ -2607,7 +2604,7 @@ static int ring_create(
 {
   struct sock *sk;
   struct ring_opt *pfr;
-  int err, rc = 0;
+  int err;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_create()\n");
@@ -2670,13 +2667,11 @@ static int ring_create(
 
   ring_insert(sk);
 
-  rc = ring_alloc_mem(sk);
-
-#if defined(RING_DEBUG)
+  #if defined(RING_DEBUG)
   printk("[PF_RING] ring_create(): created\n");
 #endif
 
-  return(rc);
+  return(0);
  out:
   return err;
 }
@@ -2837,7 +2832,8 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     return(-1);
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] packet_ring_bind(%s) called\n", dev->name);
+  printk("[PF_RING] packet_ring_bind(%s, bucket_len=%d) called\n", 
+	 dev->name, pfr->bucket_len);
 #endif
 
   ring_proc_add(ring_sk(sk), dev);
@@ -3007,6 +3003,11 @@ static int ring_mmap(struct file *file,
   int rc;
   unsigned long size = (unsigned long)(vma->vm_end - vma->vm_start);
 
+  if(ring_alloc_mem(sk) != 0) {
+    printk("[PF_RING] ring_mmap(): unable to allocate memory\n");
+    return(-EINVAL);
+  }
+  
   if(size % PAGE_SIZE) {
 #if defined(RING_DEBUG)
     printk("[PF_RING] ring_mmap() failed: "
@@ -3015,7 +3016,8 @@ static int ring_mmap(struct file *file,
     return(-EINVAL);
   }
 #if defined(RING_DEBUG)
-  printk("[PF_RING] ring_mmap() called, size: %ld bytes\n", size);
+  printk("[PF_RING] ring_mmap() called, size: %ld bytes [bucket_len=%d]\n",
+	 size, pfr->bucket_len);
 #endif
 
   if((pfr->dna_device == NULL) && (pfr->ring_memory == NULL)) {
@@ -3962,6 +3964,10 @@ static int ring_setsockopt(struct socket *sock,
     else {
       if(copy_from_user(&pfr->bucket_len, optval, optlen))
 	return -EFAULT;
+
+#ifdef RING_DEBUG
+      printk("[PF_RING] --> SO_RING_BUCKET_LEN=%d\n", pfr->bucket_len);
+#endif
     }
     break;
 
