@@ -126,7 +126,6 @@ static u_int plugin_registration_size = 0;
 static struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
 static u_short max_registered_plugin_id = 0;
 static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
-static rwlock_t ring_list_lock = RW_LOCK_UNLOCKED;
 
 /* ********************************** */
 
@@ -912,7 +911,7 @@ static inline void ring_insert(struct sock *sk)
  * stop when we find the one we're looking for (break),
  * or when we reach the end of the list.
  */
-static inline void ring_remove(struct sock *sk)
+static inline void ring_remove(struct sock *sk, struct ring_opt *pfr_to_delete)
 {
   struct list_head *ptr, *tmp_ptr;
   struct ring_element *entry;
@@ -922,13 +921,17 @@ static inline void ring_remove(struct sock *sk)
 #endif
 
   list_for_each_safe(ptr, tmp_ptr, &ring_table) {
+    struct ring_opt *pfr;
+    
     entry = list_entry(ptr, struct ring_element, list);
+    pfr = ring_sk(entry->sk);
 
-    if(entry->sk == sk) {
+    if(pfr->master_ring == pfr_to_delete)
+      pfr->master_ring = NULL;
+    else if(entry->sk == sk) {
       list_del(ptr);
       kfree(entry);
       ring_table_size--;
-      break;
     }
   }
 
@@ -1642,7 +1645,7 @@ static int reflect_packet(struct sk_buff *skb,
 /* ********************************** */
 
 static int add_skb_to_ring(struct sk_buff *skb,
-			   struct ring_opt *pfr,
+			   struct ring_opt *_pfr,
 			   struct pfring_pkthdr *hdr,
 			   int is_ip_pkt, int displ,
 			   u_int8_t channel_id,
@@ -1653,12 +1656,15 @@ static int add_skb_to_ring(struct sk_buff *skb,
   u_int8_t free_parse_mem = 0;
   u_int last_matched_plugin = 0, debug = 0;
   u_char hash_found = 0;
+  struct ring_opt *pfr;
   struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
   /* This is a memory holder
      for storing parsed packet information
      that will then be freed when the packet
      has been handled
   */
+
+  pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
 
   if((!pfring_enabled) || (!pfr->ring_active))
     return(-1);
@@ -2707,25 +2713,6 @@ static int ring_release(struct socket *sock)
   sock_orphan(sk);
   ring_proc_remove(ring_sk(sk));
 
-  write_lock(&ring_list_lock);
-
-  if(pfr->ring_netdev && (pfr->ring_netdev->ifindex < MAX_NUM_DEVICES)) {
-    struct list_head *ptr, *tmp_ptr;
-    device_ring_list_element *entry;
-
-    list_for_each_safe(ptr, tmp_ptr,
-		       &device_ring_list[pfr->ring_netdev->ifindex]) {
-      entry = list_entry(ptr, device_ring_list_element, list);
-
-      if(entry->the_ring == pfr) {
-	list_del(ptr);
-	kfree(entry);
-	break;
-      }
-    }
-  }
-
-  write_unlock(&ring_list_lock);
   write_lock_bh(&ring_mgmt_lock);
 
   if(pfr->cluster_id != 0)
@@ -2734,7 +2721,7 @@ static int ring_release(struct socket *sock)
   if(pfr->reflector_dev != NULL)
     dev_put(pfr->reflector_dev); /* Release device */
   
-  ring_remove(sk);
+  ring_remove(sk, pfr);
   sock->sk = NULL;
 
   /* Free rules */
@@ -2839,22 +2826,6 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 #endif
 
   ring_proc_add(ring_sk(sk), dev);
-
-  if(dev->ifindex < MAX_NUM_DEVICES) {
-    device_ring_list_element *elem;
-
-    /* printk("[PF_RING] Adding ring to device index %d\n", dev->ifindex); */
-
-    elem = kmalloc(sizeof(device_ring_list_element), GFP_ATOMIC);
-    if(elem != NULL) {
-      elem->the_ring = pfr;
-      INIT_LIST_HEAD(&elem->list);
-      write_lock(&ring_list_lock);
-      list_add(&elem->list, &device_ring_list[dev->ifindex]);
-      write_unlock(&ring_list_lock);
-      /* printk("[PF_RING] Added ring to device index %d\n", dev->ifindex); */
-    }
-  }
 
   /*
     IMPORTANT
@@ -3276,6 +3247,39 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr)
 
 /* ************************************* */
 
+static int set_master_ring(struct sock *sock,
+			   struct ring_opt *_pfr, 
+			   u_int32_t master_socket_id)
+{
+  int rc = -1;
+  struct list_head *ptr;
+
+  /* Avoid the ring to be manipulated while playing with it */
+  read_lock_bh(&ring_mgmt_lock);
+
+  list_for_each(ptr, &ring_table) {
+    struct ring_opt *pfr;
+    struct ring_element *entry;
+    struct sock *skElement;
+
+    entry = list_entry(ptr, struct ring_element, list);
+
+    skElement = entry->sk;
+    pfr = ring_sk(skElement);
+
+    if((pfr != NULL) && (pfr->ring_id == master_socket_id)) {
+      _pfr->master_ring = pfr;
+      rc = 0;
+      break;
+    }
+  }
+  
+  read_unlock_bh(&ring_mgmt_lock);
+  return(rc);
+}
+
+/* ************************************* */
+
 static int add_sock_to_cluster(struct sock *sock,
 			       struct ring_opt *pfr, 
 			       struct add_to_cluster *cluster)
@@ -3447,7 +3451,8 @@ static int ring_setsockopt(struct socket *sock,
 			   int optlen)
 {
   struct ring_opt *pfr = ring_sk(sock->sk);
-  int val, found, ret = 0 /* OK */ ;
+  int val, found, ret = 0 /* OK */;
+  u_int32_t ring_id;
   u_int debug = 0;
   struct add_to_cluster cluster;
   int32_t channel_id;
@@ -4012,6 +4017,18 @@ static int ring_setsockopt(struct socket *sock,
     }  
     break;
     
+  case SO_SET_MASTER_RING:
+    if(optlen != sizeof(ring_id))
+      return -EINVAL;
+
+    if(copy_from_user(&ring_id, optval, sizeof(ring_id)))
+      return -EFAULT;
+
+    write_lock(&pfr->ring_rules_lock);
+    ret = set_master_ring(sock->sk, pfr, ring_id);
+    write_unlock(&pfr->ring_rules_lock);
+    break;
+
   default:
     found = 0;
     break;
@@ -4255,38 +4272,6 @@ static int ring_getsockopt(struct socket *sock,
 
 /* ************************************* */
 
-u_int get_num_device_free_slots(int ifindex)
-{
-  int num = 0;
-
-  if((ifindex >= 0) && (ifindex < MAX_NUM_DEVICES)) {
-    struct list_head *ptr, *tmp_ptr;
-    device_ring_list_element *entry;
-
-    list_for_each_safe(ptr, tmp_ptr, &device_ring_list[ifindex]) {
-      int num_free_slots;
-
-      entry = list_entry(ptr, device_ring_list_element, list);
-
-      num_free_slots =
-	get_num_ring_free_slots(entry->the_ring);
-
-      if(num_free_slots == 0)
-	return(0);
-      else {
-	if(num == 0)
-	  num = num_free_slots;
-	else if(num > num_free_slots)
-	  num = num_free_slots;
-      }
-    }
-  }
-
-  return(num);
-}
-
-/* ************************************* */
-
 void dna_device_handler(dna_device_operation operation,
 			unsigned long packet_memory,
 			u_int packet_memory_num_slots,
@@ -4458,7 +4443,6 @@ static struct pfring_hooks ring_hooks = {
   .pfring_registration = register_plugin,
   .pfring_unregistration = unregister_plugin,
   .ring_dna_device_handler = dna_device_handler,
-  .pfring_free_device_slots = get_num_device_free_slots,
 };
 
 /* ************************************ */

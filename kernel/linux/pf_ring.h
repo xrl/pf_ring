@@ -46,6 +46,7 @@
 #define SO_SET_APPL_NAME                 110
 #define SO_SET_PACKET_DIRECTION          111
 #define SO_SET_REFLECTION_DEVICE         112
+#define SO_SET_MASTER_RING               113
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -429,6 +430,9 @@ struct ring_opt {
   u_int32_t ring_id;
   char *appl_name; /* String that identifies the application bound to the socket */
   packet_direction direction; /* Specify the capture direction for packets */
+
+  /* Master Ring */
+  struct ring_opt *master_ring;
 
   /* Direct NIC Access */
   u_int8_t mmap_count;
