@@ -913,7 +913,7 @@ static inline void ring_remove(struct sock *sk)
   struct ring_element *entry, *to_delete = NULL;
   struct ring_opt *pfr_to_delete = ring_sk(sk);
 
-#if !defined(RING_DEBUG)
+#if defined(RING_DEBUG)
   printk("[PF_RING] ring_remove()\n");
 #endif
 
@@ -924,12 +924,12 @@ static inline void ring_remove(struct sock *sk)
     pfr = ring_sk(entry->sk);
 
     if(pfr->master_ring == pfr_to_delete) {
-#if !defined(RING_DEBUG)
+#if defined(RING_DEBUG)
       printk("[PF_RING] Removing master ring\n");
 #endif
       pfr->master_ring = NULL;
     } else if(entry->sk == sk) {
-#if !defined(RING_DEBUG)
+#if defined(RING_DEBUG)
       printk("[PF_RING] Found socket to remove\n");
 #endif
       list_del(ptr);
@@ -940,7 +940,7 @@ static inline void ring_remove(struct sock *sk)
 
   if(to_delete) kfree(to_delete);
 
-#if !defined(RING_DEBUG)
+#if defined(RING_DEBUG)
   printk("[PF_RING] leaving ring_remove()\n");
 #endif
 }
@@ -1472,7 +1472,7 @@ static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
 /* ********************************** */
 
 static void add_pkt_to_ring(struct sk_buff *skb,
-			    struct ring_opt *pfr,
+			    struct ring_opt *_pfr,
 			    struct pfring_pkthdr *hdr,
 			    int displ, u_int8_t channel_id,
 			    int offset, void *plugin_mem)
@@ -1481,6 +1481,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   int idx;
   FlowSlot *theSlot;
   int32_t the_bit = 1 << channel_id;
+  struct ring_opt *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] --> add_pkt_to_ring(len=%d) [pfr->channel_id=%d][channel_id=%d]\n",
@@ -1650,7 +1651,7 @@ static int reflect_packet(struct sk_buff *skb,
 /* ********************************** */
 
 static int add_skb_to_ring(struct sk_buff *skb,
-			   struct ring_opt *_pfr,
+			   struct ring_opt *pfr,
 			   struct pfring_pkthdr *hdr,
 			   int is_ip_pkt, int displ,
 			   u_int8_t channel_id,
@@ -1661,7 +1662,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
   u_int8_t free_parse_mem = 0;
   u_int last_matched_plugin = 0, debug = 0;
   u_char hash_found = 0;
-  struct ring_opt *pfr;
   struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
   /* This is a memory holder
      for storing parsed packet information
@@ -1669,15 +1669,13 @@ static int add_skb_to_ring(struct sk_buff *skb,
      has been handled
   */
 
-  pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
-
-#if !defined(RING_DEBUG)
+#if defined(RING_DEBUG)
   printk("[PF_RING] --> add_skb_to_ring(len=%d) [channel_id=%d/%d][active=%d][%s]\n",
 	 hdr->len, channel_id, num_rx_channels, 
 	 pfr->ring_active, pfr->ring_netdev->name);
 #endif
 
-  if((!pfring_enabled) || (!pfr->ring_active))
+  if((!pfring_enabled) || ((!pfr->ring_active) && (pfr->master_ring == NULL)))
     return(-1);
 
   pfr->num_rx_channels = num_rx_channels; /* Constantly updated */
@@ -1961,8 +1959,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
       } else
 	offset = 0, hdr->parsed_header_len = 0, mem = NULL;
 
-      add_pkt_to_ring(skb, pfr, hdr, displ, channel_id,
-		      offset, mem);
+      add_pkt_to_ring(skb, pfr, hdr, displ, channel_id, offset, mem);
     }
   }
 #if defined(RING_DEBUG)
@@ -2733,9 +2730,7 @@ static int ring_release(struct socket *sock)
     write_lock_bh...write_unlock_bh block.
   */
   sock_orphan(sk);
-  printk("[PF_RING] %d\n", 1);
   ring_proc_remove(pfr);
-  printk("[PF_RING] %d\n", 2);
   write_lock_bh(&ring_mgmt_lock);
 
   if(pfr->ring_netdev != &none_dev) {
@@ -2746,9 +2741,7 @@ static int ring_release(struct socket *sock)
     dev_put(pfr->reflector_dev); /* Release device */
   }
 
-  printk("[PF_RING] %d\n", 3);
   ring_remove(sk);
-  printk("[PF_RING] %d\n", 4);
   sock->sk = NULL;
 
   /* Free rules */
@@ -2807,20 +2800,17 @@ static int ring_release(struct socket *sock)
     }
   }
 
-  printk("[PF_RING] %d\n", 5);
   /* Free the ring buffer later, vfree needs interrupts enabled */
   ring_memory_ptr = pfr->ring_memory;
   ring_sk(sk) = NULL;
   skb_queue_purge(&sk->sk_write_queue);
 
-  printk("[PF_RING] %d\n", 6);
   sock_put(sk);
   write_unlock_bh(&ring_mgmt_lock);
 
   if(pfr->appl_name != NULL)
     kfree(pfr->appl_name);
 
-  printk("[PF_RING] %d\n", 7);
   if(ring_memory_ptr != NULL) {
 #if defined(RING_DEBUG)
     printk("[PF_RING] ring_release: rvfree\n");
@@ -2828,9 +2818,7 @@ static int ring_release(struct socket *sock)
     rvfree(ring_memory_ptr, pfr->slots_info->tot_mem);
   }
 
-  printk("[PF_RING] %d\n", 8);
   kfree(pfr);
-  printk("[PF_RING] %d\n", 9);
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_release: rvfree done\n");
 #endif
@@ -3528,7 +3516,9 @@ static int ring_setsockopt(struct socket *sock,
   case SO_ATTACH_FILTER:
     ret = -EINVAL;
 
+#if defined(RING_DEBUG)
     printk("[PF_RING] BPF filter (%d)\n", 0);
+#endif
 
     if(optlen == sizeof(struct sock_fprog)) {
       unsigned int fsize;
@@ -3537,7 +3527,9 @@ static int ring_setsockopt(struct socket *sock,
 
       ret = -EFAULT;
 
+#if defined(RING_DEBUG)
       printk("[PF_RING] BPF filter (%d)\n", 1);
+#endif
       /*
 	NOTE
 
@@ -3552,8 +3544,7 @@ static int ring_setsockopt(struct socket *sock,
       /* Fix below courtesy of Noam Dev <noamdev@gmail.com> */
       fsize = sizeof(struct sock_filter) * fprog.len;
       filter =
-	kmalloc(fsize + sizeof(struct sk_filter),
-		GFP_KERNEL);
+	kmalloc(fsize + sizeof(struct sk_filter), GFP_KERNEL);
 
       if(filter == NULL) {
 	ret = -ENOMEM;
@@ -3578,12 +3569,10 @@ static int ring_setsockopt(struct socket *sock,
       write_unlock(&pfr->ring_rules_lock);
       ret = 0;
 
-      //#if !defined(RING_DEBUG)
-      printk
-	("[PF_RING] BPF filter attached succesfully [len=%d]\n",
-	 filter->len);
-      //#endif
-
+#if defined(RING_DEBUG)
+      printk("[PF_RING] BPF filter attached succesfully [len=%d]\n",
+	     filter->len);
+#endif
     }
     break;
 

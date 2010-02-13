@@ -72,13 +72,14 @@ int pfring_set_reflection_device(pfring *ring, char *dev_name) {
 
 /* ******************************* */
 
-int pfring_set_master(pfring *ring, u_int32_t ring_id) {
+int pfring_set_master(pfring *ring, pfring *master) {
 #ifdef USE_PCAP
   return(-1);
 #else
 #ifdef ENABLE_DNA_SUPPORT
   if(ring->dna_mapped_device) return(-1);
 #endif
+  u_int32_t ring_id = pfring_get_ring_id(master);
   return(ring ? setsockopt(ring->fd, 0, SO_SET_MASTER_RING,
 			   &ring_id, sizeof(ring_id)): -1);
 #endif

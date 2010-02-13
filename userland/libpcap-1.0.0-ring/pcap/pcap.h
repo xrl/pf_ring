@@ -393,3 +393,7 @@ int	pcap_get_selectable_fd(pcap_t *);
 #endif
 
 #endif
+
+#ifdef HAVE_PF_RING
+extern int pcap_set_master(pcap_t *handle, pcap_t *master);
+#endif

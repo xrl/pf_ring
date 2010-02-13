@@ -3731,3 +3731,8 @@ reset_kernel_filter(pcap_t *handle)
 #endif
 
 
+#ifdef HAVE_PF_RING
+int pcap_set_master(pcap_t *handle, pcap_t *master) {
+    return(pfring_set_master(handle->ring, master->ring));
+}
+#endif

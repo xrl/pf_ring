@@ -469,7 +469,7 @@ int main(int argc, char* argv[]) {
     } else {
       printf("Capturing from %s\n", a_device);
 
-      if(pfring_set_master(a_pd, pfring_get_ring_id(pd)) != 0)
+      if(pfring_set_master(a_pd, pd) != 0)
 	printf("pfring_set_master(a) failed\n");
       else
 	printf("pfring_set_master(a) succeeded\n");
@@ -484,7 +484,7 @@ int main(int argc, char* argv[]) {
     } else {
       printf("Capturing from %s\n", b_device);
 
-      if(pfring_set_master(b_pd, pfring_get_ring_id(pd)) != 0)
+      if(pfring_set_master(b_pd, pd) != 0)
 	printf("pfring_set_master(b) failed\n");
       else
 	printf("pfring_set_master(b) succeeded\n");
