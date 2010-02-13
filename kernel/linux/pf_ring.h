@@ -54,6 +54,7 @@
 #define SO_GET_HASH_FILTERING_RULE_STATS 122
 #define SO_GET_MAPPED_DNA_DEVICE         123
 #define SO_GET_NUM_RX_CHANNELS           124
+#define SO_GET_RING_ID                   125
 
 /* Map */
 #define SO_MAP_DNA_DEVICE                130

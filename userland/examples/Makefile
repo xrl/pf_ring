@@ -51,7 +51,7 @@ LIBS       = ${LIBPFRING} -lpthread
 #
 # Main targets
 #
-PFPROGS   = ringc rings ringm pcaps pfcount pfreflect pfmap forwarder alldevs
+PFPROGS   = ringc rings ringm pcaps pfcount pftwin pfreflect pfmap forwarder alldevs
 PCAPPROGS = pcount pwrite
 TARGETS   = ${PFPROGS} ${PCAPPROGS}
 
@@ -79,6 +79,9 @@ pfcount: pfcount.o ${LIBPFRING}
 
 pfreflect: pfreflect.o ${LIBPFRING}
 	${CC} pfreflect.o ${LIBS} -o $@
+
+pftwin: pftwin.o ${LIBPFRING}
+	${CC} pftwin.o ${LIBS} -o $@
 
 pfmap: pfmap.o ${LIBPFRING}
 	${CC} pfmap.o ${LIBS} -o $@

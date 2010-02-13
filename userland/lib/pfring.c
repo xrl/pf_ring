@@ -515,6 +515,25 @@ u_int8_t pfring_get_num_rx_channels(pfring *ring) {
 
 /* **************************************************** */
 
+u_int16_t pfring_get_ring_id(pfring *ring) {
+#ifdef USE_PCAP
+  return(1);
+#else
+  if(ring == NULL)
+    return(1);
+  else {
+    u_int8_t id;
+    socklen_t len = sizeof(id);
+
+    int rc = getsockopt(ring->fd, 0, SO_GET_RING_ID, &id, &len);
+
+    return((rc == 0) ? id : 1);
+  }
+#endif
+}
+
+/* **************************************************** */
+
 int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 				    char* stats, u_int *stats_len) {
 #ifdef USE_PCAP

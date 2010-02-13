@@ -151,6 +151,7 @@ extern "C" {
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 				      char* stats, u_int *stats_len);
   u_int8_t pfring_get_num_rx_channels(pfring *ring);
+  u_int16_t pfring_get_ring_id(pfring *ring);
   int pfring_get_hash_filtering_rule_stats(pfring *ring,
 					   hash_filtering_rule* rule,
 					   char* stats, u_int *stats_len);
