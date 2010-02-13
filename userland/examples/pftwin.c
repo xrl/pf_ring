@@ -333,6 +333,7 @@ void help(void) {
   printf("-l <len>        Capture length\n");
 
   printf("-v              Verbose\n");
+  exit(0);  
 }
 
 /* *************************************** */
