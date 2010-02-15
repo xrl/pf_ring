@@ -40,7 +40,7 @@ class PFring {
 
   /* Cluster */
   inline int set_cluster(u_int clusterId)
-    { return((pcapPtr && pcapPtr->ring) ? pfring_set_cluster(pcapPtr->ring, clusterId) : -1); };
+  { return((pcapPtr && pcapPtr->ring) ? pfring_set_cluster(pcapPtr->ring, clusterId, cluster_round_robin) : -1); };
   inline int remove_from_cluster()               
     { return((pcapPtr && pcapPtr->ring) ? pfring_remove_from_cluster(pcapPtr->ring) : -1);    };
 
