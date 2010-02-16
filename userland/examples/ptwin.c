@@ -40,7 +40,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#include <pcap.h>
+#define HAVE_PF_RING
+#include <pcap/pcap.h>
 
 #include "pfring.h"
 
@@ -426,7 +427,7 @@ int main(int argc, char* argv[]) {
 	  }		
       }
 
-      if(pcap_set_master(b_pd, pd) != 0)
+      if(pcap_set_master_id(b_pd, pcap_get_pfring_id(pd)) != 0)
 	printf("pcap_set_master(b) failed\n");
       else
 	printf("pcap_set_master(b) succeeded\n");

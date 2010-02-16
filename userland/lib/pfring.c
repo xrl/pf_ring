@@ -72,7 +72,7 @@ int pfring_set_reflection_device(pfring *ring, char *dev_name) {
 
 /* ******************************* */
 
-int pfring_set_master_id(pfring *ring, ring_id master_id) {
+int pfring_set_master_id(pfring *ring, u_int32_t master_id) {
 #ifdef USE_PCAP
   return(-1);
 #else

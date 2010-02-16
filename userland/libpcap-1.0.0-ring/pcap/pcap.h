@@ -395,5 +395,7 @@ int	pcap_get_selectable_fd(pcap_t *);
 #endif
 
 #ifdef HAVE_PF_RING
+extern u_int32_t pcap_get_pfring_id(pcap_t *handle);
+extern int pcap_set_master_id(pcap_t *handle, u_int32_t master_id);
 extern int pcap_set_master(pcap_t *handle, pcap_t *master);
 #endif

@@ -1021,7 +1021,7 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 	handle->md.packets_read++;
 
 	/* Call the user supplied callback function */
-	callback(userdata, &pcap_header, bp);
+	callback(userdata, (struct pcap_pkthdr*)&pcap_header, bp);
 
 	return 1;
 }
@@ -3732,6 +3732,17 @@ reset_kernel_filter(pcap_t *handle)
 
 
 #ifdef HAVE_PF_RING
+u_int32_t pcap_get_pfring_id(pcap_t *handle) {
+  if(handle->ring == NULL)
+    return(0);
+  else
+    return(pfring_get_ring_id(handle->ring));
+}
+
+int pcap_set_master_id(pcap_t *handle, u_int32_t master_id) {
+    return(pfring_set_master_id(handle->ring, master_id));
+}
+
 int pcap_set_master(pcap_t *handle, pcap_t *master) {
     return(pfring_set_master(handle->ring, master->ring));
 }
