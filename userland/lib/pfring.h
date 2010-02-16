@@ -127,6 +127,7 @@ extern "C" {
   int pfring_set_direction(pfring *ring, packet_direction direction);
   int pfring_set_reflection_device(pfring *ring, char *dev_name);
   int pfring_set_cluster(pfring *ring, u_int clusterId, cluster_type the_type);
+  int pfring_set_master_id(pfring *ring, ring_id master_id);
   int pfring_set_master(pfring *ring, pfring *master);
   int pfring_set_channel_id(pfring *ring, int32_t channel_id);
   int pfring_set_application_name(pfring *ring, char *name);
