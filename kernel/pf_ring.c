@@ -782,6 +782,9 @@ static int ring_alloc_mem(struct sock *sk)
   u_int32_t tot_mem;
   struct ring_opt *pfr = ring_sk(sk);
 
+  /* Check if the memory has been already allocated */
+  if(pfr->ring_memory != NULL) return(0); 
+
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_alloc_mem(bucket_len=%d)\n", pfr->bucket_len);
 #endif
@@ -818,8 +821,10 @@ static int ring_alloc_mem(struct sock *sk)
   pfr->ring_memory = rvmalloc(tot_mem);
 
   if(pfr->ring_memory != NULL) {
+#if defined(RING_DEBUG)
     printk("[PF_RING] successfully allocated %lu bytes at 0x%08lx\n",
 	   (unsigned long)tot_mem, (unsigned long)pfr->ring_memory);
+#endif
   } else {
     printk("[PF_RING] ERROR: not enough memory for ring\n");
     return(-1);
@@ -838,9 +843,11 @@ static int ring_alloc_mem(struct sock *sk)
   pfr->slots_info->tot_mem = tot_mem;
   pfr->slots_info->sample_rate = 1;
 
+#if defined(RING_DEBUG)
   printk("[PF_RING] allocated %d slots [slot_len=%d][tot_mem=%u]\n",
 	 pfr->slots_info->tot_slots, pfr->slots_info->slot_len,
 	 pfr->slots_info->tot_mem);
+#endif
 
 #ifdef RING_MAGIC
   {
@@ -3003,6 +3010,10 @@ static int ring_mmap(struct file *file,
   struct ring_opt *pfr = ring_sk(sk);
   int rc;
   unsigned long size = (unsigned long)(vma->vm_end - vma->vm_start);
+
+#if defined(RING_DEBUG)
+  printk("[PF_RING] ring_mmap() called\n");
+#endif
 
   if(ring_alloc_mem(sk) != 0) {
     printk("[PF_RING] ring_mmap(): unable to allocate memory\n");
