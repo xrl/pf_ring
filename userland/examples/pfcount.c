@@ -43,6 +43,8 @@
 
 #include "pfring.h"
 
+#define ENABLE_DNA_SUPPORT
+
 #define ALARM_SLEEP       1
 #define DEFAULT_SNAPLEN 128
 pfring  *pd;
@@ -609,7 +611,12 @@ int main(int argc, char* argv[]) {
     alarm(ALARM_SLEEP);
   }
 
-  if(num_threads > 0) wait_for_packet = 1;
+  if(dna_mode)
+    num_threads = 1;
+  else {
+    if(num_threads > 0) wait_for_packet = 1;
+  }
+
   if(!wait_for_packet) pfring_enable_ring(pd);
 
   if(num_threads > 1) {

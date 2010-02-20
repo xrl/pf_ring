@@ -18,8 +18,8 @@ INCLUDE   = -I../../kernel
 #
 # DNA Support
 #
-DNA_OBJS   = #pfring_e1000_dna.o
-DNA_DEFINE = #-DENABLE_DNA_SUPPORT
+DNA_OBJS   = pfring_e1000e_dna.o
+DNA_DEFINE =
 
 #
 # Object files
@@ -30,7 +30,7 @@ OBJS      = pfring.o ${DNA_OBJS}
 # C compiler and flags
 #
 CC        = gcc
-CFLAGS    = -g -Wall -fPIC ${INCLUDE} ${DNA_DEFINE}
+CFLAGS    = -g -O2 -Wall -fPIC ${INCLUDE} ${DNA_DEFINE}
 LDFLAGS   = -shared
 
 SYSLIBS   = -lpthread

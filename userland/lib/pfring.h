@@ -16,8 +16,6 @@
 /* Test Only */
 //#define USE_PCAP 
 
-/* #define ENABLE_DNA_SUPPORT */
-
 #include <sys/types.h>
 
 #ifndef __USE_XOPEN2K
@@ -93,14 +91,13 @@ extern "C" {
 #define MAX_NUM_RX_CHANNELS        256
 
   typedef struct {
-#ifdef ENABLE_DNA_SUPPORT
     /* DNA (Direct NIC Access) */
     u_char dna_mapped_device;    
     u_int32_t tot_dna_read_pkts, rx_reg;
     dna_device dna_dev;    
     u_int32_t *rx_reg_ptr[MAX_NUM_RX_CHANNELS];
-#endif
 
+    /* All devices */
     char *buffer, *slots, *device_name;
     int  fd;
     FlowSlotInfo *slots_info;
@@ -112,9 +109,7 @@ extern "C" {
     pthread_spinlock_t spinlock;
   } pfring;
 
-#ifdef ENABLE_DNA_SUPPORT
-#include "pfring_e1000_dna.h"
-#endif
+#include "pfring_e1000e_dna.h"
 
   typedef struct {
     u_int64_t recv, drop;

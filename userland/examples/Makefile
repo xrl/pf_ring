@@ -35,7 +35,7 @@ INCLUDE    = -I../../kernel -I${PFRINGDIR} -I${PCAPDIR}
 # C compiler and flags
 #
 CC         = gcc
-CFLAGS     = -g -Wall ${INCLUDE} ${DNA_DEFINE}
+CFLAGS     = -g -O2 -Wall ${INCLUDE} ${DNA_DEFINE}
 # LDFLAGS  =
 
 #

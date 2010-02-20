@@ -1085,6 +1085,19 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	socklen_t len = sizeof (struct tpacket_stats);
 #endif
 
+#ifdef HAVE_PF_RING
+	if(handle->ring != NULL) {
+	  pfring_stat ring_stats;
+
+	  if(pfring_stats(handle->ring, &ring_stats) == 0) {
+	    handle->md.stat.ps_recv = ring_stats.recv;
+	    handle->md.stat.ps_drop = ring_stats.drop;
+	    *stats = handle->md.stat;
+	    return 0;
+	  }
+	}
+#endif
+
 #ifdef HAVE_TPACKET_STATS
 	/*
 	 * Try to get the packet counts from the kernel.
@@ -1136,14 +1149,6 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 		 *    getsockopt(handle->fd, SOL_PACKET, PACKET_STATISTICS, ....
 		 * resets the counters to zero.
 		 */
-#ifdef HAVE_PF_RING
-	  if(handle->ring != NULL) {
-	    handle->md.stat.ps_recv = kstats.tp_packets;
-	    handle->md.stat.ps_drop = kstats.tp_drops;
-	    *stats = handle->md.stat;
-	    return 0;
-	  }
-#endif
 
 		handle->md.stat.ps_recv += kstats.tp_packets;
 		handle->md.stat.ps_drop += kstats.tp_drops;

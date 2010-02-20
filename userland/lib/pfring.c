@@ -16,9 +16,7 @@
 
 #include "pfring.h"
 
-#ifdef ENABLE_DNA_SUPPORT
-#include "pfring_e1000_dna.h"
-#endif
+#include "pfring_e1000e_dna.h"
 
 #define USE_ADAPTIVE_WAIT
 
@@ -41,9 +39,8 @@ int pfring_set_direction(pfring *ring, packet_direction direction) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
   if(ring->dna_mapped_device) return(-1);
-#endif
+
   return(ring ? setsockopt(ring->fd, 0, SO_SET_PACKET_DIRECTION,
 			      &direction, sizeof(direction)): -1);
 #endif
@@ -62,9 +59,8 @@ int pfring_set_reflection_device(pfring *ring, char *dev_name) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
   if(ring->dna_mapped_device) return(-1);
-#endif
+
   return(ring ? setsockopt(ring->fd, 0, SO_SET_REFLECTION_DEVICE,
 			   dev_name, strlen(dev_name)): -1);
 #endif
@@ -76,9 +72,9 @@ int pfring_set_master_id(pfring *ring, u_int32_t master_id) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
+
   if(ring->dna_mapped_device) return(-1);
-#endif
+
   return(ring ? setsockopt(ring->fd, 0, SO_SET_MASTER_RING,
 			   &master_id, sizeof(master_id)): -1);
 #endif
@@ -96,15 +92,17 @@ int pfring_set_cluster(pfring *ring, u_int clusterId, cluster_type the_type) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
-  if(ring->dna_mapped_device) return(-1);
-#endif
-  struct add_to_cluster cluster;
 
-  cluster.clusterId = clusterId, cluster.the_type = the_type;
-
-  return(ring ? setsockopt(ring->fd, 0, SO_ADD_TO_CLUSTER,
-			   &cluster, sizeof(cluster)): -1);
+  if(ring->dna_mapped_device) 
+    return(-1);
+  else {
+    struct add_to_cluster cluster;
+    
+    cluster.clusterId = clusterId, cluster.the_type = the_type;
+    
+    return(ring ? setsockopt(ring->fd, 0, SO_ADD_TO_CLUSTER,
+			     &cluster, sizeof(cluster)): -1);
+  }
 #endif
 }
 
@@ -114,9 +112,9 @@ int pfring_set_channel_id(pfring *ring, int32_t channel_id) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
+
   if(ring->dna_mapped_device) return(-1);
-#endif
+
   return(ring ? setsockopt(ring->fd, 0, SO_SET_CHANNEL_ID,
 			   &channel_id, sizeof(channel_id)): -1);
 #endif
@@ -132,9 +130,9 @@ int pfring_set_application_name(pfring *ring, char *name) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
+
   if(ring->dna_mapped_device) return(-1);
-#endif
+
   return(ring ? setsockopt(ring->fd, 0, SO_SET_APPL_NAME,
 			   name, strlen(name)): -1);
 #endif
@@ -147,9 +145,9 @@ int pfring_remove_from_cluster(pfring *ring) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
+
   if(ring->dna_mapped_device) return(-1);
-#endif
+
   return(ring ? setsockopt(ring->fd, 0, SO_REMOVE_FROM_CLUSTER,
 			      NULL, 0) : -1);
 #endif
@@ -161,9 +159,9 @@ int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec) {
 #ifdef USE_PCAP
   return(-1);
 #else
-#ifdef ENABLE_DNA_SUPPORT
+
   if(ring->dna_mapped_device) return(-1);
-#endif
+
   return(ring ?
 	 setsockopt(ring->fd, 0, SO_PURGE_IDLE_HASH_RULES,
 		    &inactivity_sec, sizeof(inactivity_sec)) : -1);
@@ -439,8 +437,8 @@ void pfring_close(pfring *ring) {
 #else
   if(!ring) return;
 
-#ifdef ENABLE_DNA_SUPPORT
   if(ring->dna_mapped_device) {
+    term_e1000(ring); /* FIX */
     if(ring->dna_dev.packet_memory != 0)
       munmap((void*)ring->dna_dev.packet_memory,
 	     ring->dna_dev.packet_memory_tot_len);
@@ -452,9 +450,7 @@ void pfring_close(pfring *ring) {
     if(ring->dna_dev.phys_card_memory != NULL)
       munmap(ring->dna_dev.phys_card_memory,
 	     ring->dna_dev.phys_card_memory_len);
-  } else
-#endif
-    {
+  } else {
     if(ring->buffer != NULL) {
       munmap(ring->buffer, ring->slots_info->tot_mem);
     }
@@ -547,9 +543,7 @@ int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,
 #else
   if((ring == NULL) || (*stats_len < sizeof(u_int16_t)))
     return(-1);
-#ifdef ENABLE_DNA_SUPPORT
   else if(ring->dna_mapped_device) return(-1);
-#endif
   else {
     memcpy(stats, &rule_id, sizeof(u_int16_t));
     return(getsockopt(ring->fd, 0,
@@ -569,9 +563,8 @@ int pfring_get_hash_filtering_rule_stats(pfring *ring,
 #else
   if(ring == NULL)
     return(-1);
-#ifdef ENABLE_DNA_SUPPORT
-  else if(ring->dna_mapped_device) return(-1);
-#endif
+  else if(ring->dna_mapped_device) 
+    return(-1);
   else {
     char buffer[2048];
     int rc;
@@ -602,9 +595,7 @@ int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   int rc;
 
   if((!rule_to_add) || (!ring)) return(-1);
-#ifdef ENABLE_DNA_SUPPORT
   else if(ring->dna_mapped_device) return(-1);
-#endif
 
   /* Sanitize entry */
   if(rule_to_add->core_fields.port_low > rule_to_add->core_fields.port_high)
@@ -627,15 +618,12 @@ int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
 int pfring_enable_ring(pfring *ring) {
 #ifdef USE_PCAP
   return(-1);
-#else
+#endif
   char dummy;
 
   if(!ring) return(-1);
-#ifdef ENABLE_DNA_SUPPORT
   else if(ring->dna_mapped_device) return(-1);
-#endif
   return(setsockopt(ring->fd, 0, SO_ACTIVATE_RING, &dummy, sizeof(dummy)));
-#endif
 }
 
 /* **************************************************** */
@@ -643,17 +631,15 @@ int pfring_enable_ring(pfring *ring) {
 int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
 #ifdef USE_PCAP
   return(-1);
-#else
+#endif
   int rc;
 
-#ifdef ENABLE_DNA_SUPPORT
   if((ring == NULL) || ring->dna_mapped_device) return(-1);
-#endif
+
   rc = ring ? setsockopt(ring->fd, 0, SO_REMOVE_FILTERING_RULE,
 			 &rule_id, sizeof(rule_id)): -1;
 
   return(rc);
-#endif
 }
 
 /* **************************************************** */
@@ -666,9 +652,7 @@ int pfring_handle_hash_filtering_rule(pfring *ring,
 #else
   int rc;
 
-#ifdef ENABLE_DNA_SUPPORT
   if((ring == NULL) || ring->dna_mapped_device) return(-1);
-#endif
 
   if((!rule_to_add) || (!ring)) return(-1);
 
@@ -687,9 +671,7 @@ int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */)
 #else
   int rc;
 
-#ifdef ENABLE_DNA_SUPPORT
   if((ring == NULL) || ring->dna_mapped_device) return(-1);
-#endif
 
   rc = ring ? setsockopt(ring->fd, 0, SO_SET_SAMPLING_RATE,
 			 &rate, sizeof(rate)): -1;
@@ -705,12 +687,10 @@ int pfring_stats(pfring *ring, pfring_stat *stats) {
   return(-1);
 #else
 
-#ifdef ENABLE_DNA_SUPPORT
   if((ring == NULL) || ring->dna_mapped_device) {
     stats->recv = ring->tot_dna_read_pkts, stats->drop = 0;
     return(0);
   }
-#endif
 
   if(ring && stats) {
     stats->recv = ring->slots_info->tot_read;
@@ -802,7 +782,6 @@ struct udphdr {
 #define TH_ACK_MULTIPLIER	0x10
 #define TH_URG_MULTIPLIER	0x20
 
-#if defined(USE_PCAP) || defined(ENABLE_DNA_SUPPORT)
 static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 {
   struct iphdr *ip;
@@ -866,8 +845,6 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
   return(0); /* No IP */
 }
 
-#endif
-
 /* **************************************************** */
 
 int pfring_notify(pfring *ring, u_int8_t reflect_packet) {
@@ -907,7 +884,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     return(1);
   } else
     return(0);
-#else
+#endif
 
   if(ring == NULL) return(-1);
 
@@ -919,9 +896,8 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     consume_packet_immediately = 1;
   }
 
-#ifdef ENABLE_DNA_SUPPORT
   if(ring->dna_mapped_device) {
-    char *pkt;
+    char *pkt = NULL;
 
     if(wait_for_incoming_packet) {
       if(ring->reentrant) pthread_spin_lock(&ring->spinlock);
@@ -950,6 +926,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     }
 
     if(pkt && (hdr->len > 0)) {
+      /* Set the (1) below to (0) for enabling packet parsing for DNA devices */
       if(1)
 	hdr->parsed_header_len = 0;
       else
@@ -957,9 +934,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       return(1);
     } else
       return(0);
-  } else
-#endif /* ENABLE_DNA_SUPPORT */
-    {
+  } else {
       FlowSlot *slot;
       u_int32_t queuedPkts;
 #ifdef USE_ADAPTIVE_WAIT
@@ -1073,7 +1048,6 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
       return(-1); /* Not reached */
     }
-#endif
 }
 
 /* **************************************************** */
@@ -1092,18 +1066,15 @@ int pfring_get_selectable_fd(pfring *ring) {
 #ifdef USE_PCAP
   return(pcap_get_selectable_fd((pcap_t*)ring));
 #else
-  if((ring == NULL)
-#ifdef ENABLE_DNA_SUPPORT
-     || ring->dna_mapped_device
-#endif
-     ) return(-1);
-  return(ring->fd);
+  if((ring == NULL) || ring->dna_mapped_device) 
+    return(-1);
+  else
+    return(ring->fd);
 #endif
 }
 
 /* ******************************* */
 
-#ifdef ENABLE_DNA_SUPPORT
 static int pfring_map_dna_device(pfring *ring,
 				 dna_device_operation operation,
 				 char *device_name,
@@ -1122,11 +1093,9 @@ static int pfring_map_dna_device(pfring *ring,
 			   &mapping, sizeof(mapping)): -1);
 #endif
 }
-#endif
 
 /* ******************************* */
 
-#ifdef ENABLE_DNA_SUPPORT
 static int pfring_get_mapped_dna_device(pfring *ring, dna_device *dev) {
 #ifdef USE_PCAP
   return(-1);
@@ -1139,11 +1108,10 @@ static int pfring_get_mapped_dna_device(pfring *ring, dna_device *dev) {
     return(getsockopt(ring->fd, 0, SO_GET_MAPPED_DNA_DEVICE, dev, &len));
 #endif
 }
-#endif
 
 /* **************************************************** */
 
-#ifdef ENABLE_DNA_SUPPORT
+#ifdef DEBUG
 static void pfring_dump_dna_stats(pfring* ring) {
   switch(ring->dna_dev.device_model) {
   case intel_e1000:
@@ -1164,7 +1132,6 @@ static void pfring_dump_dna_stats(pfring* ring) {
 
 /* **************************************************** */
 
-#ifdef ENABLE_DNA_SUPPORT
 pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 #ifdef USE_PCAP
   return(NULL);
@@ -1209,6 +1176,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 	free(ring);
 	return(NULL);
       } else {
+#ifdef DEBUG
 	printf("[num_slots=%d][slot_len=%d][tot_mem_len=%d]\n",
 	       ring->dna_dev.packet_memory_num_slots,
 	       ring->dna_dev.packet_memory_slot_len,
@@ -1218,6 +1186,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 	       ring->dna_dev.descr_packet_memory_num_slots,
 	       ring->dna_dev.descr_packet_memory_slot_len,
 	       ring->dna_dev.descr_packet_memory_tot_len);
+#endif
       }
 
       ring->dna_mapped_device = 1;
@@ -1256,11 +1225,14 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
       }
 
       init_e1000(ring); /* FIX */
-      pfring_dump_dna_stats(ring);
 
+#ifdef DEBUG
+      pfring_dump_dna_stats(ring);
+#endif
       return(ring);
     } else {
-      printf("pfring_map_dna_device() failed [rc=%d]: device already in use?\n", rc);
+      printf("pfring_map_dna_device() failed [rc=%d]: device already in use or non-DNA driver?\n", 
+	     rc);
       free(ring);
       return(NULL);
     }
@@ -1283,5 +1255,3 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
   return(NULL);
 #endif
 }
-#endif
-
