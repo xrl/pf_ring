@@ -74,7 +74,7 @@
 
 #include <linux/pf_ring.h>
 
-//#define RING_DEBUG
+// #define RING_DEBUG
 
 /* ************************************************* */
 #define TH_FIN_MULTIPLIER	0x01
@@ -372,6 +372,8 @@ static void ring_sock_destruct(struct sock *sk)
 
 static void ring_proc_add(struct ring_opt *pfr)
 {
+  int debug = 1;
+
   if(ring_proc_dir != NULL) {
     char name[64];
 
@@ -381,9 +383,7 @@ static void ring_proc_add(struct ring_opt *pfr)
     create_proc_read_entry(name, 0, ring_proc_dir,
 			   ring_proc_get_info, pfr);
 
-#if defined(RING_DEBUG)
-    printk("[PF_RING] Added /proc/net/pf_ring/%s\n", name);
-#endif
+    if(debug) printk("[PF_RING] Added /proc/net/pf_ring/%s\n", name);
   }
 }
 
@@ -391,6 +391,8 @@ static void ring_proc_add(struct ring_opt *pfr)
 
 static void ring_proc_remove(struct ring_opt *pfr)
 {
+  int debug = 1;
+
   if(ring_proc_dir != NULL) {
     char name[64];
 
@@ -400,9 +402,7 @@ static void ring_proc_remove(struct ring_opt *pfr)
 
     remove_proc_entry(name, ring_proc_dir);
 
-#if defined(RING_DEBUG)
-    printk("[PF_RING] Removed /proc/net/pf_ring/%s\n", name);
-#endif
+    if(debug) printk("[PF_RING] Removed /proc/net/pf_ring/%s\n", name);
   }
 }
 
@@ -468,8 +468,8 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
 
 /* ************************************* */
 
-int hw_filtering_rule(struct net_device *dev, hash_filtering_rule *entry,
-		      u_char add_rule, u_int8_t target_queue) {
+int handle_hw_filtering_rule(struct net_device *dev, hw_filtering_rule *rule,
+			     u_char add_rule) {
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   int debug = 1;
   hw_filtering_rule_element element;
@@ -477,7 +477,7 @@ int hw_filtering_rule(struct net_device *dev, hash_filtering_rule *entry,
   if(dev == NULL) return(-1);
 
   if(debug) printk("[PF_RING] hw_filtering_rule[%s][add=%d][id=%d][%p]\n",
-		   dev->name, add_rule ? 1 : 0, entry->rule_id,
+		   dev->name, add_rule ? 1 : 0, rule->rule_id,
 		   dev->ethtool_ops->set_coalesce);
 
   if(dev->ethtool_ops->set_coalesce == NULL) return(-1);
@@ -485,8 +485,7 @@ int hw_filtering_rule(struct net_device *dev, hash_filtering_rule *entry,
   element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
   element.command = RULE_COMMAND;
   element.add_rule = add_rule;
-  element.target_queue = target_queue;
-  memcpy(&element.rule, entry, sizeof(hash_filtering_rule));
+  memcpy(&element.rule, rule, sizeof(hw_filtering_rule));
 
   return(dev->ethtool_ops->set_coalesce(dev, (struct ethtool_coalesce*)&element));
 #else
@@ -509,12 +508,62 @@ static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
     rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
     rlen += sprintf(buf+rlen, "# Filters:         %d\n", dev_ptr->num_hw_filters);
     rlen += sprintf(buf+rlen, "\nFiltering Rules:\n"
-		    "+|-(id,vlan,tcp|udp,src_ip/mask,src_port,dst_ip/mask,dst_port,queue)\n"
-		    "Example:\n"
-		    "+(1,0,tcp,192.168.0.10/32,32,10.6.0.0/16,0,-1) (-1 = drop)\n");
+		    "[perfect rule]  +|-(rule_id,queue_id,vlan,tcp|udp|any,src_ip/mask,src_port,dst_ip/mask,dst_port)\n"
+		    "Example:\t+(1,-1,0,tcp,192.168.0.10/32,25,10.6.0.0/16,0) (queue_id = -1 => drop)\n\n"
+		    "[5 tuple rule]  +|-(rule_id,queue_id,tcp|udp|any,src_ip,src_port,dst_ip,dst_port)\n"
+		    "Example:\t+(1,-1,tcp,192.168.0.10,25,0.0.0.0,0)\n\n"
+		    "Note:\n\t- queue_id = -1 => drop\n\t- 0 = ignore value\n");
   }
 
   return rlen;
+}
+
+/* ********************************** */
+
+static void init_five_tuple_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
+					   u_int8_t proto,
+					   u_int32_t s_addr, u_int32_t d_addr,
+					   u_int16_t s_port, u_int16_t d_port,
+					   hw_filtering_rule *rule) {
+
+  printk("init_five_tuple_filter_hw_rule()\n");
+
+  memset(rule, 0, sizeof(hw_filtering_rule));
+
+  rule->rule_type = five_tuple_rule, rule->rule_id = rule_id, rule->queue_id = queue_id;
+  rule->rule.five_tuple_rule.proto = proto;
+  rule->rule.five_tuple_rule.s_addr = s_addr,  rule->rule.five_tuple_rule.d_addr = d_addr;
+  rule->rule.five_tuple_rule.s_port = s_port, rule->rule.five_tuple_rule.d_port = d_port;
+}
+
+/* ********************************** */
+
+static void init_perfect_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
+					u_int8_t proto,
+					u_int16_t vlan,
+					u_int32_t s_addr, u_int8_t s_mask,
+					u_int32_t d_addr, u_int8_t d_mask,
+					u_int16_t s_port, u_int16_t d_port,
+					hw_filtering_rule *rule) {
+  u_int32_t netmask;
+
+  printk("init_perfect_filter_hw_rule()\n");
+
+  memset(rule, 0, sizeof(hw_filtering_rule));
+
+  rule->rule_type = perfect_filter_rule, rule->rule_id = rule_id, rule->queue_id = queue_id;
+
+  rule->rule.perfect_rule.vlan_id = vlan;
+  rule->rule.perfect_rule.proto = proto;
+  rule->rule.perfect_rule.s_addr = s_addr;
+  if(s_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> s_mask);
+  rule->rule.perfect_rule.s_addr &= netmask;
+
+  rule->rule.perfect_rule.d_addr = d_addr;
+  if(d_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> d_mask);
+  rule->rule.perfect_rule.d_addr &= netmask;
+
+  rule->rule.perfect_rule.s_port = s_port, rule->rule.perfect_rule.d_port = d_port;
 }
 
 /* ********************************** */
@@ -525,11 +574,11 @@ static int ring_proc_dev_rule_write(struct file *file,
 {
   char buf[128], add, proto[4] = { 0 };
   ring_device_element *dev_ptr = (ring_device_element*)data;
-  int num, id, queue_id, vlan, rc;
-  u_int32_t netmask;
+  int num, queue_id, vlan, rc, rule_id, protocol;
   int s_a, s_b, s_c, s_d, s_mask, s_port;
   int d_a, d_b, d_c, d_d, d_mask, d_port;
-  hash_filtering_rule rule;
+  hw_filtering_rule rule;
+  u_int8_t found = 0;
 
   if(data == NULL) return(0);
 
@@ -539,39 +588,61 @@ static int ring_proc_dev_rule_write(struct file *file,
 
   printk("[PF_RING] ring_proc_dev_rule_write(%s)\n", buf);
 
-  num = sscanf(buf, "%c(%d,%d,%c%c%c,%d.%d.%d.%d/%d,%d,%d.%d.%d.%d/%d,%d,%d)",
-	       &add, &id, &vlan,
+  num = sscanf(buf, "%c(%d,%d,%d,%c%c%c,%d.%d.%d.%d/%d,%d,%d.%d.%d.%d/%d,%d)",
+	       &add, &rule_id, &queue_id, &vlan,
 	       &proto[0], &proto[1], &proto[2],
 	       &s_a, &s_b, &s_c, &s_d, &s_mask, &s_port,
-	       &d_a, &d_b, &d_c, &d_d, &d_mask, &d_port,
-	       &queue_id);
-  printk("[PF_RING] ring_proc_dev_rule_write(%s) = %d\n", buf, num);
+	       &d_a, &d_b, &d_c, &d_d, &d_mask, &d_port);
 
-  if(num != 19) return(-1);
-  memset(&rule, 0, sizeof(rule));
+  printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (1)\n", buf, num);
 
-  rule.rule_id = id, rule.vlan_id = vlan;
-  rule.proto = (proto[0] == 't') ? 6 : 17;
-  rule.host_peer_a = ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff);
-  if(s_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> s_mask);
-  rule.host_peer_a &= netmask;
+  if(num == 19) {
+    if(proto[0] == 't') 
+      protocol = 6; /* TCP */
+    else if(proto[0] == 'u') 
+      protocol = 17; /* UDP */
+    else
+      protocol = 0; /* any */
 
-  rule.host_peer_b = ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff);
-  if(d_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> d_mask);
-  rule.host_peer_b &= netmask;
+    init_perfect_filter_hw_rule(queue_id, rule_id, protocol, vlan,
+				((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff), s_mask,
+				((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff), d_mask,
+				s_port, d_port, &rule);
+    found = 1;
+  }
 
-  rule.port_peer_a = s_port;
-  rule.port_peer_b = d_port;
+  if(!found) {
+    num = sscanf(buf, "%c(%d,%d,%c%c%c,%d.%d.%d.%d,%d,%d.%d.%d.%d,%d)",
+		 &add, &rule_id, &queue_id,
+		 &proto[0], &proto[1], &proto[2],
+		 &s_a, &s_b, &s_c, &s_d, &s_port,
+		 &d_a, &d_b, &d_c, &d_d, &d_port);
 
-  if(queue_id == -1) /* Drop */
-    rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-  else
-    rule.rule_action = forward_packet_and_stop_rule_evaluation;
+    printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (2)\n", buf, num);
 
-  rc = hw_filtering_rule(dev_ptr->dev, &rule, (add == '+') ? 1 : 0, queue_id);
+    if(num == 16) {
+      if(proto[0] == 't') 
+	protocol = 6; /* TCP */
+      else if(proto[0] == 'u') 
+	protocol = 17; /* UDP */
+      else
+	protocol = 0; /* any */
+
+      init_five_tuple_filter_hw_rule(queue_id, rule_id, protocol,
+				     ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff),
+				     ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff),
+				     s_port, d_port, &rule);
+      found = 1;
+    }
+  }
+
+  if(!found)
+    return(-1);
+
+  rc = handle_hw_filtering_rule(dev_ptr->dev, &rule, (add == '+') ? 1 : 0);
 
   if(rc != -1) {
-    /* Rule programmed succesfully */
+    /* Rule programmed successfully */
 
     if(add == '+')
       dev_ptr->num_hw_filters++;
@@ -783,7 +854,7 @@ static int ring_alloc_mem(struct sock *sk)
   struct ring_opt *pfr = ring_sk(sk);
 
   /* Check if the memory has been already allocated */
-  if(pfr->ring_memory != NULL) return(0); 
+  if(pfr->ring_memory != NULL) return(0);
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_alloc_mem(bucket_len=%d)\n", pfr->bucket_len);
@@ -1678,7 +1749,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] --> add_skb_to_ring(len=%d) [channel_id=%d/%d][active=%d][%s]\n",
-	 hdr->len, channel_id, num_rx_channels, 
+	 hdr->len, channel_id, num_rx_channels,
 	 pfr->ring_active, pfr->ring_netdev->name);
 #endif
 
@@ -2140,7 +2211,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n", channel_id, num_rx_channels);
+  // printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n", channel_id, num_rx_channels);
 #endif
 
   if((!skb) /* Invalid skb */
@@ -2280,8 +2351,9 @@ static int skb_ring_handler(struct sk_buff *skb,
     pfr = ring_sk(skElement);
 
 #if defined (RING_DEBUG)
-    printk("[PF_RING] Scanning ring [%s][cluster=%d]\n", 
-	   pfr->ring_netdev->name, pfr->cluster_id);
+    if(0)
+      printk("[PF_RING] Scanning ring [%s][cluster=%d]\n",
+	     pfr->ring_netdev->name, pfr->cluster_id);
 #endif
 
     if((pfr != NULL)
@@ -2466,11 +2538,8 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 				  rule->rule.host_peer_a,
 				  rule->rule.host_peer_b,
 				  rule->rule.port_peer_a,
-				  rule->rule.port_peer_b) %
-    DEFAULT_RING_HASH_SIZE;
+				  rule->rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
   int rc = -1, debug = 0;
-
-  hw_filtering_rule(pfr->ring_netdev, &rule->rule, add_rule, 1 /* queueId [FIX] */);
 
   if(debug)
     printk
@@ -3153,7 +3222,9 @@ unsigned int ring_poll(struct file *file,
   struct ring_opt *pfr = ring_sk(sock->sk);
   int rc;
 
-  /* printk("[PF_RING] -- poll called\n");  */
+#if defined(RING_DEBUG)
+  printk("[PF_RING] -- poll called\n");
+#endif
 
   if(pfr->dna_device == NULL) {
     /* PF_RING mode */
@@ -3186,18 +3257,28 @@ unsigned int ring_poll(struct file *file,
 	   *pfr->dna_device->interrupt_received);
 #endif
 
-    if(pfr->dna_device->wait_packet_function_ptr == NULL)
-      return(0);
+    if(pfr->dna_device->wait_packet_function_ptr == NULL) {
+#if defined(RING_DEBUG)
+      printk("[PF_RING] wait_packet_function_ptr is NULL: returning to caller\n");
+#endif
 
-    rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->
-						   adapter_ptr, 1);
+      return(0);
+    }
+
+    rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 1);
+
+#if defined(RING_DEBUG)
+    printk("[PF_RING] wait_packet_function_ptr(1) returned %d\n", rc);
+#endif
+
     if(rc == 0) {	/* No packet arrived yet */
-      /* poll_wait(file, pfr->dna_device->packet_waitqueue, wait); */
+      poll_wait(file, pfr->dna_device->packet_waitqueue, wait);
     } else
-      rc = pfr->dna_device->wait_packet_function_ptr(pfr->
-						     dna_device->
-						     adapter_ptr,
-						     0);
+      rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 0);
+
+#if defined(RING_DEBUG)
+    printk("[PF_RING] wait_packet_function_ptr(0) returned %d\n", rc);
+#endif
 
     //*pfr->dna_device->interrupt_received = rc;
     if(rc == 0)
@@ -3293,7 +3374,7 @@ static int set_master_ring(struct sock *sock,
   int rc = -1;
   struct list_head *ptr;
 
-#if defined(RING_DEBUG)  
+#if defined(RING_DEBUG)
   printk("[PF_RING] set_master_ring(%s=%d)\n",
 	 pfr->ring_netdev->name, pfr->ring_id);
 #endif
@@ -3316,7 +3397,7 @@ static int set_master_ring(struct sock *sock,
 
 #if defined(RING_DEBUG)
       printk("[PF_RING] Found set_master_ring(%s) -> %s\n",
-	     sk_pfr->ring_netdev->name, 
+	     sk_pfr->ring_netdev->name,
 	     pfr->master_ring->ring_netdev->name);
 #endif
 
@@ -3398,6 +3479,8 @@ static int ring_map_dna_device(struct ring_opt *pfr,
     struct list_head *ptr, *tmp_ptr;
     dna_device_list *entry;
 
+    ring_proc_remove(pfr);
+
     list_for_each_safe(ptr, tmp_ptr, &ring_dna_devices_list) {
       entry = list_entry(ptr, dna_device_list, list);
 
@@ -3409,6 +3492,7 @@ static int ring_map_dna_device(struct ring_opt *pfr,
 	  printk("[PF_RING] ring_map_dna_device(%s): added mapping\n",
 		 mapping->device_name);
 
+	ring_proc_add(pfr);
 	return(0);
       }
     }
