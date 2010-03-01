@@ -57,7 +57,7 @@ ${STATICLIB}: Makefile ${OBJS} pfring.h ${RING_H}
 
 ${DYNAMICLIB}: ${OBJS} pfring.h ${RING_H} Makefile
 	@echo "=*= making library $@ =*="
-	${CC} ${LDFLAGS} $< ${SYSLIBS} -o $@
+	${CC} ${LDFLAGS} ${OBJS} ${SYSLIBS} -o $@
 
 install: ${STATICLIB} ${DYNAMICLIB}
 	cp ${STATICLIB} ${INSTDIR}/lib/
