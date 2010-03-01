@@ -935,73 +935,74 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     } else
       return(0);
   } else {
-      FlowSlot *slot;
-      u_int32_t queuedPkts;
+    FlowSlot *slot;
+    u_int32_t queuedPkts;
 #ifdef USE_ADAPTIVE_WAIT
-      u_int32_t num_loops = 0;
+    u_int32_t num_loops = 0;
 #endif
 
-      if((ring == NULL) || (ring->buffer == NULL)) return(-1);
+    if((ring == NULL) || (ring->buffer == NULL)) return(-1);
 
-      /*
-	Check if the kernel needs to be notified that the previous
-	packet has been finally consumed
-      */
-      if(ring->last_slot_to_update) 
-	pfring_notify(ring, REFLECT_PACKET_DEVICE_NONE);
+    /*
+      Check if the kernel needs to be notified that the previous
+      packet has been finally consumed
+    */
+    if(ring->last_slot_to_update) 
+      pfring_notify(ring, REFLECT_PACKET_DEVICE_NONE);
 
-    do_pfring_recv:
-      if(ring->reentrant)
-	pthread_spin_lock(&ring->spinlock);
+  do_pfring_recv:
+    if(ring->reentrant)
+      pthread_spin_lock(&ring->spinlock);
 
-      slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
+    slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
 
-      if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
-	queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
-      else
-	queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
+    if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
+      queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
+    else
+      queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
 
-      if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
-	char *bucket = (char*)&slot->bucket;
-	struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
-	int bktLen = _hdr->caplen+_hdr->parsed_header_len;
+    if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
+      char *bucket = (char*)&slot->bucket;
+      struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
+      int bktLen = _hdr->caplen+_hdr->parsed_header_len;
 
-	if(bktLen > buffer_len) bktLen = buffer_len-1;
+      if(bktLen > buffer_len) bktLen = buffer_len-1;
 
-	if(buffer && (bktLen > 0)) {
-	  memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
-	  bucket[bktLen] = '\0';
-	}
+      if(buffer && (bktLen > 0)) {
+	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
+	bucket[bktLen] = '\0';
+      }
 
-	if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
-	  ring->slots_info->remove_idx = 0;
-	  ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
-	} else {
-	  ring->slots_info->remove_idx++;
-	  ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
-	}
+      if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
+	ring->slots_info->remove_idx = 0;
+	ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
+      } else {
+	ring->slots_info->remove_idx++;
+	ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
+      }
 
-	if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
+      if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
 
-	ring->slots_info->tot_read++;
+      ring->slots_info->tot_read++;
 
-	if(consume_packet_immediately) {
-	  ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
-	} else {
-	  /* We do not notify pf_ring that the packet has been read
-	     hence this slot will not be available for storing a new packet
-	     until we notify pf_ring
-	  */
-	  ring->last_slot_to_update = slot;
-	}      
+      if(consume_packet_immediately) {
+	ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
+      } else {
+	/* We do not notify pf_ring that the packet has been read
+	   hence this slot will not be available for storing a new packet
+	   until we notify pf_ring
+	*/
+	ring->last_slot_to_update = slot;
+      }      
 
-	if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
-	return(1);
-      } else if(wait_for_incoming_packet) {
+      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+      return(1);
+    } else {
+      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+
+      if(wait_for_incoming_packet) {
 	struct pollfd pfd;
 	int rc;
-
-	if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
 
 #ifdef USE_ADAPTIVE_WAIT
 	/*
@@ -1045,9 +1046,10 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	else
 	  goto do_pfring_recv;
       }
-
-      return(-1); /* Not reached */
     }
+     
+    return(-1); /* Not reached */
+  }
 }
 
 /* **************************************************** */
