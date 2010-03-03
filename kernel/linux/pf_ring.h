@@ -47,6 +47,8 @@
 #define SO_SET_PACKET_DIRECTION          111
 #define SO_SET_REFLECTION_DEVICE         112
 #define SO_SET_MASTER_RING               113
+#define SO_ADD_HW_FILTERING_RULE         114
+#define SO_DEL_HW_FILTERING_RULE         115
 
 /* Get */
 #define SO_GET_RING_VERSION              120

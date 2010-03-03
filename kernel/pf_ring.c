@@ -469,7 +469,7 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
 /* ************************************* */
 
 int handle_hw_filtering_rule(struct net_device *dev, hw_filtering_rule *rule,
-			     u_char add_rule) {
+			     u_int8_t add_rule) {
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   int debug = 1;
   hw_filtering_rule_element element;
@@ -3598,6 +3598,7 @@ static int ring_setsockopt(struct socket *sock,
   filtering_rule_element *entry, *rule;
   u_int16_t rule_id, rule_inactivity;
   packet_direction direction;
+  hw_filtering_rule hw_rule;
 
   if(pfr == NULL)
     return(-EINVAL);
@@ -4170,6 +4171,18 @@ static int ring_setsockopt(struct socket *sock,
     write_lock(&pfr->ring_rules_lock);
     ret = set_master_ring(sock->sk, pfr, ring_id);
     write_unlock(&pfr->ring_rules_lock);
+    break;
+
+  case SO_ADD_HW_FILTERING_RULE:
+  case SO_DEL_HW_FILTERING_RULE:
+    if(optlen != sizeof(hw_rule))
+      return -EINVAL;
+
+    if(copy_from_user(&hw_rule, optval, sizeof(hw_rule)))
+      return -EFAULT;
+
+    ret = handle_hw_filtering_rule(pfr->ring_netdev, &hw_rule, 
+				   (optname == SO_ADD_HW_FILTERING_RULE) ? 1 : 0);
     break;
 
   default:

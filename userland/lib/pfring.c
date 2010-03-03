@@ -72,7 +72,6 @@ int pfring_set_master_id(pfring *ring, u_int32_t master_id) {
 #ifdef USE_PCAP
   return(-1);
 #else
-
   if(ring->dna_mapped_device) return(-1);
 
   return(ring ? setsockopt(ring->fd, 0, SO_SET_MASTER_RING,
@@ -84,6 +83,20 @@ int pfring_set_master_id(pfring *ring, u_int32_t master_id) {
 
 int pfring_set_master(pfring *ring, pfring *master) {
   return(pfring_set_master_id(ring, pfring_get_ring_id(master)));
+}
+
+/* ******************************* */
+
+int pfring_set_hw_rule(pfring *ring, hw_filtering_rule *rule, u_int8_t add_rule) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+  if(ring->dna_mapped_device) return(-1);
+
+  return(ring ? setsockopt(ring->fd, 0, 
+			   add_rule ? SO_ADD_HW_FILTERING_RULE : SO_DEL_HW_FILTERING_RULE,
+			   rule, sizeof(hw_filtering_rule)) : -1);
+#endif
 }
 
 /* ******************************* */
@@ -1235,6 +1248,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
     } else {
       printf("pfring_map_dna_device() failed [rc=%d]: device already in use or non-DNA driver?\n", 
 	     rc);
+      printf("Make sure that you load the DNA-driver *after* you loaded the PF_RING kernel module\n");
       free(ring);
       return(NULL);
     }
