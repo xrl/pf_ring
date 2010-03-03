@@ -1,0 +1,4524 @@
+                          ============================
+                           R E L E A S E    N O T E S
+                          ============================
+
+                Broadcom BCM57710/BCM57711/BCM57711E 10 GigE VBD
+                                  For Linux
+
+                  Copyright (c) 2007-2009 Broadcom Corporation
+                              All rights reserved.
+
+Version 1.50.13 (Jul 22, 2009)
+==============================
+
+    Enhancements
+    ------------
+    1.  Request: Update to FW 5.0.21
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.50.12 (Jul 16, 2009)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: In some TPA aggregation cases, might go into TCP slow-start
+                 instead of fast-retransmit
+
+        Cause:   When TPA is used, pure ACK on open aggregation was aggregated
+
+        Fix:     (FW 5.0.20) Do not aggregate pure ACK packets in TPA
+
+        Impact:  None
+
+Version 1.50.11 (Jul 7, 2009)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: Setting rx-usecs to the value less than 12 causes the
+                 traffic to stop
+
+        Cause:   Did not disable HC coalescing when set the coalescing timeout
+                 to zero (coalescing timeouts are multiples of 12us)
+
+        Fix:     Disable HC coalescing, when timeout is set to the zero
+
+        Impact:  None
+
+    2.  Problem: Packet descriptors in NIG might get out of sync if management
+                 egress traffic is pass through during self test
+
+        Cause:   During loppback test management egress traffic might be routed
+                 to the host and will not be cleared when exiting the diag mode
+
+        Fix:     Disable management egress traffic when driver is in diag mode
+
+        Impact:  None
+
+Version 1.50.10 (Jul 1, 2009)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ42298) Management traffic does not resume after self test
+
+        Cause:   Writing to the egress management FIFO during the memory test
+                 interpreted as a start of a management packet and cause the
+                 FIFO not to be empty
+
+        Fix:     Remove the write to the egress management FIFO from the self
+                 test
+
+        Impact:  None
+
+    2.  Problem: Link up time takes too long with BCM8727 based NICs
+
+        Cause:   EDC mode is not set automatically
+
+        Fix:     Set EDC mode manually according to the SFP+ module type
+                 detected (Passive DAC / Active DAC / LC-LRM / LC-SR / LC-LR)
+
+        Impact:  None
+
+    3.  Problem: (CQ41567) In BCM8727 based NICs, when SFP+ module is not
+                 plugged, there is continuous messages of Link Down
+
+        Cause:   The EDC tries to process the Rx data/noise because its OPRXLOS
+                 input signal is false (low), indicating an Rx signal is
+                 present.
+
+        Fix:     Perform 'Or' of the Active Module Absent Level with the Active
+                 Laser Loss of Light Level. This way we tell the EDC not
+                 process Rx data/noise when the module is not present.
+
+        Impact:  None
+
+Version 1.50.9 (Jun 25, 2009)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: Low throughput when using VLAN on kernel 2.6.26 or above
+
+        Cause:   New VLAN_features field in struct net_device was not
+                 initialized hence no offload capabilities were available with
+                 VLAN
+
+        Fix:     Initialize VLAN_features field in struct net_device
+
+        Impact:  None
+
+    2.  Problem: No event log in case fan failure occured prior to loading the
+                 driver
+
+        Cause:   The event was not detected since it was already set when the
+                 driver was loaded
+
+        Fix:     Check for the event on load time
+
+        Impact:  None
+
+    3.  Problem: Loopback test in self test might fail in case NCSI is enabled
+
+        Cause:   NCSI egress traffic is received instead of the loopback test
+                 packets
+
+        Fix:     Disable NCSI egress traffic during loopback test
+
+        Impact:  None
+
+    4.  Problem: ethtool reports link up when the device is down
+
+        Cause:   Bug in ethtool_op_get_link()
+
+        Fix:     Use bnx2x_get_link() instead
+
+        Impact:  None
+
+    5.  Problem: 57711E WoL does not work if only one function per port was
+                 active prior to shutdown
+
+        Cause:   WoL is configured to work in SF mode
+
+        Fix:     Set the chip back to SF mode (so WoL will work) even if only
+                 one function was loaded per port in MF mode
+
+        Impact:  None
+
+Version 1.50.8 (Jun 8, 2009)
+============================
+
+    Fixes
+    -----
+    1.  Problem: When running many TCP connections (>200) on both ports, some
+                 connections hangs
+
+        Cause:   When all TPA aggregations are occupied, FW can override the RX
+                 CQE consumer of the other port
+
+        Fix:     Fix in FW 5.0.18: reload the RX CQE consumer from RAM after TPA
+                 handler breaks to sleep
+
+        Impact:  None
+
+    2.  Problem: CL73 enhancement causes link down
+
+        Cause:   Unknown
+
+        Fix:     Revert CL73 enhancement until problem resolved
+
+        Impact:  None
+
+Version 1.50.7 (Jun 4, 2009)
+============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ41533) Unapproved modules behavior is not enforced according
+                 to nvram configuration
+
+        Cause:   In case the module was not approved, the function quit before
+                 enabling the Tx laser - so even when set to warning, there was
+                 no link. When set to power off the module, there was continues
+                 false indication of over current when the module was extracted
+
+        Fix:     When set to warning - enable the module. Validate that the
+                 module is present before checking for over current indication
+
+        Impact:  None
+
+    2.  Problem: The coalescing timeout value displayed by `ethtool' is
+                 different for the one used by the FW
+
+        Cause:   The limitation for coalescing timeout values in driver's
+                 `ethtool -C' callback was wrong
+
+        Fix:     Fix the limitation for coalescing timeout in `ethtool -C'
+                 callback
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Reduce the number of cache misses in a fast path
+
+        Change:  Avoid extra cache miss by updating `trans_start' from inside
+                 start_xmit()  as long as it's done by the core network layer
+                 starting from kernel 2.6.31
+
+        Impact:  None
+
+    2.  Request: (CQ41067) Add 5771x CL73 support
+
+        Change:  As requested
+
+        Impact:  Everest is now able to link with devices which operate in CL73
+                 alone / CL37 alone / or both
+
+    3.  Request: Make 8727 over-current behavior code more efficient
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.50.6 (Jun 1, 2009)
+============================
+
+    Fixes
+    -----
+    1.  Problem: In 8727, after power-fault occurred and the driver is
+                 unloaded and then reloaded, the interrupt is not cleared
+
+        Cause:   In this scenario, the mod_abs mode remain in "wait for
+                 module plugged in", so interrupt was not cleared
+
+        Fix:     Set module_absent to wait for module absent scenario
+
+        Impact:  None
+
+    2.  Problem: There is no need to read the warning string for un approved
+                 modules from the FW/nvram
+
+        Cause:   This is over design that cause unnecessary overhead - a
+                 constant string can be used
+
+        Fix:     Use constant warning string instead of receiving it from
+                 FW/nvram
+
+        Impact:  Warning message is not to be used in the modules nvram file
+
+    3.  Problem: High CPU usage in bnx2x_free_tx_pkt()
+
+        Cause:   prefetch(skb_shinfo(skb)) implied immediate cache miss when
+                 NET_SKBUFF_DATA_USES_OFFSET is enabled
+
+        Fix:     Replaced prefetch(skb_shinfo(skb)) by prefetch(&skb->end).
+                 This would prefetch only the first one from two cache misses
+                 needed for reading of skb_shinfo(skb)->nr_frags, which is
+                 needed by dev_kfree_skb(skb), but it will do it in a
+                 background avoiding an immediate CPU stall
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add support for BCM8727 without over current detection
+                 (BCM8727_NOC)
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.50.5 (May 26, 2009)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ38975) Failed to setup leading connection after
+                 a lot of iterations of "down-up" test. Workaround for CQ37893
+                 (Use INTx mode when MSI-X fails due to memory allocation
+                 failure) was broken
+
+        Cause:   bnx2x_set_int_mode() wasn't returning a status, thus there
+                 was no way to catch a mentioned above memory allocation
+                 failure
+
+        Fix:     Return a status from bnx2x_set_int_mode()
+
+        Impact:  None
+
+    2.  Problem: (CQ41349) Linux panic when disabling RX chksum and running RX
+                 traffic
+
+        Cause:   TPA enabled option was not controlled per function/queue level
+
+        Fix:     FW fix in version 5.0.16: TPA enabled is now controlled per
+                 function/queue level
+
+        Impact:  None
+
+    3.  Problem: (CQ41434) ethtool -S <NIC> was printing junk on kernels with
+                 RSS support
+
+        Cause:   There was a bug in function returning number of lines in
+                 device statistics bnx2x_get_stats_count - it was returning
+                 more than there actually were)
+
+        Fix:     Make bnx2x_get_stats_count return the correct number
+
+        Impact:  None
+
+
+    Enhancements
+    ------------
+    1.  Request: Support approved module list and warn if the module is not on
+                 the list
+
+        Change:  This feature requires bootcode 5.0.6 or later and a valid
+                 optic modules image on the nvram. The feature is controlled by
+                 nvram option 81
+
+        Impact:  None
+
+    2.  Request: Allow enabling and disabling the fan failure mechanism for
+                 different PHY types
+
+        Change:  Determine if fan failure enforcement is required according to
+                 nvram configuration. The configuration can be auto enforcement
+                 according to the PHY type, disabled or enabled
+
+        Impact:  None
+
+    3.  Request: Support firmware flow control when consuming SGEs
+
+        Change:  FW change in FW 5.0.16: Added check for Flow control when
+                 consuming SGEs from host
+
+        Impact:  None
+
+    4.  Request: Advertise driver DCC capabilities
+
+        Change:  As requested
+
+        Impact:  None
+
+
+Version 1.50.4 (May 18, 2009)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ40938, CQ40937, CQ40911, CQ40992)
+                 LSO test failure
+
+        Cause:   LSO packets with BDs that point to buffers that are less than
+                 MSS size caused the firmware to send illegal bytes within the
+                 same LSO packet
+
+        Fix:     FW fix in version 5.0.14
+
+        Impact:  Regression introduced in v1.50.2
+
+    2.  Problem: (CQ41198) modprobe generate error on RH4.6 or 4.7 which will
+                 cause kernel panic
+
+        Cause:   pci_register_driver() returns count and not errno
+
+        Fix:     Ignore the return code from pci_register_driver() in kernels
+                 below 2.6.10
+
+        Impact:  None
+
+    3.  Problem: (CQ38975,CQ38925) Failed to setup leading connection after
+                 a lot of iterations of "down-up" test
+
+        Cause:   There were a few memory barriers missing
+
+        Fix:     Add missing memory barriers
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Reduce the time spent in skb_release_data()
+
+        Change:  Add prefetch(&skb->end) before calling dev_kfree_skb in order
+                 to bring in the cache line that skb_release_data() will
+                 eventually need (based on the bnx2 patch proposed by
+                 Eric Dumazet)
+
+        Impact:  None
+
+    2.  Request: (CQ33228) Add required IOCTLs to support PHY FW upgrade
+
+        Change:  Add 3 magic numbers to the ethtool -E (eeprom) command to
+                 support PHY FW upgrade init, PHY FW upgrade complete, and PHY
+                 re-init after upgrade
+                 Add CL45 MDIO IOCTL support
+
+        Impact:  None
+
+    3.  Request: Add support for BCM8481 SPI-ROM upgrade
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.50.3 (May 14, 2009)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ40848,CQ40835) System breaks due to a firmware assert
+
+        Cause:   Firmware asserted when PCI read latency for RX BD ring was
+                 longer then 20usec
+
+        Fix:     FW fix in version 5.0.12: Replace the workaround by a flow
+                 which polls on the RX BD ring every 4usec
+
+        Impact:  None
+
+    2.  Problem: (CQ36705) Performance on 57711/57711E is lower when flow
+                 control is enabled than when flow control is disabled
+
+        Cause:   L2 firmware flow control was enabled for 57711/57711E and
+                 caused performance decrease
+
+        Fix:     Disable L2 firmware flow control by default (add new module
+                 parameter to enable it)
+
+        Impact:  None
+
+    3.  Problem: Workqueue might not be freed if driver fail to register
+
+        Cause:   Workqueue is not freed if driver fail to register
+
+        Fix:     Free workqueue when driver fail to register
+
+        Impact:  None
+
+    4.  Problem: Negative number of received packages might be returned in
+                 STOP_ON_ERROR debug mode
+
+        Cause:   Negative errno is returned in STOP_ON_ERROR debug mode
+
+        Fix:     Do not return negative number of received packages
+
+        Impact:  None
+
+    5.  Problem: Fan failure on BCM8727 was not supported on port 1
+
+        Cause:   The fan failure assertion was tied only to port 0
+
+        Fix:     The fan failure assertion is tied to port 1 also
+
+        Impact:  None
+
+    6.  Problem: BCM8727 shows link up while RX is disabled
+
+        Cause:   When module-compliance enforcement is enabled,
+                 and non-compliant module is detected, then the driver
+                 disables the TX-Laser for the phy, yet the link keeps
+                 showing link up.
+
+        Fix:     When link is changing, in case the TX-laser is off,
+                 indicate that the link is down although the phy detects
+                 RX link up.
+
+        Impact:  None
+
+    7.  Problem: (CQ41000) Could miss link up event in BCM8727 right after
+                 optic module insertion
+
+        Cause:   At the time that SFP+ module plugged-in was triggered,
+                 driver enabled the module while ignoring link change
+
+        Fix:     Check for link changes during module plugged in/out
+
+        Impact:  None
+
+    8.  Problem: BCM8727 doesn't link in 10G after changing from 1G
+
+        Cause:   10G default configuration was overwritten after setting 1G
+                 configuration. Since the phy is not reset, the configuration
+                 for 10G doesn't go back to default after link speed change
+
+        Fix:     When setting 10G, enforce 10G configuration, and not relay
+                 on the default configuration.
+
+        Impact:  None
+
+
+    9.  Problem: (CQ40840) BCM57710 didn't receive multicast packets
+
+        Cause:   BCM57710 was unable to receive multicast packets. This BUG
+                 was introduced with transition to the new Rx HSI. It's unlikely
+                 that this failure is SuSE 11 specific
+
+        Fix:     Fix BCM57710 specific multicast configuration code
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add dropless_fc module parameter to send pause frames in
+                 case where one of the host buffers (when in RSS mode) are
+                 exhausted
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.50.2 (May 05, 2009)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ40300) XFP adapter shows link up in network properties
+                 with no cable
+
+        Cause:   Link status register was updated long after interrupt was
+                 triggered
+
+        Fix:     Check that RX PMD Loss of Sync bit is cleared and RX PMD Sync
+                 Acquired bit is set to detect link
+
+        Impact:  None
+
+    2.  Problem: When Over-Current state is established, LASI interrupts are
+                 not cleared
+
+        Cause:   In this scenario, the module is powered-off so OPTXFLT/OPRXLOS
+                 indications are set. This cause a fixed RX_ALARM indication
+                 which cannot be turned off
+
+        Fix:     When Over-current condition is detected, set RX_ALARM to
+                 detect only module-absent events, so when a new module is
+                 plugged in, it will be detected and then RX_ALARM will be set
+                 to detect link as well
+
+        Impact:  None
+
+
+
+    Enhancements
+    ------------
+    1.  Request: Improve Tx packet rate
+
+        Change:  FW 5.0.10
+
+        Impact:  None
+
+    2.  Request: Add support for future chip revisions
+
+        Change:  From now on bnx2x_main.c doesn't include huge X_init_values.h
+                 files. Instead X_init_values.h were transformed to
+                 X_init_values.c, which also include internal pointers
+                 initialization function for the appropriate chip revision
+
+        Impact:  None
+
+    3.  Request: Add additional support for BCM8727
+
+        Change:  Add support module detection, over-current detection and
+                 SFP+ EEPROM access
+
+        Impact:  None
+
+    4.  Request: Add fan-failure check for BCM8727
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.50.1 (April 27, 2009)
+===============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ39681) Dtape test fails on Dell TL2000 media changer device
+
+        Cause:   Misalignment between driver and firmware
+
+        Fix:     FW fix in version 5.0.8
+
+        Impact:  None
+
+    2.  Problem: When several protocols work together, interrupt rate is the
+                 sum of all protocol rates, instead of the maximum between them
+
+        Cause:   State machines in host coalescing code were independent
+                 and generated interrupts on their will
+
+        Fix:     FW fix in version 5.0.8: Add dependency between the states
+                 machine - when an interrupt
+                 is generated then all state machines of this status block
+                 are handled as expired, resulting with lower interrupt rate
+
+        Impact:  None
+
+    3.  Problem: Bootcode unable to set phy configuration
+
+        Cause:   When driver is loaded, it sets Serdes to work in CL45 while
+                 the bootcode is using CL22 for phy access, so when driver
+                 is unloaded, bootcode unable to access the phy.
+
+        Fix:     When driver is loaded set Serdes mode to CL22 only when
+                 1G-switch is set. This shall solve the issue for older
+                 bootcodes, and will be fixed in newer bootcodes
+
+        Impact:  None
+
+    4.  Problem: BCM8481 is not able to link up in legacy speeds
+
+        Cause:   Setting legacy speeds requires additional phy configuration,
+                 and speed analysis
+
+        Fix:     Enable legacy speeds for this phy
+
+        Impact:  None
+
+    5.  Problem: (CQ40392) Build for SLES11 do not autoload on reboot
+
+        Cause:   SLES11 disables modules whose source is not maintained in the
+                 kernel.org source tree
+
+        Fix:     Provide "supported: external" modules for SLES11
+
+        Impact:  None
+
+    6.  Problem: BCM8481 is not able to link with 10/100 switch
+
+        Cause:   XGXS was initializaed to work in none-SGMII mode
+
+        Fix:     Set XGXS to work in SGMII mode if link speed is slower the 1G
+
+        Impact:  None
+
+    7.  Problem: Potential error on unload
+
+        Cause:   The ILT could have been freed while a timer scan is in progress
+
+        Fix:     Make sure that the timer scan is done before freeing the ILT
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Improve Tx latency
+
+        Change:  Removed taking tx_lock in Tx interrupt flow. This also
+                 voided a need for tx_xon_tasklet - Tx is moved to XON state
+                 directly from bnx2x_tx_int
+
+        Impact:  None
+
+    2.  Request: Add support for new BMAC HW block for new chip types
+
+        Change:  When accessing the new BMAC, use the new registers.
+                 No need to initialize the PBF HW block credits since
+                 flow-control is always enable in that block.
+
+        Impact:  None
+
+    3.  Request: Enable support for other chips in more general way.
+
+        Change:  Split init values and FW into 2 different files. Work
+                 against pointers in bnx2x struct instead of global arrays.
+
+        Impact:  None
+
+    4.  Request: Add initial support for BCM8727
+
+        Change:  Add support for the new dual-port SFP+ phy
+
+        Impact:  None
+
+    5.  Request: In BigMac2, when PFC enabled, pass pause frames towards the NIG
+
+        Change:  Set the appropriate bit in the bigmac control register
+
+        Impact:  None
+
+    6.  Request: Improve Rx packet rate
+
+        Change:  FW 5.0.8
+
+        Impact:  None
+
+Version 1.50.0 (April 02, 2009)
+===============================
+
+    Fixes
+    -----
+    1.  Problem: Rx was getting stuck on ia64 platform when system page size
+                 was configured to be 64KB on the kernels 2.6.27 and later
+
+        Cause:   The implementation on PAGE_ALIGN macro has been changed,
+                 which caused downcast in some places in the code and as a
+                 result improper HW configuration
+
+        Fix:     Add a proper casting for the argument of SGE_PAGE_ALIGN macro
+
+        Impact:  None
+
+    2.  Problem: (CQ39552) Link LED is turned OFF while running external
+                 loopback test
+
+        Cause:   When using phy loopback, the link doesn't actually comes up
+                 since there's no link partner
+
+        Fix:     Set link led up on loopback test
+
+    3.  Problem: BCM8481 is not able to link up in 10/100/1000 Mbps
+
+        Cause:   No 10/100/1000 link signal is connected from the BCM8481 to the
+                 Everest
+
+        Fix:     BCM8481 will connect LED4 signal to the Everest LASI signal.
+                 The Everest will use the NIG latching mechanism which allows to
+                 catch a link event even if the link toggles fast
+
+    4.  Problem: SFP+ (BCM8726) boards do not use flow-control
+
+        Cause:   Flow control wasn't set for BCM8726
+
+        Fix:     Set flow control according to configuration in BCM8726
+
+        Impact:  None
+
+    5.  Problem: Flow-control in MF mode should behave like in SF mode
+
+        Cause:   Old restriction which is not necessary
+
+        Fix:     Remove special flow-control configuration in MF mode
+
+        Impact:  None
+
+    6.  Problem: CNIC sanity tests fails
+
+        Cause:   When changing to new dynamic HC code, no RAM line was allocated
+                 to default SB so there was a memory corruption
+
+        Fix:     FW fix in version 5.0.3: Add RAM line for default SB to dynamic
+                 HC array
+
+        Impact:  None
+
+    7.  Problem: (CQ39503) Transmission stops for 5 second
+
+        Cause:   Confusion in scaling of the receive window of the remote.
+                 Sometimes it is taken "as is" as a number of bytes, without
+                 scaling
+
+        Fix:     FW fix in version 5.0.3: Scaling added in 3 places in the code
+
+        Impact:  None
+
+    8.  Problem: Low performance on Tx side in UDP test with small packets
+
+        Cause:   Extra memory barrier in Tx flow
+
+        Fix:     Replace mb() to wmb()
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Improve FW performance
+
+        Change:  HC coalescing has been moved from USTORM to CSTORM.
+                 TSTORM performance has been improved. FW 5.0.3
+
+        Impact:  None
+
+    2.  Request: Add support for DCC
+
+        Change:  As requested
+
+        Impact:  None
+
+    3.  Request: Improve performance
+
+        Change:  Connect Tx and Rx to different interrupt vectors
+
+        Impact:  None
+
+    4.  Request: Add module parameter controlling number of Rx and Tx queues
+
+        Change:  As requested. Number of Tx queues must be not more than
+                 number of Rx queues
+
+        Impact:  None
+
+    5.  Request: Add "per function" statistics support for NCSI management
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.48.106 (Mar 04, 2009)
+===============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ38925) Unload/Load with netperf TCP traffic test
+                 eventually caused a SETUP ramrod failure
+
+        Cause:   ISR discarded a SP interrupt due to weak synchronization of
+                 atomic variable that disables interrupt handling (intr_sem)
+
+        Fix:     Add write memory barriers where intr_sem is updated
+
+        Impact:  None
+
+    2.  Problem: Possible problem in pram initialization
+
+        Cause:   There was a bug in init code generation script
+
+        Fix:     Fix the pram initialization
+
+        Impact:  None
+
+Version 1.48.105 (Mar 02, 2009)
+===============================
+-- Upstream Version --
+    Fixes
+    -----
+    1.  Problem: Unload/Load test under traffic caused kernel panic in
+                 skb allocation/freeing functions
+
+        Cause:   Previously added patch (enhancement 6 in release 1.48.100)
+                 broke proper usage of net_device object
+
+        Fix:     Remove the mentioned patch
+
+        Impact:  None
+
+Version 1.48.104 (Mar 01, 2009)
+===============================
+
+    Fixes
+    -----
+    1.  Problem: New phy version (P14) of the BCM8726 unable to link up
+
+        Cause:   The new phy version doesn't behave exactly like its
+                 previous version (P13), hence requires some adjustments
+
+        Fix:     1. Microcode download requires write of another register
+                 2. Read from "Limiting/LRM mode" register before setting
+                 Limiting mode
+
+        Impact:  No impact on P13
+
+    Enhancements
+    ------------
+    1.  Request: Add limited (online) GRC dump using ethtool -d command
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.48.103 (Feb 19, 2009)
+===============================
+
+    Fixes
+    -----
+    1.  Problem: "ext_phy_fw version" command for BCM8705 shows invalid number
+
+        Cause:   BCM8705 has no microcode
+
+        Fix:     Set BCM8705 version to 0
+
+        Impact:  None
+
+    2.  Problem: Potential problem in BCM8726 bit stretching work-around
+
+        Cause:   When module detection option is disabled, module should be
+                 transmitting regardless of invalid read from EEPROM
+
+        Fix:     Ignore error code when setting limiting mode
+
+        Impact:  None
+
+    3.  Problem: (CQ38925, CQ38975) "Wait Ramrod" error while running
+                 load/unload stress w/ traffic
+
+        Cause:   Tx wasn't properly disabled in the 'close' flow
+
+        Fix:     Properly disable Tx during 'close' flow
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Use DMAE to zero the FW internal memory before loading the FW
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: Remove "budgeting" in bnx2x_tx_int
+
+        Change:  As Requested
+
+        Impact:  None
+
+    3.  Request: By default, multi_mode is disabled for old NAPI kernels
+                 (up to 2.6.24)
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.48.102 (Feb 12, 2009)
+===============================
+-- Upstream Version --
+    Fixes
+    -----
+    1.  Problem: FW stats counters might not be updated when running heavy
+                 stress test
+
+        Cause:   Sending FW stats ramrod query depends on stats_pending flag.
+                 This flag might not be cleared by sp_task() under heavy stress.
+                 Thus, next FW stats ramrod query will not be send
+
+        Fix:     Clear stats_pending flag at the end of storm_stats_update()
+
+        Impact:  None
+
+Version 1.48.101 (Feb 09, 2009)
+===============================
+
+    Fixes
+    -----
+    1.  Problem: Compilation is broken on kernels >= 2.6.24
+
+        Cause:   FW constant rename was not updated in latest drop
+
+        Fix:     Fix constant name
+
+        Impact:  None
+
+Version 1.48.100 (Feb 09, 2009)
+===============================
+
+    Fixes
+    -----
+    1.  Problem: "ext_phy_fw version" command for BCM8706 sometimes shows
+                 invalid version number
+
+        Cause:   The version number is read during init phase. Reading the
+                 BCM8706 version during init phase is done premature
+
+        Fix:     During init phase of the BCM8706, wait until the firmware
+                 is loaded completely before reading the version number
+
+        Impact:  None
+
+    2.  Problem: When setting pre-emphasis values for external phys, the
+                 XGXS is also set
+
+        Cause:   In external-phy boards, when pre-emphasis values were set in
+                 the nvram, both the external phy and the XGXS pre-emphasis
+                 values were set, while the values fit the external phy only
+
+        Fix:     Set pre-emphasis values in XGXS only for direct type boards
+
+        Impact:  None
+
+    3.  Problem: (CQ37809) loopback test failure
+
+        Cause:   The link was initialized for real work mode and then
+                 re-init to loopback mode. During that time, incoming packets
+                 might be queued in the rx ring in front of the loopback packet
+
+        Fix:     Always initialize the link to loopback mode if load_mode is
+                 LOAD_DIAG
+
+        Impact:  None
+
+    4.  Problem: Possible false error in the idle check section of the
+                 self test regarding the CFC_REG_ACTIVITY_COUNTER register
+
+        Cause:   The test was designed to check halted system (after fatal
+                 error) and thus assumed that the chip is idle
+
+        Fix:     Change the test to "info" debug print
+
+        Impact:  None
+
+    5.  Problem: (CQ39439) mf_cfg function disabled error message displayed
+
+        Cause:   Putting the driver into disabled mode was considered an error
+
+        Fix:     Change the printed message from error to a notification
+
+        Impact:  None
+
+    6.  Problem: (CQ38925, CQ37645) ifconfig ethX down up may cause a wrong
+                 MSI configuration, which will prevent MSI interrupts to arrive
+
+        Cause:   Chip reset function cleared "MSI reconfigure enable" bit
+
+        Fix:     Don't clear the "MSI reconfigure enable" bit
+
+        Impact:  None
+
+    7.  Problem: Uninitialized HW blocks
+
+        Cause:   XCM and BRB1 port init part were missing
+
+        Fix:     Add XCM and BRB1 port init part
+
+        Impact:  None
+
+    8.  Problem: Constant pause is sent to the network if pause is enabled and
+                 TPA is disabled
+
+        Cause:   Wrong thresholds were configured
+
+        Fix:     Set the thresholds to 0 if TPA is disabled
+
+        Impact:  None
+
+    9.  Problem: Unloading UNDI by the driver in E1HMF mode might disable
+                 interrupts of the wrong function
+
+        Cause:   HC regs are splited by 4
+
+        Fix:     Pritend to write as function 0 when writing to HC regs
+
+        Impact:  None
+
+    10. Problem: BCM8726 MDIO access is not locked as it should be
+
+        Cause:   MDC/MDIO access to BCM8726 is done via single EMAC, hence
+                 all MDC/MDIO access to this phy needs to be locked, like
+                 BCM8072 and BCM8073
+
+        Fix:     Lock the hardware using MDIO_RESOURCE when accessing the
+                 BCM8726 phy via MDIO
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Set default WoL state according to nvram settings
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: WRR between different COS queues at TX side
+
+        Change:  Added in driver and in FW 4.8.53
+
+        Impact:  None
+
+    3.  Request: Add ability to change BCM8726 TX PreEmphasis using nvram
+                 configuration
+
+        Change:  When nvram config "Override pre-emphasis configuration" (75)
+                 is set, use Tx pre-emphasis nvram configuration (47), lane0
+                 value to set the Main Tap and lane1 to enable TX-PreEmphasis
+                 in BCM8726
+
+        Impact:  None
+
+    4.  Request: Add basic support for BCM8481
+
+        Change:  As Requested
+
+        Impact:  None
+
+    5.  Request: Limit Tx queue number to one for kernels 2.6.24 - 2.6.26
+                 (non-TSS kernels with new NAPI)
+
+        Change:  As Requested
+
+        Impact:  None
+
+    6.  Request: Add RSS support for old NAPI kernels (up to 2.6.24) that
+                 support MSI-X
+
+        Change:  As Requested
+
+        Impact:  multi_mode = 1 is now the default for all kernels
+
+Version 1.48.51 (Jan 26, 2009)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: Load balancing didn't work
+
+        Cause:   Driver assumed that there was Tx work as long as
+                 driver packets producer and consumer were not equal
+
+        Fix:     Changed driver's Tx work amount evaluation logic
+
+        Impact:  None
+
+Version 1.48.50 (Jan 22, 2009)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ38862) modprobe fails to load driver on SuSE 11
+
+        Cause:   SuSE 11 does not allow 3rd party modules to be loaded without
+                 toggling a flag in /etc/modprobe.d/unsupported-modules
+
+        Fix:     Toggle the bit during make install
+
+        Impact:  None
+
+    2.  Problem: Accessing nvram while the driver is down caused PCI error
+
+        Cause:   The driver attempted to access the nvram while the device was
+                 in D3 since it was disabled
+
+        Fix:     Prevent nvram access when the device is down
+
+        Impact:  None
+
+    3.  Problem: FW assert while running multi_mode=2 with tx MULTI_QUEUE
+                 enabled
+
+        Cause:   start_xmit() selected different tx queue than the tx_lock was
+                 taken
+
+        Fix:     Implement dev->select_queue() callback so start_xmit() selects
+                 the correct tx queue
+
+        Impact:  None
+
+    4.  Problem: Compilation problem with kernel 2.6.29
+
+        Cause:   netif_rx_schedule and netif_rx_complete do not require the
+                 device parameter anymore
+
+        Fix:     Do not pass the device paramter for those functions for kernels
+                 above 2.6.29
+
+        Impact:  None
+
+    5.  Problem: Invalid presentation of BCM8726 fw version
+
+        Cause:   The register that holds the fw version is used for other
+                 functionality as well, and it is run over after firmware is
+                 loaded
+
+        Fix:     Save the firmware version of all external phys in shared
+                 memory, after firmware is loaded
+
+        Impact:  None
+
+    6.  Problem: BCM8726 may start tx laser before module detection occurs
+
+        Cause:   Module detection used to be done during link update, which
+                 probably would be after tx was enabled
+
+        Fix:     From now on use interrupt driven event using GPIO3, to detect
+                 module plugged in/out, and execute module detection then
+
+        Impact:  None
+
+    7.  Problem: 1G switch configuration (using the 5th lane) doesn't work
+
+        Cause:   Support for Serdes (5th lane) was not maintained since no
+                 production design used it and when switching to CL45 it stopped
+                 working
+
+        Fix:     In order for control the Serdes over Clause45, (and not
+                 Clause22), it requires first one time register setting in
+                 Clause22
+
+        Impact:  None
+
+    8.  Problem: Softlock during remove_one()
+
+        Cause:   NAPI context was not released before unloading
+
+        Fix:     Release NAPI context before unloading
+
+        Impact:  None
+
+    9.  Problem: False self-test failures due to MC_ASSERT
+
+        Cause:   iSCSI FW sometimes report run-time warnings which are
+                 acceptable and do not cause any harm
+
+        Fix:     Do not check for MC_ASSERT. A real FW error will cause the
+                 interrupt test to fail
+
+        Impact:  None
+
+    10. Problem: Possible miss of FW response on unload
+
+        Cause:   Missing memory barrier while waiting for FW response
+
+        Fix:     Add read memory barrier
+
+        Impact:  None
+
+    11. Problem: (CQ37809) loopback test failure
+
+        Cause:   A link change interrupt might be queued and activated after
+                 the loopback was set
+
+        Fix:     Lock all PHY activities while running loopback test
+
+        Impact:  None
+
+    12. Problem: (CQ39057) Everest, 57710 Error message:
+                 bnx2x_start_xmit: BUG Tx ring full when queue awake
+
+        Cause:   In kernels 2.6.24 - 2.6.26 (non-TSS kernels with new NAPI)
+                 there can be a possibility that NAPI instance (fp instance)
+                 other than the one moved Tx to XOFF state will wake the Tx
+                 So, this is highly possible that start_xmit is called while
+                 the ring is still full
+                 In any other kernel this state is an obvious bug
+
+        Fix:     Remove an error message in the code for the mentioned
+                 kernels
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Use FW 4.8.50
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: BCM8726 should be able to link up at 1G
+
+        Change:  Add support for 1G for BCM8726
+
+        Impact:  When requested speed is 1G force, it will try to link in 1G
+                 force. When the speed requested is autoneg, and the speed mask
+                 capabilities contain 1G, it will try to autoneg in 1G as
+                 well as in 10G
+
+    3.  Request: (CQ39048) Add ability to change 8706 XAUI RX Equalizer
+                 using nvram configuration
+
+        Change:  When nvram config "Override pre-emphasis configuration" (75)
+                 is set, use the 3LSB bits of RX_equalizer nvram configuration
+                 (48) to set the BCM8706 XAUI RX Equalizer registers for each
+                 lane
+
+        Impact:  None
+
+    4.  Request: Verify external phy image before ROM upgrade
+
+        Change:  New headers will be added to the images of external phys to
+                 be upgraded. Currently this list includes BCM8073, BCM8726
+                 and SFX7101. The headers will be checked against fixed magic
+                 number and specific phy type
+
+        Impact:  From now on, external phy images MUST include image header
+
+Version 1.48.11 (Jan 13, 2009)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: Possible memory overrun on platforms with page size more
+                 than 8K
+
+        Cause:   "linearization" should take into an account system page
+                 size and run or not run accordingly
+
+        Fix:     Fixed the compilation condition
+
+        Impact:  None
+
+    2.  Problem: Compilation problem with kernel 2.6.28
+
+        Cause:   struct net_device_ops was postponed to next release
+
+        Fix:     Remove struct net_device_ops from compilation
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Limit multi_mode to support only regular mode
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.48.10 (Jan 07, 2009)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ39129) driver assert while logging out during iSCSI
+                 max sessions test
+
+        Cause:   QM initialization was wrong
+
+        Fix:     Fix QM initialization
+
+        Impact:  None
+
+Version 1.48.9 (Jan 05, 2009)
+=============================
+
+    Fixes
+    -----
+
+    1.  Problem: (CQ38909) on IA-64 with TPA enabled, kernel memory was
+                 sometimes smeared (depending on the MTU size)
+
+        Cause:   The max TPA fragments assumed 4KB pages and that system had
+                 16KB pages
+
+        Fix:     Fix the SGE (TPA fragment) size to be system page size
+
+        Impact:  Improved performance on systems with page size > 4KB like PPC
+                 and IA-64
+
+Version 1.48.8 (Dec 31, 2008)
+=============================
+
+    Fixes
+    -----
+
+    1.  Problem: (CQ38992) on IA-64 Driver crash when transmitting on all 8
+                 functions in chariot IPv6 with tx checksum disabled scenario
+
+        Cause:   FW read the buffer descriptor (BD) producer and after that the
+                 BD itself before the BD content was updated. This is possible
+                 on IA-64 due to weak ordered memory module
+
+        Fix:     Add write barrier after updating the BD data and before
+                 updating the BD producer
+
+        Impact:  None
+
+Version 1.48.7 (Dec 30, 2008)
+=============================
+
+    Fixes
+    -----
+
+    1.  Problem: (CQ38985) Port swap is not working for BCM8726
+
+        Cause:   BCM8726 is driven by MDC/MDIO through single EMAC.
+                 In case of port swap, the EMAC access was left with EMAC0
+
+        Fix:     In case port-swap is enabled in the NIG, access MDC/MDIO via
+                 EMAC1
+
+        Impact:  None
+
+    2.  Problem: BCM8726 was not reset when driver was unloaded
+
+        Cause:   This phy hardware reset affects both ports and thus wasn't
+                 used
+
+        Fix:     When link needs to be reset, reboot the micro-controller of the
+                 BCM8726
+
+        Impact:  None
+
+    3.  Problem: BCM8726 was not reset during init
+
+        Cause:   This phy is connected using static port-swap, hence the reset
+                 should have been triggered through the opposite port from the
+                 spec
+
+        Fix:     Set gpio1 during common init from port1 instead of port0
+
+        Impact:  None
+
+    4.  Problem: (CQ38991) In E1HMF mode some interfaces occasionally
+                 misreport link speed
+
+        Cause:   Races between interfaces during init cause an interrupt
+                 event to be ignored
+
+        Fix:     Flag the device as "ready for interrupts" prior to enabling
+                 the interrupts
+
+        Impact:  None
+
+    5.  Problem: (CQ39057) Everest, 57710 Error message :
+                 bnx2x_start_xmit: BUG Tx ring full when queue awake.
+
+        Cause:   Tx BD producer update may not be "seen" by bnx2x_tx_int
+                 function running on different CPU, thereby bnx2x_tx_int
+                 may erroneously conclude that it may wake Tx.
+
+        Fix:     Add smp_mb() after update of Tx producer before putting Tx
+                 to XOFF state.
+
+        Impact:  None
+
+    6.  Problem: In E1HMF mode with multi queue, functions 2..7 cannot receive
+                 data
+
+        Cause:   Incorrect initialization of indirection table
+
+        Fix:     Initialize correctly the indirection table
+
+        Impact:  None
+
+    7.  Problem: The driver debug crash dump does not handle cyclic rings
+                 correctly
+
+        Cause:   The debug prints were simply from start to end and did not
+                 print anything in case start < end (cyclic rings)
+
+        Fix:     Enhance the debug prints with cyclic logic
+
+        Impact:  None
+
+    8.  Problem: Packets dropped due to lack of host buffers were counted twice
+                 - in good and bad statistics
+
+        Cause:   Firmware does not maintain separate counters for
+                 unicast/broadcast/multicast drops, therefore driver cannot
+                 subtract these values from the good packet/byte counters
+
+        Fix:     Fixed in FW 4.8.9
+
+        Impact:  None
+
+    9.  Problem: iSCSI FW: High non-paged host memory consumption
+
+        Cause:   Unnecessary optimization of chipset<->memory bandwidth in
+                 expense of memory consumption
+
+        Fix:     Fixed in FW 4.8.9
+
+        Impact:  None
+
+Version 1.48.6 (Dec 18, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: System hangs when running ifconfig on an 8 CPUs system
+
+        Cause:   A loop variable was used again in an inner loop. That caused
+                 an endless loop
+
+        Fix:     Use another variable for the inner loop
+
+        Impact:  None
+
+    2.  Problem: Some stats names are not displayed but their values were
+                 displayed in other stats
+
+        Cause:   Incorrect condition caused to skip stats names but not their
+                 values
+
+        Fix:     Correct the condition
+
+        Impact:  None
+
+    3.  Problem: iSCSI FW: During connection establishment on-chip (option2),
+                 in case we receive SYN/ACK with incorrect dst_mac the chip
+                 gets stuck
+
+        Cause:   This scenario led to accessing invalid PRAM address which
+                 made the chip halt
+
+        Fix:     Fixed in FW 4.8.8
+
+        Impact:  None
+
+    4.  Problem: NAPI poll mode was stopped (netif_rx_complete called) and HW
+                 interrupts reenabled even if the whole device quota had been
+                 consumed.
+
+        Cause:   There was a bug in NAPI poll-mode canceling logic.
+
+        Fix:     Fix the logic in NAPI poll method.
+
+        Impact:  None
+
+Version 1.48.5 (Dec 11, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: TCP packets with VLAN weren't handled properly, when received
+                 in non-accelerated VLAN traffic mode (when VLAN tag is not
+                 stripped by the FW)
+
+        Cause:   Driver didn't support receiving VLAN packets in
+                 non-accelerated mode. for TPA packets, there was a wrong
+                 IP header offset calculation and, as a result, writing IP
+                 checksum to the wrong offset. Non-TPA packets weren't handled
+                 right as well: driver always used vlan_hwaccel_receive_skb to
+                 pass an skb with VLAN to the stack, while it should use
+                 netif_receive_skb in non-accelerated case
+
+        Fix:     Fixed IP header offset calculation for TPA packets. Fixed VLAN
+                 skb handling
+                 logic.
+
+        Impact:  None
+
+    2.  Problem: (CQ38698, CQ37931) No link when using direct attached copper
+                 cable with BRCM8726 PHY
+
+        Cause:   Passive copper cables should always operate in LRM mode rather
+                 than in Limiting mode
+
+        Fix:     In case of passive copper cables, link up in LRM mode
+
+        Impact:  None
+
+    3.  Problem: (CQ38815) iSCSI failure during hotplug
+
+        Cause:   Not everything is setup before calling register_netdev().
+                 pci_set_drvdata() and bnx2x_init_bp() were called after
+                 register_netdev(). This potentially can also affect L2
+                 because bnx2x_open() can potentially be called before
+                 those 2 calls have successfully completed
+
+        Fix:     Call register_netdev only at the end of successful setup
+
+        Impact:  None
+
+    4.  Problem: (CQ38862) modprobe fails to load driver on SUSE11
+
+        Cause:   SuSE does not allow 3rd party modules to be loaded without
+                 toggling a flag in /etc/modprobe.d/unsupported-modules
+
+        Fix:     Toggle the bit through the packaging script
+
+        Impact:  None
+
+    5.  Problem: iSCSI FW: In non-aligned PDUs with data-digest enabled, the
+                 data-digest is calculated to a wrong value
+
+        Cause:   The CRC machine was not reset correctly in non-aligned PDUs
+
+        Fix:     Fixed in FW 4.8.6
+
+        Impact:  None
+
+    6.  Problem: iSCSI FW: Connection wasn't initialized with the right
+                 parameters for the TX in E1HMF mode
+
+        Cause:   Initialization was done using SF mode
+
+        Fix:     Fixed in FW 4.8.6
+
+        Impact:  None
+
+    7.  Problem: (CQ38886, CQ38888) iSCSI FW: Double-vlan was not supported
+                 for iSCSI. The packet was transmitted with bogus IP length
+                 and no inner-vlan
+
+        Cause:   The vlan flag and the header builder command size weren't
+                 set correctly
+
+        Fix:     Fixed in FW 4.8.6
+
+        Impact:  None
+
+    8.  Problem: Byte counters statistics did not count the 4 FCS bytes
+
+        Cause:   The FCS bytes were not counted
+
+        Fix:     Fixed in FW 4.8.7
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: SFP+ optical module (MSA) vendor verification should
+                 be optional when using BCM8726 PHY
+
+        Change:  Verify the optical module vendor according to nvram
+                 configuration option #81: "Optic Module Vendor
+                 Enforcement"
+
+        Impact:  The new nvram bit is visible using ediag version 4.8.3
+                 or later
+
+    2.  Request: In multi queue mode, separate FW stats per queue
+
+        Change:  As requested
+
+        Impact:  None
+
+    3.  Request: Change some stats names:
+                 pause_frames_received is now rx_pause_frames
+                 pause_frames_sent is now tx_pause_frames
+                 timer_max_events is now rx_constant_pause_events
+
+        Change:  As requested
+
+        Impact:  None
+
+    4.  Request: Align with RMON MIB (rfc 1757):
+                 net_device_stats.rx_bytes is total_bytes_received
+                 net_device_stats.multicast is total_multicast_packets_received
+
+        Change:  As requested
+
+        Impact:  None
+
+    5.  Request: Use static singlethread_workqueue shared for all bnx2x
+                 interfaces
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.48.4 (Nov 26, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: CNIC driver is failing on higher functions of 57711E
+
+        Cause:   The status block ID for the CNIC was not assigned correctly
+                 for higher functions
+
+        Fix:     Assign the status block ID according to the function ID
+
+        Impact:  None
+
+Version 1.48.3 (Nov 20, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: Intermittent MDC/MDIO failures on 8726 PHY
+
+        Cause:   MDIO register access is sometimes broken since PHY is not hard
+                 reset
+
+        Fix:     Pull GPIO1 low for 1 ms after power-on. Note that the hard
+                 reset is a shared resource on the PHY
+
+        Impact:  None
+
+    2.  Problem: gso_type indication was not set for TPA packets
+
+        Cause:   gso_type wasn not set
+
+        Fix:     Set gso_type accordingly
+
+        Impact:  None
+
+    3.  Problem: Possible false parity indication
+
+        Cause:   When using 5 tuple hash (not used today) the searcher might
+                 falsely indicate parity error
+
+        Fix:     Mask bit 6 of the searcher parity errors
+
+        Impact:  None
+
+    4.  Problem: (CQ37809) Intermittent failures in ethtool diagnostic
+                 (CQ36771) Calltrace and interface locks up when up/down
+                 interface
+
+        Cause:   If sp_task() is queued in the shared work queue after the
+                 linkwatch, it will be starved and will not update the link
+                 status until ethtool diagnostic ends and frees rtnl that
+                 linkwatch is waiting for
+
+        Fix:     Create private workqueue
+
+        Impact:  None
+
+    5.  Problem: (CQ38139) iSCSI FW: Performance < 40% of Peak Advertised
+
+        Cause:   Inefficient implementation of ring management in firmware
+
+        Fix:     Fixed in FW 4.8.4
+
+        Impact:  None
+
+    6.  Problem: (CQ38424) SAFC iperf drop result is 5 times higher than
+                 previous build
+
+        Cause:   Mis-configuration of the SAFC timeout
+
+        Fix:     The new SAFC timeout will be 200usec
+
+        Impact:  None
+
+Version 1.48.2 (Nov 10, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: SAFC packets were not generated periodically by NIG
+
+        Cause:   A HW architecture bug
+
+        Fix:     Fixed in FW 4.8.3
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Support iSCSI MAC and VLAN per function in 57711E
+
+        Change:  Added in FW 4.8.3
+
+        Impact:  None
+
+Version 1.48.1 (Nov 06, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: Possible race between init_one() and open() with calling to
+                 netif_carrier_off()
+
+        Cause:   After register_netdev(), open() can be called at any time and
+                 the interrupt handler can be called after that. If you get a
+                 link change interrupt, the netif_carrier_* call from IRQ or
+                 NAPI poll can race with netif_carrier_off() call in probe.
+
+        Fix:     Move netif_carrier_off() to open()
+
+        Impact:  None
+
+    2.  Problem: Possible access to illegal addresses inside the chip during
+                 self test
+
+        Cause:   Loop size was given in bytes and not in number of entries
+
+        Fix:     Fix the loop size
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Fewer dropped packets when flow control is enabled on
+                 57711/57711E
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.48.0 (Nov 03, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: Failures on RH5 when using enabling and disabling the
+                 functions one by one on 57711E
+
+        Cause:   Unloaded driver tries to access the PHY to get its FW
+                 version since RH calls "ethtool -i" periodically
+
+        Fix:     Clear the PMF indication when the driver is unloaded
+
+        Impact:  The PHY FW is inaccessible when the driver is unloaded
+
+    2.  Problem: Searcher block initialization for 57711E is wrong
+
+        Cause:   The searcher registers are split (same address for all
+                 functions)
+
+        Fix:     Use the port offset and not the function offset
+
+        Impact:  None
+
+    3.  Problem: Kernel panic when failing to load the driver
+
+        Cause:   netif_carrier_off was called before making sure that
+                 the driver can be loaded
+
+        Fix:     Call netif_carrier_off as last action in the probe
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add iSCSI for 57711E
+
+        Change:  FW 4.8.2 supports iSCSI for 57711E
+
+        Impact:  None
+
+    2.  Request: Add transmit multi queue support
+
+        Change:  As requested
+
+        Impact:  This fetaure is available on 2.6.27 kernel when using MSI-X
+
+Version 1.46.12 (Oct 29, 2008)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ37832) System crash when running TCP connections on
+                 57711
+
+        Cause:   Access to unsupported address in FW PRAM due to
+                 increased FW size
+
+        Fix:     Fixed in FW 4.6.21: Moved all operational FW code to
+                 legal PRAM addresses
+
+        Impact:  None
+
+    2.  Problem: After some cases of driver failure, driver cannot be
+                 re-loaded
+
+        Cause:   The driver took the HW out of reset without making sure
+                 that it was indeed in reset state
+
+        Fix:     Reset the HW before taking it out of reset
+
+        Impact:  None
+
+    3.  Problem: (CQ37893) Driver failure when installed on RHEL4.5 from PXE
+                 Server
+
+        Cause:   MSI-X fails due to memory allocation failure and though MSI
+                 registration succeeded interrupts are not received in MSI mode
+
+        Fix:     Use INTx mode when MSI-X fails due to memory allocation
+                 failure
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add debug module parameter to force MRRS value
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.46.11 (Oct 23, 2008)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ37915) On 57710, if self-test is run on port 1, port 0 stops
+                 transmitting/receiving traffic unless in promiscuous mode
+
+        Cause:   Primary MAC address of port 0 is lost after the self-test on
+                 port 1
+
+        Fix:     Changed self-test to fix the problem
+
+        Impact:  None
+
+    2.  Problem: (CQ37087) iSCSI FW: Data digest error event found in event viewer
+
+        Cause:   Wrong UPB command in non-aligned data that is adjacent to
+                 iSCSI header in the TCP segment from the target
+
+        Fix:     Fixed in FW 4.6.17
+
+        Impact:  None
+
+    3.  Problem: (CQ38061) iSCSI FW: Invalid iSCSI PDU seen while running
+                 OEM diagnostic to Equallogic target
+
+        Cause:   Misinterpretation of the 3720 RFC regarding data-in sequences
+                 definition
+
+        Fix:     Fixed in FW 4.6.17
+
+        Impact:  None
+
+    4.  Problem: (CQ37861) iSCSI FW: BSOD occurred while running iLab's TOE
+                 automated tests and iSCSI traffic
+
+        Cause:   Failed to identify task cleanup during processing of a
+                 data-in PDU that belong to the same task
+
+        Fix:     Fixed in FW 4.6.17
+
+        Impact:  None
+
+    5.  Problem: (CQ38088) iSCSI FW: FW assert occurred while passing CNIC
+                 traffic
+
+        Cause:   Race in iSCSI FW between writing task context entry using
+                 the data path and writing R2TQE using the control path
+
+        Fix:     Fixed in FW 4.6.18: Eliminate race, by using R2TQE write
+                 through the data path
+
+        Impact:  None
+
+    6.  Problem: When enabling a lot of debug prints on a system with
+                 many (more than 6) interfaces, timeout can occur on
+                 driver load
+
+        Cause:   Since printk is busy, it can take longer for operations
+                 to complete
+
+        Fix:     Increase the timeout value
+
+        Impact:  None
+
+    7.  Problem: After load failure, the driver cannot be re-loaded
+
+        Cause:   The FW was not informed that the driver was unloaded
+
+        Fix:     On load failure, send "unload" notification to the FW
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: (CQ38040) Do not use crc32c_le symbol
+
+        Change:  Copied the function into the driver
+
+        Impact:  None
+
+Version 1.46.10 (Oct 20, 2008)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: System panic under stress traffic
+
+        Cause:   The alignment to the machine cache size was not calculated
+                 correctly for the Rx buffer and so a buffer overrun occurred
+
+        Fix:     Allocate the right amount of memory considering the cache
+                 alignment
+
+        Impact:  None
+
+Version 1.46.9 (Oct 16, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ37772) iSCSI FW: Bad data digest is transmitted
+
+        Cause:   Missing initialization in FW when going out of slow start
+
+        Fix:     Fixed in FW 4.6.16: Add rxmit parameters init to normal TX
+                 flow
+
+        Impact:  None
+
+    2.  Problem: (CQ37809) Intermittent Failures in Ethtool Diagnostic
+
+        Cause:   When setting PHY loopback, it required some time before
+                 configuration is actually take place.
+
+        Fix:     Add 200ms after setting the PHY loopback
+
+        Impact:  None
+
+    3.  Problem: Unable to receive packets on the iSCSI MAC address
+
+        Cause:   Promiscuous in rx mode was ran over by resetting the
+                 rx mode
+
+        Fix:     Reset the rx mode before setting promiscuous mode
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add the licensing structure to the bnx2x_hsi.h
+
+        Change:  As requested
+
+        Impact:  None
+
+    2.  Request: Set FW to machine cache alignment (up to 256B) for Rx
+                 packets L2 data
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.46.8 (Oct 07, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: A potential firmware bug when L2 packet is duplicated to more
+                 than one L2 client when TPA is enabled
+
+        Cause:   Buffer could have been released before it was read by all L2
+                 clients
+
+        Fix:     Fixed in FW 4.6.15
+
+        Impact:  None
+
+    2.  Problem: (CQ37471) iSCSI FW: (iLab test 5.12) TCP CLOSE timeout issue
+
+        Cause:   Chip halted since handler apparently stuck in the queue
+
+        Fix:     Fixed in FW 4.6.15
+
+        Impact:  None
+
+    3.  Problem: (CQ37244) iSCSI FW: (iLab test 5.10) Chip hangs when receiving
+                 SYN+RST+ACK after SYN sent
+
+        Cause:   SYN retransmission with invalid sequence number caused by not
+                 rewinding the sequence number after retransmission
+
+        Fix:     Fixed in FW 4.6.15
+
+        Impact:  None
+
+    4.  Problem: iSCSI FW: Chip halts after few unanswered connections attempts
+
+        Cause:   After retransmits were done, the chip didn't return the
+                 credits it should have
+
+        Fix:     Fixed in FW 4.6.15
+
+        Impact:  None
+
+    5.  Problem: (CQ37668) iSCSI FW: Chip hangs when trying to connect to
+                 iSCSI target with no licenses present
+
+        Cause:   When licensing of new connection fails, there's a credit leak
+                 which caused an invalid handler to wake up
+
+        Fix:     Fixed in FW 4.6.15
+
+        Impact:  None
+
+    6.  Problem: (CQ37610) A potential problem if call to register_cnic during
+                 MTU change
+
+        Cause:   CNIC and the bnx2x drivers can be trying to setup the chip
+                 at the same time
+
+        Fix:     Check for intr_sem in register_cnic to prevent this problem
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Allow better response time to SAFC packets
+
+        Change:  Configure max-byte-credit as required for SAFC mode
+
+        Impact:  None
+
+    2.  Request: Add priority mapping table to map SAFC priority to HW queue
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.46.7 (Sep 28, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ37161) Running ifconfig down up on one interface can cause
+                 other interface to fail
+
+        Cause:   Overriding internal memory that belongs to the other interface
+
+        Fix:     Writing only memory of the correct interface
+
+        Impact:  None
+
+    2.  Problem: (CQ37288) iSCSI FW: iSCSI offload with Everest is extremely
+                 slow
+
+        Cause:   PSH flag was not set in last PDU TCP packet
+
+        Fix:     Fixed in FW 4.6.13
+
+        Impact:  None
+
+    3.  Problem: Possible overriding the internal memory and possible failure
+                 to work with MSI-X when RSS and CNIC enabled
+
+        Cause:   Allocate 16 queues for RSS + 1 queue for CNIC
+
+        Fix:     Allocate only 15 queues for RSS
+
+        Impact:  None
+
+    4.  Problem: Lower performance on Big-Endian machines
+
+        Cause:   Failure to read correctly the PCI_EXP_DEVCTL on Big-Endian
+                 systems. Read PCI_EXP_DEVCTL to u32 variable instaed of u16
+                 variable
+
+        Fix:     Read PCI_EXP_DEVCTL to u16 variable
+
+        Impact:  None
+
+Version 1.46.6 (Sep 25, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ37398) Issuing ifdown command on one port causes the
+                 other port not to respond either
+
+        Cause:   Clearing all entries in the CAM
+
+        Fix:     Clear only the appropriate entries in the CAM
+
+        Impact:  None
+
+    2.  Problem: (CQ37407, CQ37508, CQ37509) Compilation fails on
+                 RH 4.5, 4.6, 4.7
+
+        Cause:   A compiler bug
+
+        Fix:     Workaround in the code
+
+        Impact:  None
+
+    3.  Problem: (CQ36673) iSCSI FW: Hardware attention on MaxLuns
+
+        Cause:   Activity count leak in Ustorm microprocessor
+
+        Fix:     Fixed in FW 4.6.12
+
+        Impact:  None
+
+    4.  Problem: (CQ37224) iSCSI FW: (iLab test 5.10) Hardware attention
+                 (Microcode assert)
+
+        Cause:   iSCSI FW: SYN+RST drop after SYN sent caused AC leak
+                 in TStorm microprocessor in option2
+
+        Fix:     Fixed in FW 4.6.12
+
+        Impact:  None
+
+    5.  Problem: iSCSI FW: (iLab test 6.1) Hardware attention
+                 (Microcode assert)
+
+        Cause:   Missing update of R2T buffer offset
+
+        Fix:     Fixed in FW 4.6.12
+
+        Impact:  None
+
+    6.  Problem: Possible false warning (not a failure) in the idle
+                 check section of the self test regarding the
+                 BRB1_PRTY_STS register
+
+        Cause:   The condition was not masked properly
+
+        Fix:     Fixed the condition check for that register
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add support for BCM8726 (Dual port phy SFP+ ) including
+                 MSA module recognition and verification
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.46.5 (Sep 17, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ36478) MSI fails on Big-Endian systems
+
+        Cause:   The IGU was configured to swap the data over the PCI
+
+        Fix:     Config IGU not to swap the data and add swap in the driver
+                 where it is necessary
+
+        Impact:  None
+
+    2.  Problem: (CQ37309) Can not compile on some old kernels
+
+        Cause:   Call to pci_disable_msi() was not under appropriate #ifdef
+
+        Fix:     Add the appropriate #ifdef
+
+        Impact:  None
+
+    3.  Problem: Self test sometimes indicates on a failure
+
+        Cause:   A test result was declared as an error instead of a warning
+
+        Fix:     Declare the test result as a warning
+
+        Impact:  None
+
+Version 1.46.4 (Sep 16, 2008)
+=============================
+
+    Enhancements
+    ------------
+    1.  Request: CNIC enabled in default compilation
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.46.3 (Sep 11, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ34165) High number of pause frames
+
+        Cause:   The thresholds in the receive buffer needed some
+                 tuning
+
+        Fix:     Tuned the thresholds in the receive buffer
+
+        Impact:  None
+
+    2.  Problem: (CQ36559, CQ36989) System crash when working on PPC
+                 with 64KB page
+
+        Cause:   The allocated buffer was bigger than the PCI mapped
+                 buffer, and in the 64KB configuration the buffer is
+                 aligned only to 128 bytes and so the packet can
+                 overstep the PCI mapped area and cause a fatal error
+
+        Fix:     Map the same size as the allocated buffer size
+
+        Impact:  None
+
+    3.  Problem: (CQ36479) EEH recovery causes system crash
+
+        Cause:   When EEH detects an i/o error it resets the device thus
+                 it cannot be accessed. In this case the driver needs to
+                 unload its interface only with OS, kernel and network
+                 stack but not with the device.
+
+        Fix:     Add a special unload function for EEH recovery that
+                 does not access the device
+
+        Impact:  None
+
+    4.  Problem: Option2 RST did not complete
+
+        Cause:   Missing context initialization in FW
+
+        Fix:     Fixed in FW 4.6.10
+
+        Impact:  None
+
+   5.  Problem:  (CQ37090) Placement of RQ data to wrong address
+
+        Cause:   ASM problem
+
+        Fix:     Fixed in FW 4.6.10
+
+        Impact:  None
+
+   6.  Problem:  (CQ36912) BSOD when destroying erroneous connections
+
+        Cause:   Activity count leak
+
+        Fix:     Fixed in FW 4.6.10
+
+        Impact:  None
+
+   7.  Problem:  (CQ 36987) Unable to perform media changer/tape functions
+
+        Cause:   Bad padding calculation in long PDUs
+
+        Fix:     Fixed in FW 4.6.10
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Incorporate latest firmware 4.6.10
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: Add stats counter for NIG timer max events
+
+        Change:  As Requested
+
+        Impact:  None
+
+    3.  Request: Enable timer scan for CNIC
+
+        Change:  As Requested
+
+        Impact:  None
+
+    4.  Request: Add support for using MSI interrupt mode
+
+        Change:  As Requested
+
+        Impact:  None
+
+    5.  Request: (CQ36758) Firmware now enforces iSCSI licensing and fails
+                 the offload if no iSCSI initiator license exists
+
+        Change:  Added in FW 4.6.10
+
+        Impact:  None
+
+Version 1.46.2 (Aug 25, 2008)
+=============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ36510, CQ36583) Link LED does not turn off when 1G
+                 link is lost when external PHY is present
+
+        Cause:   The current code manually turned off the 10G LED but
+                 did not handle other speeds which are controlled by HW.
+                 Since the HW detect link with the external PHY, the
+                 link LED stayed on
+
+        Fix:     Turn off the LED for all speeds manually when link goes
+                 down
+
+        Impact:  None
+
+    2.  Problem: Packets with bad TCP/UDP checksum error are dropped
+
+        Cause:   Actively dropping packets with bad TCP/UDP checksum in
+                 the driver
+
+        Fix:     Do not drop packets with bad TCP/UDP checksum - let the
+                 stack decide what to do with them
+
+        Impact:  None
+
+    3.  Problem: Some packets are dropped without showing on any
+                 statistics counter
+
+        Cause:   The driver assumed that packets which were identified
+                 as bad are counted by the FW, but the FW does not count
+                 those when configured to pass them
+
+        Fix:     Add counters in the driver
+
+        Impact:  None
+
+    4.  Problem: (CQ36153) Flow control doesn't work against non KR switches
+
+        Cause:   Missing support for clause-37 auto negotiation
+
+        Fix:     Add support for clause-37 auto negotiation
+
+        Impact:  0.5 seconds delay during autoneg
+
+    5.  Problem: Link dangling during init
+
+        Cause:   no delay after initial link change interrupt
+
+        Fix:     Add 30ms before allowing link update indications
+
+        Impact:  Additional 30ms during init phase
+
+    6.  Problem: Unable to load driver after iSCSI boot under incoming
+                 traffic
+
+        Causes:  The reset function after iSCSI boot did not handle
+                 closing incoming traffic
+
+        Fix:     Close the port to prevent Rx traffic and clear all
+                 buffers
+
+        Impact:  None
+
+    7.  Problem: (CQ36408) Failed driver disk installation with SuSE10
+                 and RH4
+
+        Cause:   The CRC module is not part of the Kernel in those
+                 distributions
+
+        Fix:     Special driver disk compilation mode to include the CRC
+                 routine in the driver though it is an external module
+                 in normal installation with those distributions
+
+        Impact:  The driver in the driver disk is less efficient due to
+                 the CRC algorithmic implementation and not static tables
+                 as in the CRC module which is used when loading the driver
+                 normally under SuSE10 and RH4
+
+    8.  Problem: (CQ34921) Possible memory leak
+
+        Cause:   rx_page_ring was not freed
+
+        Change:  free rx_page_ring
+
+        Impact:  None
+
+    9.  Problem: (CQ36242) brb_truncate statistics increments to very
+                 high numbers
+
+        Cause:   brb_truncate_discard is a 4 bytes variable but 8 bytes were
+                 copied to ethtool
+
+        Change:  use brb_truncate from NIG and extend it to 8 bytes
+
+        Impact:  None
+
+    10. Problem: Tx Pause were not send on 1G link
+
+        Cause:   Missing initialization to the EMAC TX_MODE
+
+        Change:  Set FLOW_EN bit in the TX_MODE in addition to the
+                 EXT_PAUSE_EN
+
+        Impact:  None
+
+    11. Problem: (CQ36361) Changing speed to 1G on KR switch side
+                 results in no link in OS
+
+        Cause:   When Serdes is configured to 1G, it should remove
+                 setting MDIO_SERDES_DIGITAL_MISC1_FORCE_SPEED_SEL bit in
+                 MDIO_REG_BANK_SERDES_DIGITAL
+
+        Change:  Unset MDIO_SERDES_DIGITAL_MISC1_FORCE_SPEED_SEL bit for
+                 every link change
+
+        Impact:  None
+
+    12. Problem: Possible loss of attentions
+
+        Cause:   Attention mask register was manipulated without a proper lock
+
+        Change:  Protect attention mask register using hw lock, use read
+                 modify write on this register
+
+        Impact:  None
+
+    13. Problem: HW lock was sometimes not taken
+
+        Cause:   HW lock was not taken per function
+
+        Change:  use lock control per function
+
+        Impact:  None
+
+    14. Problem: (CQ36089) RX counter on all functions are incorrect
+
+        Cause:   tstorm_client.statistics_counter_id was 0 for all functions
+
+        Change:  set tstorm_client.statistics_counter_id to the cl_id of the
+                 function
+
+        Impact:  None
+
+    15. Problem: (CQ36090) down/up of the interface during traffic on
+                 the other interface caused traffic to stop
+
+        Cause:   Aggregation context must be initialized only at COMMON init
+                 block
+
+        Change:  Change initialization code and init-tool output
+
+        Impact:  None
+
+    16. Problem: (CQ35672) Doorbell was arriving after halt and before
+                 start ramrod
+
+        Cause:   XON/XOFF flow control should be disabled in NIC close flow
+
+        Change:  Fixed XON/XOFF code
+
+        Impact:  None
+
+    17. Problem: (CQ34555) MSI-x PCI spec aberration
+
+        Cause:   PBA table starts from the middle of a page
+
+        Change:  Use GRC access instead of BAR access
+
+        Impact:  None
+
+    18. Problem: Lost link indication in BCM8073.
+
+        Cause:   During link establishment LASI latched signal
+                 wasn't reset and stopped link change indication
+
+        Change:  Fixed flow to clean latched LASI signal
+
+        Impact:  None
+
+    19. Problem: Declaring bootcode timeout too soon
+
+        Cause:   The bootcode can take a while to set a link
+                 when a link is needed (for example, WoL is
+                 enabled). The driver should allow adaptive
+                 scheme to wait for the bootcode
+
+        Change:  Waiting up to 2 seconds in 10ms intervals
+
+        Impact:  In some cases, the driver unload process
+                 will take up to 2 seconds
+
+    20. Problem: Wrong WoL capability report
+
+        Cause:   The WoL capability was read from the nvram
+                 which was not always updated
+
+        Change:  Determine the WoL capability from the PCI
+                 configuration space
+
+        Impact:  None
+
+    21. Problem: (CQ36644, CQ366697, CQ36928, CQ36983) On some cases
+                 with low traffic, the computer was irresponsive up to
+                 the point of soft-lockup and even hard lockup.
+                 Ping-pong latency tests always hit this problem and so
+                 get very low result
+
+        Cause:   If the FW was at the end of the Rx page, the driver
+                 will already be at the beginning of the next page. In
+                 this case the condition of having the driver and the FW
+                 on the same pointer was never true and so the driver
+                 kept polling until timeout or another packet came in.
+                 On driver unload (including intermediate driver unload
+                 like in MTU change or self-test) the lockup was fatal
+
+        Fix:     Change the check for "now work" to handle end of page
+                 as well
+
+        Impact:  None
+
+    22. Problem: (CQ36697 CQ36771) Interface locks up when up/down interface
+
+        Cause:   In nic_unload(), call to netif_poll_disable() cause to set
+                 __LINK_STATE_RX_SCHED flag that is checked in dev_close() in
+                 a loop forever. This flag is cleared by netif_rx_complete()
+                 called by bnx2x_poll() which is not called if !netif_running()
+
+        Fix:     Reorder nic_unload() - first close interrupts, then only if
+                 netif_running() call netif_poll_disable()
+
+        Impact:  None
+
+    23. Problem: (CQ36795) driver fails to load after iSCSI boot
+
+        Cause:   Unloading UNDI by the driver is protected by a HW lock. With
+                 a KR (8073) interface, unloading the UNDI takes more than
+                 1 sec. Taking the lock by another driver times out after 1 sec
+                 then the driver tries also to unload UNDI.
+
+        Fix:     Clear UNDI signature and release the lock. Only the driver
+                 who saw UNDI signature will continue to unload UNDI.
+
+        Impact:  None
+
+    24. Problem: Allocate skbs for unused aggregation queues in 57710
+
+        Cause:   Allocate skbs for 64 aggregation queues but 57710 has only 32
+
+        Fix:     Allocate skbs for max_agg_queues according to chip id
+
+        Impact:  None
+
+    25. Problem: Wrong cleanup on exit from nic_load() in case of a failure
+
+        Cause:   Upon some failure nic_load() exits without disabling and
+                 freeing the interrupts
+
+        Fix:     Fix to disable and free the interrupts in that case
+
+        Impact:  None
+
+    26. Problem: Potential link problem when loading two ports with 8073
+                 PHY
+
+        Cause:   Initializing the 8073 PHY takes more than 1 seconds and
+                 the HW lock might expire since it is only trying for 1
+                 second
+
+        Fix:     Increase the HW lock timeout to 5 seconds
+
+        Impact:  None
+
+    27. Problem: XAUI link on port0 goes down and then up, when the link
+                 on port1 is changed
+
+        Cause:   When master port (port1) is down, it will also cause
+                 the blade side down. In turn, PLL will change speed
+                 from 10G to 1G. It will cause XAUI clock to both ports
+                 down and then up again
+
+        Fix:     Set bit in the BCM8073 that enables the fix
+
+        Impact:  None
+
+    28. Problem: (CQ36772) KR with 8073 PHY sometimes does not establish
+                 link
+
+        Cause:   A missing delay between initializing the PHY SPI ROM
+                 and inserting the PHY back to low power mode
+
+        Fix:     Add 15ms delay after loading the SPI PHY ROM which is
+                 before entering low power mode
+
+        Impact:  None
+
+    29. Problem: Sometimes when unloading the driver a message will
+                 appear: "sp_running (j 1)"
+
+        Cause:   Wrong condition, the message should appear only if the
+                 counter (j) is greater than 1000. This is a false alarm
+
+        Fix:     Fix the print condition
+
+        Impact:  None
+
+    30. Problem: When upgrading 8073 SPI ROM PHY to version 0103 the
+                 link will not come up
+
+        Cause:   Register 0x8370 is no longer required in the new
+                 version and writing to it cause the link not to come
+                 up
+
+        Fix:     Remove the write to address 0x8370
+
+        Impact:  None
+
+    31. Problem: On some KR boards when loading driver on port0, and
+                 port1 is not loaded, sometimes the XAUI link is not
+                 coming up
+
+        Cause:   The 8073 PHY has two ports that share a single clock.
+                 This clock is routed to a port deemed to be the master
+                 (port 1), and then a PLL at the master sets the clock
+                 frequency and routes the buffered clock to both the
+                 master XAUI interface as well as the slave (port 0)
+                 XAUI interface. If port 0 is loaded while the 8073 PHY
+                 SPI ROM is not loaded, the PLL for port 0 is not
+                 guaranteed to lock
+
+        Fix:     First driver to be loaded reset and download SPI ROM on
+                 both ports of the 8073 PHY during one-time
+                 initialization
+
+        Impact:  The 8073 PHY is only reset when both ports are brought
+                 down
+
+    32. Problem: On some KR boards when unloading driver on port1 port 0
+                 might loose link
+
+        Cause:   The 8073 PHY has two ports that share a single clock.
+                 This clock is routed to a port deemed to be the master
+                 (port 1), and then a PLL at the master sets the clock
+                 frequency and routes the buffered clock to both the
+                 master XAUI interface as well as the slave (port 0)
+                 XAUI interface. If port 1 is unloaded while port 0
+                 is in use, the port 0 PLL might loose lock
+
+        Fix:     Do not reset the PHY if either driver is still up
+
+        Impact:  The 8073 PHY is only reset when both ports are brought
+                 down
+
+    33. Problem: When loading driver after it was loaded before, packets
+                 are getting into the chip before the MAC addresses are
+                 configured (but not into the host)
+
+        Cause:   The HW filters are not cleared when the driver is
+                 unloaded so previous driver configuration is still
+                 present
+
+        Fix:     Clear HW filters so no packet will come in when driver
+                 is unloaded
+
+        Impact:  None
+
+    34. Problem: Driver does not pass the last version of checkpatch.pl
+
+        Cause:   Some updates to the script found some coding standard
+                 violations in the code
+
+        Fix:     Fixed all reported errors and spelling mistakes
+
+        Impact:  None
+
+    35. Problem: (CQ36492) rx_csum_offload_errors increments for any
+                 none TCP/UDP packet
+
+        Cause:   Parsing CQE flags incorrectly
+
+        Fix:     Parse CQE flags according to CQE status bits
+
+        Impact:  None
+
+    36. Problem: Packets with IP checksum error are dropped
+
+        Cause:   Dropping packets with IP checksum error
+
+        Fix:     Pass packets with IP checksum error to the stack. Drop
+                 only packets with L2 errors
+
+        Impact:  None
+
+    37. Problem: (CQ46480) The nomcp module parameter is causing kernel
+                 panic
+
+        Cause:   This debug parameter was not needed and not maintained
+
+        Fix:     Remove this debug parameter. The driver can detect if
+                 the FW is missing and act accordingly
+
+        Impact:  None
+
+    38. Problem: Per function statistics are not cleared on driver load
+                 unload
+
+        Cause:   The FW statistics area was not cleared on driver load
+
+        Fix:     Clear FW statistics area when loading the driver
+
+        Impact:  None
+
+    39. Problem: (CQ36204, CQ36423) Self-test memory failures reported
+                 intermediately
+
+        Cause:   Did not apply the right mask on the HW report caused
+                 some false positives
+
+        Fix:     Use mask to check only the memory errors report
+
+        Impact:  None
+
+    40. Problem: (CQ36497) Self-test idle_check part is failing
+
+        Cause:   Did not apply the right mask on the HW report caused
+                 some false positives
+
+        Fix:     Use mask to check only the memory errors report
+
+        Impact:  None
+
+    41. Problem: (CQ36514) Failed to load the driver after iSCSI boot on
+                 SuSE10 SP2
+
+        Cause:   The built-in driver from the SuSE10 SP2 (1.42.3) was
+                 loaded after the iSCSI-boot
+
+        Fix:     Added update.post file to SuSE10 SP2 dd.iso
+
+        Impact:  None
+
+    42. Problem: (CQ36382) Low 1G UDP performance with one connection
+                 with flow control disabled
+
+        Cause:   The credits in the transmitter HW caused too much gap
+                 between UDP packets in case the flow control was
+                 disabled
+
+        Fix:     Use the same HW credit as if the flow-control is
+                 enabled when the line speed is 2.5G or less
+
+        Impact:  None
+
+    43. Problem: (CQ35662) NVRAM pre-emphasis support does not take
+                 effect
+
+        Cause:   Current nvm values didn't actually affect the phy
+
+        Fix:     To keep backward compatibility, only in case the
+                 "Override pre-emphasis configuration" nvm option is
+                 enables, it sets the the tx preemphasis and rx
+                 equalizer values for the 4 lanes according to the "XGXS
+                 backplane Tx pre-emphasis matrix coef." and "XGXS
+                 backplane Rx equalizer matrix coef." respectively
+
+        Impact:  None
+
+    44. Problem: Prevent possible glitch due to speed change without
+                 link down in the middle
+
+        Cause:   Currently the NIG goes into drain mode only after link
+                 down. If the only the speed was changed from 1G to
+                 100Mb, for example, without link-down indication then
+                 the FIFO isn't cleaned and glitch due to clk change may
+                 occur
+
+        Fix:     On speed change set the NIG into drain mode
+
+        Impact:  Several packets may be dropped, but it's ok, since we
+                 assume that anyhow several packets were dropped due to
+                 the link down
+
+    45. Problem: Fix EMAC initialization setting
+
+        Fix:     Currently it is configured inside the enable emac
+                 before configuring the EMAC mode. Changed to be after
+                 that and should be disabled (with the drain mode
+                 setting) at the entrance of the link_update function.
+                 In addition, in link down, after putting the nig into
+                 drain mode this register should also be disabled.
+
+                 After configuring the mode and before opening the
+                 nig_emac#_en, reset the EMAC_REG_EMAC_RX_MODE and
+                 EMAC_REG_EMAC_TX_MODE
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Error messages might be displayed in unload
+
+        Change:  Check work only on the tx fast path and call bnx2x_tx_int()
+                 to handle it. Rx work is handled during halt ramrod
+
+        Impact:  None
+
+    2.  Request: Indicate that there is no WoL support for functions higher
+                 than 1 (only 0 and 1 should support WoL)
+
+        Change:  As Requested
+
+        Impact:  None
+
+    3.  Request: Pause in 57711E mode always advertise both Rx and Tx
+                 regardless of frame size
+
+        Change:  As Requested
+
+        Impact:  None
+
+    4.  Request: Skb's marked as CHECKSUM_UNNECESSARY (TPA'ed) were
+                 passed to the net stack even if user disabled checksum
+                 offloading.
+
+        Change:  Disable TPA if Rx checksum offloading is disabled.
+
+        Impact:  There is no way to enabling TPA in kernels older than
+                 2.6.26 except unloading and loading the driver
+
+    5.  Request: Do not display internal FW version and enhance
+                 readability of the bootcode version
+
+        Change:  As requested
+
+        Impact:  None
+
+    6.  Request: Optimize link setup and support 2.5G
+
+        Change:  Link will be configured on the external PHY before
+                 setting up the internal PHY. When needed, only the
+                 external PHY will be configured to autoneg. The
+                 internal PHY will be set to the obtained speed
+
+        Impact:  None
+
+    7.  Request: Skb's marked as CHECKSUM_UNNECESSARY (TPA'ed) were
+                 passed to the net stack even if user disabled checksum
+                 offloading.
+
+        Change:  Disable TPA if Rx checksum offloading is disabled.
+
+        Impact:  None
+
+    8.  Request: Incorporated latest firmware 4.6.7 - Add support for
+                 priority-based ETH TX queues and enable SAFC pausing
+                 per queue
+
+        Change:  As requested
+
+        Impact:  None
+
+Version 1.46.1 (June 25, 2008)
+==============================
+
+    Enhancements
+    ------------
+    1.  Request: Use FW version 4.6.2
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.45.6 (June 23, 2008)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ35672, CQ35818) Changing MTU under traffic causes
+                 driver hang
+
+        Cause:   A rare case of LSO packet alignment, relatively to MSS,
+                 caused a HW debug checking for end of packet to fail
+
+        Change:  In computing the end of packet flag, the calculation
+                 of the total packet length was modified
+
+        Impact:  None
+
+    2.  Problem: Possible memory corruption on kernels with 64K page size
+
+        Cause:   Inconsistency in using page macros
+
+        Change:  Use only BCM page macros
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add support for TPA (LRO) setting via ethtool
+
+        Change:  As Requested
+
+        Impact:  Kernels after 2.6.26 use this interface to turn off TPA
+                 when forwarding enabled due to the limitation of no
+                 forwarding (bridging) and TPA together
+
+Version 1.45.5 (June 17, 2008)
+==============================
+
+    Fixes
+    -----
+    1.  Problem: (CQ35691) Undefined symbol __udivdi3 when compiled on
+                 32-bit platforms.
+
+        Cause:   There was 64-bit division
+
+        Change:  Reordered the arithmetic expression in order to eliminate the
+                 64-bit division
+
+        Impact:  None.
+
+    2.  Problem: (CQ35644) Tx mulicast counter does not increment
+
+        Cause:   start_xmit sets the unicast flag for all packet types
+
+        Change:  Remove the broadcast and mulicast counters
+
+        Impact:  None
+
+    3.  Problem: (CQ35836) Ethtool reports wrong speed when set via CLP
+
+        Cause:   get_settings returns always the max BW set via CLP without
+                 considering the actual link speed
+
+        Change:  Return the min between the max BW set via CLP and the actual
+                 link speed
+
+        Impact:  None
+
+    4.  Problem: (CQ35859) Ethtool -S reports many jumbo tx packets
+                 with MTU set to 1500
+
+        Cause:   There is a different in tx histogram statistics between
+                 EMAC and BigMAC
+
+        Change:  Use NIG stats counters instead
+
+        Impact:  None
+
+    5.  Problem: (CQ35114) Self test failure on some systems
+
+        Cause:   pcie_rst_b test can be set and should not be categorized as
+                 ERROR
+
+        Change:  Change pcie_rst_b test priority from ERROR to WARNING
+
+        Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Remove non-coherent stats in 57711E
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: Remove xSEM_REG_INT_TABLE from memory test
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.45.4 (June 10, 2008)
+==============================
+
+    Fixes
+    -----
+     1.  Problem: (CQ34905) load/unload causes link detect failure
+
+         Cause:   Handling of link events during load wasn't protected
+
+         Change:  Add synchronization in handling of link events during
+                  driver load
+
+         Impact:  None
+
+     2.  Problem: (CQ35114) ethtool -t displays idle_check errors
+
+         Cause:   Some idle_check tests were not adopted to support
+                  57711
+
+         Change:  Adopt the idle_check
+
+         Impact:  None
+
+     3.  Problem: (CQ35188) ethtool -t displays mc_assert
+
+         Cause:   The mc_assert was checked at incorrect address
+
+         Change:  Fix mc_assert to use different offsets per MC
+                  processor
+
+         Impact:  None
+
+     4.  Problem: (CQ35611) CLP min throttling disables throttled
+                  functions
+
+         Cause:   Credit delta must be less than two times the
+                  threshold
+
+         Change:  credit delta must never be less than two times threshold
+
+         Impact:  None
+
+     5.  Problem: (CQ35184, CQ35364, CQ35575) Compilation problems on
+                  SuSE9/10
+
+         Cause:   Some changes for the upstream kernel were not
+                  backwards compatible
+
+         Change:  Added backwards compatibility code
+
+         Impact:  None
+
+     6.  Problem: (CQ35571) When running dozens of connections
+                  on both ports, receiver freezes
+
+         Cause:   A race between the aggregation timer and the swapping
+                  of aggregated connections
+
+         Change:  The timers are saved to RAM at each possible swap of
+                  handlers in the FW, to avoid the race
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Activate SNR over 8073A1, version 102
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: Support CLP speed configuration to establish link up to
+                 the requested speed (allow 1G when 10G is requested)
+
+        Change:  As Requested
+
+        Impact:  None
+
+    3.  Request: Do not set XAUI low power on 8073A0
+
+        Change:  As Requested
+
+        Impact:  None
+
+    4.  Request: Set flow-control for 8073
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.45.2 (May 29, 2008)
+=============================
+
+    Fixes
+    -----
+     1.  Problem: Style changes for open source submission
+
+         Cause:   Making sure we pass SPARS and checkpatch.pl
+
+         Change:  Whitespace changes
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add PCI-E EEH handlers
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.45.1 (May 26, 2008)
+=============================
+
+    Fixes
+    -----
+     1.  Problem: (CQ34964) ethtool -a/A is broken
+
+         Cause:   The autoneg define changed to value of zero and broke
+                  the code
+
+         Change:  Use comparison instead of bit-wise logical and
+
+         Impact:  None
+
+     2.  Problem: (CQ35123) Support for 32bit Kernels is broken
+
+         Cause:   The TPA code had a 64 bit address that broke the
+                  32bits support
+
+         Change:  Fixed the upper 32bits of the address to zero in 32bit
+                  Kernel
+
+         Impact:  None
+
+     3.  Problem: (CQ35123) Support for Big-endian is broken
+
+         Cause:   The TPA and SGE code was not big-endian compliant
+
+         Change:  The necessary le_to_cpu were added
+
+         Impact:  None
+
+     4.  Problem: Failed to work on emulation with MCP
+
+         Cause:   The time interval between the pulses towards the MCP
+                  was the same for ASIC and emulation
+
+         Change:  Increased the time interval between MCP pulses for
+                  emulation/FPGA
+
+         Impact:  None
+
+     5.  Problem: (CQ34313) Compilation error on SuSE
+
+         Cause:   Broken in last drops
+
+         Change:  Fix the errors
+
+         Impact:  None
+
+     6.  Problem: (CQ35124) Kernel panic when unloading NIC with shared
+                  INTA
+
+         Cause:   The interrupts were masked when unloading, but the
+                  handler was still present. In case of shared INTA
+                  line, the handler was called after freeing the
+                  resources due to other device interrupt
+
+         Change:  Free the interrupt handler when masking all
+                  interrupts on unload. Clear old interrupt before
+                  registering the IRQ on load.
+
+         Impact:  None
+
+     7.  Problem: Failed to re-load the driver (after unload) on the
+                  upstream kernel
+
+         Cause:   The fast path structures which are used by NAPI where
+                  released on unload and re-allocated on load
+
+         Change:  Use static allocation for the fast-path structures
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: (CQ34895) Change Linux Driver Disk Images from Floppy
+                 to ISO Format
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: (CQ34931, CQ34976) Replace RH4.5 binaries with RH4.6
+
+        Change:  As Requested
+
+        Impact:  None
+
+    3.  Request: Link down indication should be at error level and
+                 not information
+
+        Change:  As Requested
+
+        Impact:  None
+
+    4.  Request: BCM57711E Support MIN/MAX bandwidth control
+
+        Change:  As Requested
+
+        Impact:  None
+
+    5.  Request: Support BCM8073A1 external PHY
+
+        Change:  As Requested
+
+        Impact:  None
+
+    6.  Request: Support Transparent Packet Aggregation (TPA) for 57711E
+
+        Change:  As Requested
+
+        Impact:  None
+
+    7.  Request: Support WoL
+
+        Change:  As Requested. This feature requires bootcode 4.4.7 or
+                 later
+
+        Impact:  None
+
+    8.  Request: Not allowing any ethtool link change (speed and flow
+                 control) in 57711E
+
+        Change:  As Requested
+
+        Impact:  None
+
+    9.  Request: Reporting the function max speed as the current speed
+                 (and not the port speed) for 57711E
+
+        Change:  As Requested
+
+        Impact:  None
+
+   10.  Request: Only the port master driver can run the link test (part
+                 of the self-test)
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.46.0 (May 01, 2008)
+=============================
+**** This version should have been named 1.45.0 (and not 1.46.0) ****
+
+    Fixes
+    -----
+     1.  Problem: Possible bug on DMAE reads (write from the chip to the
+                  host)
+
+         Cause:   HW limitation that was not obeyed
+
+         Change:  DMAE reads (write from the chip to the host) is
+                  limited to 128 DWORDS
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Support approximate match for multicast MACs
+
+        Change:  As Requested
+
+        Impact:  New module dependency for bnx2x driver
+                 Run 'modprobe crc32c' before 'insmode bnx2x.ko'
+
+    2.  Request: Support statistics on 57711
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.44.12 (April 21, 2008)
+================================
+
+    Fixes
+    -----
+     1.  Problem: (CQ34845) Autoneg flow-control is broken
+
+         Cause:   Broken in last drops - wrong check of the autoneg
+                  result
+
+         Change:  Fixed the autoneg result check
+
+         Impact:  None
+
+     2.  Problem: (CQ34313) Compilation error on SuSE10
+
+         Cause:   Broken in last drops
+
+         Change:  Fix the errors
+
+         Impact:  None
+
+Version 1.44.11 (April 16, 2008)
+================================
+
+    Fixes
+    -----
+     1.  Problem: PHY loopback was not performed as part of the
+                  self-test
+
+         Cause:   The PHY loopback did not wait for the link to be
+                  established
+
+         Change:  Wait for loopback to establish link before starting
+                  the test
+
+         Impact:  None
+
+     2.  Problem: (CQ34313) Compilation error on SuSE9 SP3
+
+         Cause:   Broken in last drops
+
+         Change:  Fix the errors
+
+         Impact:  None
+
+Version 1.44.10 (April 15, 2008)
+================================
+
+    Fixes
+    -----
+     1.  Problem: Occasional failures in the self-test
+
+         Cause:   Few registers should not have been included in the
+                  registers test. The PHY loopback test fails on some
+                  systems
+
+         Change:  Removed some of the registers that should not have
+                  been included in the first place from the
+                  registers test. Removed the PHY loopback test - only
+                  the MAC loopback test is executed
+
+         Impact:  None
+
+Version 1.44.9 (April 14, 2008)
+===============================
+
+    Fixes
+    -----
+     1.  Problem: Kernel panic after stressing bi-directional data over
+                  night
+
+         Cause:   A bug in the none-TSO fragmented Tx packets
+
+         Change:  Fix the Aggregation rule of none-TSO packets
+
+         Impact:  None
+
+     2.  Problem: Possible bug when unloading and reloading the driver:
+                  we are not guarantee to allocate all IRQs
+
+         Cause:   The allocation is not guaranteed
+
+         Change:  Force every nic_unload to release the IRQs
+
+         Impact:  None
+
+     3.  Problem: Possible bug on low memory systems
+
+         Cause:   Number of BDs must be at least equal to number of CQEs
+
+         Change:  Force the rule on init
+
+         Impact:  None
+
+     4.  Problem: Failures on rmmod
+
+         Cause:   Sleep in timer context
+
+         Change:  No sleep on timer context - simply wait for next tick
+
+         Impact:  None
+
+     5.  Problem: DMAE timeout problem on 57711
+
+         Cause:   DMAE needs to be configured differently
+
+         Change:  Reduce the MPS of the DMAE client
+
+         Impact:  None
+
+     6.  Problem: No link on some functions on 57711
+
+         Cause:   A link report call was missing after link update
+
+         Change:  Added link report after link update
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Adding internal PHY and MAC loopback tests to
+                 ethtool -t (no external PHY and no cable PHY loopback)
+
+        Change:  As Requested
+
+        Impact:  None
+
+    2.  Request: Update idle_check in self test
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.44.8 (April 09, 2008)
+===============================
+**** Starting from this version, there are 2 C files ****
+
+    Fixes
+    -----
+     1.  Problem: (CQ34604) Kernel panic after stressing Tx Data over
+                  night
+
+         Cause:   The driver did not handle fragmented Tx packets
+
+         Change:  Aggregating packets which are too fragmented for the
+                  FW
+
+         Impact:  None
+
+     2.  Problem: (CQ34586) Warning message after configuring eth port
+
+         Cause:   Did not synchronized the DMAE of the statistics with
+                  load/unload operations
+
+         Change:  Changed the statistics mechanism to a state machine
+                  which is aware of the device state and DMAE state
+
+         Impact:  None
+
+     3.  Problem: (CQ34313) Compilation error on SuSE9 SP3 x86-64
+
+         Cause:   Compatibility issue
+
+         Change:  Fixed
+
+         Impact:  None
+
+     4.  Problem: (CQ34067) Debug prints are displayed when using the
+                  use_multi compilation flag
+
+         Cause:   The debug level of the prints was high
+
+         Change:  Reduced the prints debug level so they will not be
+                  displayed by default
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: (CQ33897) Support BCM8073 PHY
+
+        Change:  As Requested
+
+        Impact:  This is still an initial HW revision of the BCM8073 PHY
+                 so changes might be needed as the PHY HW or FW evolve
+
+    2.  Request: (CQ33845) Turn off link LED when link is not active
+
+        Change:  As Requested
+
+        Impact:  None
+
+    3.  Request: Displaying PHY FW (when applicable) at ethtool -i
+
+        Change:  As Requested
+
+        Impact:  None
+
+    4.  Request: Upgrading the SFG10 FW from ethtool -E
+
+        Change:  As Requested
+
+        Impact:  None
+
+    5.  Request: Adding Registers test to ethtool -t
+
+        Change:  As Requested
+
+        Impact:  None
+
+    6.  Request: Adding Memory test to ethtool -t
+
+        Change:  As Requested
+
+        Impact:  None
+
+Version 1.44.7 (March 31, 2008)
+===============================
+
+    Fixes
+    -----
+     1.  Problem: (CQ34445) Interface got stuck when stress with UDP
+                  and TCP simultaneously
+
+         Cause:   Wrong CQE size initialization
+
+         Change:  Fixed CQE ring initialization
+
+         Impact:  None
+
+     2.  Problem: No traffic on higher functions on 57711
+
+         Cause:   Need to send the client ID in messages to FW
+
+         Change:  Add client ID to the required messages
+
+         Impact:  None
+
+     3.  Problem: Wrong link indication on 57711
+
+         Cause:   The link was not updated correctly on 57711
+
+         Change:  Update the link indication mechanism in 57711
+
+         Impact:  None
+
+     4.  Problem: Update coalescing is not working
+
+         Cause:   Wrong parameter was used
+
+         Change:  Changed to the required parameter
+
+         Impact:  None
+
+Version 1.44.6 (March 26, 2008)
+===============================
+
+    Fixes
+    -----
+     1.  Problem: (CQ34445) Interface got stuck when stress with UDP
+                  and TCP simultaneously
+
+         Cause:   The BD producer that was passed to the FW was wrapped
+                  according to the size of the BD ring and not 16 bits
+                  range as expected
+
+         Change:  Wrap the BD producer according to 16 bits range
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: full TPA support
+
+        Change:  TPA is now fully supported with the expected
+                 performance
+
+        Impact:  None
+
+Version 1.44.5 (March 24, 2008)
+===============================
+
+    Enhancements
+    ------------
+    1.  Request: Initial support for TPA
+
+        Change:  TPA is now supported, but the throughput is still lower
+                 than in the DEMO_TPA version - a new version with
+                 enhanced throughput is being constructed
+
+        Impact:  None
+
+    2.  Request: (CQ34011) Add module parameter to disable TPA
+
+        Change:  As requested. For now, TPA is always disabled on 57711
+
+        Impact:  None
+
+    3.  Request: CNIC Support
+
+        Change:  As requested. By default, CNIC support is not part of
+                 the bnx2x - BCM_CNIC should be defined to enable it.
+
+        Impact:  None
+
+Version 1.44.4 (March 20, 2008)
+===============================
+
+    Fixes
+    -----
+     1.  Problem: DEMO_TPA was broken on 0.44.3
+
+         Cause:   Compilation problem due to MACRO rename
+
+         Change:  Rename the MACRO for DEMO_TPA as well
+
+         Impact:  None
+
+     2.  Problem: (CQ43424) Cannot link SFP module at 1G with Dell
+                  PowerConnect 6224
+
+         Cause:   The Dell switch supports only autoneg and not forced
+                  1G
+
+         Change:  Changed the 1G implementation to autoneg with only 1G
+                  advertisement
+
+         Impact:  When choosing 1G speed, the speed is achieved via
+                  autoneg and not forced
+
+    Enhancements
+    ------------
+    1.  Request: Support Emulation, FPGA and ASIC in a single module
+                 file
+
+        Change:  Changed the init values and the init routine to support
+                 all the compilation of 57710/57711 ASIC/CHIP/EMUL
+
+        Impact:  The size of the binary and the source code is bigger
+                 mainly due to having two ASM images
+
+    2.  Request: Add link update support for 57711
+
+        Change:  Added
+
+        Impact:  None
+
+    3.  Request: Add HW statistics for 57711
+
+        Change:  Added
+
+        Impact:  Only HW (errors) statistics will be displayed since the
+                 feature is not yet supported by FW
+
+    4.  Request: Add nvram test
+
+        Change:  Added
+
+        Impact:  None
+
+    5.  Request: Add link test
+
+        Change:  Added
+
+        Impact:  None
+
+    6.  Request: Add interrupt test
+
+        Change:  Added
+
+        Impact:  None
+
+Version 0.44.3 (March 12, 2008)
+===============================
+*** TPA is not functional on this release ***
+
+    Fixes
+    -----
+     1.  Problem: (CQ #34103) DKMS driver diskette update.tar.gz do not
+                  have smp directory
+
+         Cause:   DKMS driver diskette was created only for the default
+                  SuSE kernels
+
+         Change:  Add all supported SUSE kernels into the DKMS driver
+                  diskette Note: The size of the DKMS driver diskette
+                  for the SUSE distributions is 14400 kb. This size is
+                  appropriate for USB or CD devices
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add support for 57711
+
+        Change:  Added preliminary support
+
+        Impact:  None
+
+    2.  Request: Remove module param 57711E
+
+        Change:  Move to bp and initialized from analyzing CLP
+                 information
+
+        Impact:  None
+
+    3.  Request: Add fw_dump() to panic_dump()
+
+        Change:  Call fw_dump() before idle_chk()
+
+        Impact:  None
+
+    4.  Request: Separate bp information to fast-path/common/port/
+                 function
+
+        Change:  Divide bp structure into common/port/function
+                 structures Divide get_hwinfo() into common/port/
+                 function. Initialize outer VLAN and MAC from CLP
+                 information in 57711E mode Note: CLP FUNC_DISABLED
+                 is not handled correctly
+
+        Impact:  None
+
+    5.  Request: Set link_status according to link_up status
+
+        Change:  link_status was set according to phy_link_up status
+
+        Impact:  None
+
+    6.  Request: Add is_pmf flag
+
+        Change:  is_pmf flag is initialized from MCP load_code and by
+                 general attention from MCP
+
+        Impact:  None
+
+    7.  Request: Fix attentions in 57711
+
+        Change:  Init MISC_REG_AEU_MASK_ATTN according to 57711E
+                 status Handle attention bits in IGU per function
+
+        Impact:  None
+
+    8.  Request: Clear HW blocks attentions
+
+        Change:  Clear HW blocks attentions and call panic()
+
+        Impact:  None
+
+    9.  Request: Call fw_dump() on MCP assert
+
+        Change:  Call fw_dump() instaed of mc_assert() on MCP assert
+
+        Impact:  None
+
+    10. Request: Do not send STAT_QUERY ramrod if previous stat ramrod
+                 didn't return
+
+        Change:  Do not send STAT_QUERY ramrod if previous stat ramrod
+                 didn't return Call panic() if stats didn't updated for
+                 3 times
+
+        Impact:  None
+
+    11. Request: Separate init_board() into init_dev() and init_bp()
+
+        Change:  Divide init_board() into init_dev() and init_bp()
+
+        Impact:  None
+
+    12. Request: Fix directory name for SuSE
+
+        Change:  Add sles9 and sles10 to the names
+
+        Impact:  None
+
+
+Version 1.42.3 (February 28, 2008)
+==================================
+
+   Fixes
+   -----
+   1.  Problem: Changing the link speed to "autoneg on" the A1022G will
+                cause driver failure
+
+       Cause:   This board is using TP for the 10G interface, but the command
+                was interpreted as a request to move to the 1G interface which
+                is inactive on this board
+
+       Change:  Do not support switching interfaces since no production board
+                has this feature
+
+       Impact:  A user will not be able to switch between the two valid
+                interfaces of the T1001 test board without changing the nvram
+                configuration
+
+
+Version 1.42.2 (February 20, 2008)
+==================================
+
+   Fixes
+   -----
+   1.  Problem: TSO is not working against some none Linux clients
+
+       Cause:   TCP flags were not transmitted correctly on TSO packets
+
+       Change:  Corrected bit extraction in tcp_flag_word()
+
+       Impact:  None
+
+
+Version 0.42.1 (February 14, 2008)
+==================================
+
+    Fixes
+    -----
+     1.  Problem: (CQ #33344) Remove warnings from ethtool -t
+
+         Cause:   The warnings were just debug prints
+
+         Change:  Print is depended on msglevel.
+                  Set msglevel in bnx2x_panic_dump() before calling bnx2x_idle_chk()
+
+         Impact:  None
+
+     2.  Problem: (CQ #33638) Remove warnings when failing to enable MSI-X
+
+         Cause:   The warnings was just a debug print
+
+         Change:  Print is depended on msglevel.
+                  Change the printed message from error/failure to a notification
+
+         Impact:  None
+
+     3.  Problem: (CQ #33547) Flow control does not work on A1022G board
+
+         Cause:   The flow control was not configured/read at the PHY
+
+         Change:  Implemented the flow control code at the PHY
+
+         Impact:  flow control is now working via autoneg. Please force it if
+                  the link partner does not support flow control autoneg
+
+    Enhancements
+    ------------
+    1.  Request: (CQ #33425) RPM installation fails on some machines
+
+        Change:  Fix installation - copy bnx2x.ko from extra to kernel/drivers/net
+
+        Impact:  None
+
+
+Version 0.42.0 (February 04, 2008)
+==================================
+*** This version requires bootcode 4.2.0 or later ***
+
+    Fixes
+    -----
+     1.  Problem: (CQ #33344) Remove warnings from ethtool -t
+
+         Cause:   The warnings were just debug prints
+
+         Change:  Changed the debug level so by default nothing will be printed
+
+         Impact:  None
+
+     2.  Problem: (CQ #33638) Remove warnings when failing to enable MSI-X
+
+         Cause:   The warnings was just a debug print
+
+         Change:  Changed the debug level so by default nothing will be printed
+
+         Impact:  None
+
+     3.  Problem: (CQ #33533) Failed to install A1022G on 32bits machines
+
+         Cause:   The board is requesting 128MB for BAR2 and the memory
+                  allocation fails
+
+         Change:  Allocate only the required amount of memory and not the
+                  entire BAR
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: (CQ33571) new 'shared memory' layout for T4.0E/T4.2 that will
+                 be compatible with T4.4 new features
+
+        Change:  As requested
+
+        Impact:  Requires bootcode 4.2.0 or later
+
+    2.  Request: (CQ #33214) Add placeholder to be compatible with the BMPI
+
+        Change:  Added placeholders - the full implementation is scheduled
+                 for T4.4
+
+        Impact:  None
+
+    3.  Request: Update the KR code
+
+        Change:  Added placeholders - the full implementation is scheduled
+                 for T4.4
+
+        Impact:  None
+
+
+Version 0.40.19 (January 14, 2008)
+==================================
+
+    Fixes
+    -----
+     1.  Problem: (CQ #31090) Rx pause remains ON after autoneg is retuned
+                  back to ON even if MTU > 4500.
+
+         Cause:   Autoneg flow control flag was not considered for
+                  advertisement and resolve of the pause mode.
+
+         Change:  Fix the advertisement and the resolve of the pause mode to
+                  consider user requests and system constraints.
+
+         Impact:  None
+
+     2.  Problem: Autoneg flow control is ON for XFP cards.
+
+         Cause:   Autoneg flow control from NVRAM is considered without check
+                  if autoneg is supported.
+
+         Change:  Autoneg flow control from NVRAM is considered only if
+                  autoneg is supported.
+
+         Impact:  None
+
+     3.  Problem: ethtool shows 'Port: FIBRE' for the 10GbaseT interface.
+
+         Cause:   Resolve the port type according to XGXS flag.
+
+         Change:  get settings resolves the XGXS port type in use according to
+                  external phy config.
+
+         Impact:  None
+
+     4.  Problem: (CQ #33092, #33215) Unload/load sequence under UDP traffic
+                  (receiver) hanged slow path
+
+         Cause:   Wrong flow in resetting HW blocks
+
+         Change:  HW blocks reset flow has been changed
+
+         Impact:  None
+
+     5.  Problem: (CQ #33305) Changing MTU to 9000 was jamming TCP traffic
+
+         Cause:   LSO wasn't properly enabled on some Kernels
+
+         Change:  Fixed LSO enabling code for all kernels
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Feature: Wait for completion for ramrods sent during nic unload was
+                 only by polling and not by an interrupt.
+
+        Change:  stop multi and stop leading are using poll if netif is not
+                 running and interrupt otherwise.
+
+        Impact:  None
+
+    2.  Request: Add workaround for bug in PXP that causes PXP attention on
+                 stress scenarios due to under run situation between PXP and
+                 USDM
+
+        Change:  The workaround was added
+
+        Impact:  None
+
+
+Version 0.40.18 (January 03, 2008)
+==================================
+
+    Fixes
+    -----
+     1.  Problem: (CQ #33148) After "make install" command 'modprobe bnx2x'
+                  displays "Module bnx2x not found".
+
+         Cause:   Linux Makefile runs depmod automatically only if System.map
+                  exists.
+
+         Change:  Run depmod after modules_install.
+
+         Impact:  None
+
+     2.  Problem: (CQ #33054) Link is not detected after configuring BCM57710
+                  port with Suse 10Sp1.
+
+         Cause:   HW fails to use INTA after using MSI-X.
+
+         Change:  Set MSI_MSIX_INT_EN bit in HC_CONFIG REG to use INTA after
+                  MSI-X.
+
+         Impact:  None
+
+     3.  Problem: (CQ #33190) ifconfig command showed errors received. But
+                  ethtool -S ethx did not show any errors.
+
+         Cause:   Some error counters did not have a bin to be printed by
+                  ethtool -S command.
+
+         Change:  Add appropriate bins for the missed counters.
+
+         Impact:  None
+
+
+      4. Problem: BSOD on T1002 boards.
+
+         Cause:   A new code was added that manipulate GPIO 1 for external phy
+                  reset. On T1002 board this GPIO control the PERST_L_BYPASS.
+
+         Change:  Do not manipulate GPIO 1 on T1002 boards
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Feature: Add support for IPv6 checksum and IPv6 TSO.
+
+        Change:  The support was added
+
+        Impact:  None
+
+    2.  Feature: Add fan failure detection and external PHY power down for the
+                 A1022G
+
+        Change:  When a fan failure is detected (indicated by SPIO5) on the
+                 A1022G, the driver will shutdown the PHY (reset and low power
+                 mode, using GPIO1+2) and issue a warning message
+
+        Impact:  When fan failure occurs the link will go down until server
+                 reset
+
+
+Version 0.40.17 (December 17, 2007)
+===================================
+
+    Fixes
+    -----
+     1.  Problem: (CQ #33023) Pause RX is on when driver is loaded with
+                  MTU > 4500.
+
+         Cause:   Pause mode was computed from the requested flow control
+                  parameter in NVRAM without considering the MTU size.
+
+         Change:  Resolve the pause mode only before advertising the flow
+                  control.
+
+         Impact:  None
+
+     2.  Problem: Pause autoneg can be set on for XFP cards.
+
+         Cause:   Pause autoneg mode was always accepted from user.
+
+         Change:  Pause autoneg is not supported if speed autoneg is not
+                  supported (e.g. XFP cards).
+
+         Impact:  None
+
+     3.  Problem: (CQ #33044) make install fail.
+
+         Cause:   No make install target in Makefile.
+
+         Change:  Add make install target to Makefile.
+
+         Impact:  None
+
+     4.  Problem: (CQ #33057) No README.TXT in driver release folder.
+
+         Cause:   No README.TXT in driver project.
+
+         Change:  Add README.TXT in driver release folder.
+
+         Impact:  None
+
+     5.  Problem: (CQ #32541) No README.TXT in driver tarball.
+
+         Cause:   No README.TXT in driver project.
+
+         Change:  Add README.TXT to driver tarball and change the directory
+                  name.
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Add parity and assert regs for idle check.
+
+        Change:  The check was added
+
+        Impact:  None
+
+    2.  Request: Add workaround for threshold mechanism for usdm-dp
+
+        Change:  The workaround was added
+
+        Impact:  None
+
+    3.  Request: Add workaround for full Tetris buffer bug.
+
+        Change:  The workaround was added
+
+        Impact:  None
+
+    4.  Request: Add support for the SFG10 PHY
+
+        Change:  The support was added
+
+        Impact:  None
+
+    5.  Request: Add support for the BCM8072 PHY
+
+        Change:  The support was added. The code is still not 100% functional
+
+        Impact:  None
+
+    6.  Request: Change the MDC/MDIO CL45 scheme
+
+        Change:  The functions are more generic:
+                 - Supports different MDC/MDIO controller
+                 - Reduce the clock to 2.5MHz
+                 - Less PIO writes (writing all the required information at
+                   one attempt)
+
+        Impact:  All external PHY access are using a slower (standard)
+                 MDC/MDIO clock
+
+    7.  Request: Hard reset external PHYs
+
+        Change:  The external PHYs are now reset via GPIO. Before working with
+                 an external PHY, a reset pulse of 1ms is generated, and when
+                 the driver is down, the external PHY is kept in reset
+
+        Impact:  Link partner should always see link down when the link is down
+
+Version 0.40.16 (November 29, 2007)
+==================================
+
+    Fixes
+    -----
+     1.  Problem: (CQ #32296) VLAN broken on older Kernels.
+
+         Cause:   vlan_kill_vid() removed in newer versions is needed by older
+                  kernels to allow loading.
+
+         Change:  Re added function.
+
+         Impact:  None
+
+     2.  Problem: (CQ #29543) System panicked if receiving UDP data while load
+                  and unload
+
+         Cause:   sp_task work was not synchronized with int_disable_sync()
+
+         Change:  move sp_task to work_queue element
+
+         Impact:  None
+
+
+     3.  Problem: (CQ #32430) XFP port showed link lights on and link
+                  detected = yes when configured port up with no cable
+                  attached
+
+         Cause:   Link_up was declared by local phy (XGXS) link up without
+                  the external phy (8705) link status
+
+         Change:  Link up is now the combination of local phy (XGXS) link up
+                  and external phy (8705) link up
+
+         Impact:  None
+
+    Enhancements
+    ------------
+    1.  Request: Print PCI link properties upon load.
+
+        Change:  The print was added
+
+        Impact:  None
+
+Version 0.40.15 (November 15, 2007)
+==================================
+
+    Fixes
+    -----
+     1.  Problem: On heavy traffic scenarios, the machine halted due to
+                  PCI problem
+
+         Cause:   A HW change in A1 boards requires some registers that
+                  controls the PCI credit to be changed as well
+
+         Change:  Updating the PXP credit registers
+
+         Impact:  None
+
+     2.  Problem: (CQ #31120) The traffic LED was not active for lower
+                  speeds
+
+         Cause:   A new bootcode is required to set the traffic LED
+                  when the speed is less then 10G (using the emac and
+                  not the bmac)
+
+         Change:  The set LED routine was updated and bootcode 4.0.10
+                  or above is required to have the LED functional
+
+         Impact:  None
+
+     3.  Problem: Found a bug when doing ifconfig down/up during
+                  traffic. In this case FW can assert
+
+         Cause:   A packet that was received before unloading driver
+                  stayed in Pbuff, and was processed after loading the
+                  driver again
+
+         Fix:     Added the reordering mechanism to slow path handlers
+
+         Impact:  Implementation of all L2 slow-path commands was modified
+
+     4.  Problem: (CQ #30160) Removed false positives from the self test
+                  (ethtool -t)
+
+         Cause:   Many tests in the self test were designed to check halted
+                  system (after fatal error) and the test assumed that the
+                  chip is idle
+
+         Fix:     Any test that can happen while the chip is operational was
+                  changed to "info" debug print and is not counted as warning
+                  or error
+
+         Impact:  The self test is more reliable
+
+    Enhancements
+    ------------
+    1.  Request: Forward preparation in the code for 57711
+
+        Change:  Using only two DMAE clients per port. Using "port" instead of
+                 "function".
+
+        Impact:  Not visible to the user
+
+    2.  Request: Block RX Pause if Auto-pause was selected and the MTU > 4500
+                 to prevent performance retrogression when using PAUSE with big
+                 packets
+
+        Change:  The auto-pause resolution will be only TX pause if the MTU
+                 is larger than 4500. Force pause mode will be obeyed as
+                 requested
+
+        Impact:  Jumbo frames with auto-pause will achieve higher throughput
+
+    3.  Request: Report HW errors
+
+        Change:  Parity and blocks errors attentions code was added to the
+                 driver. Not all indications are enabled.
+
+        Impact:  In case of an assert in the chip, the user will get an
+                 error notification
+
+    4.  Request: Added the ability to support multi interrupt queues from
+                 kernel 2.6.24 and above
+
+        Change:  Allow ISR and NAPI (the stack processing) to run on several
+                 CPUs. The new feature is disabled by default
+
+        Impact:  Can reduce latency in some cases
+
+    5.  Request: Move slow-path to work-queue to allow sleeps
+
+        Change:  The slow-path is now implemented as work queue
+
+        Impact:  Better fairness to other host drivers
+
+    6.  Request: Changes with statistics requirements due to
+                 performance enhancement and preparation for next
+                 features.
+
+        Change:  a. Removed rcv_error_bytes
+                 b. Replaced errors_discard stat by: mac_discard stat,
+                    checksum_discard stat and packet_too_big_discard
+                    stat
+                 c. Removed statistics histogram
+
+        Impact:  The displayed statistics format was changed
+
+    7.  Request  Remove FW interrupts that are not needed
+
+        Change:  FW no longer interrupts the driver for reading a new slow-path
+                 element (it updates driver only when completing processing it)
+
+        Impact:  None
+
+    8.  Request: Support easier SuSE compilation
+
+        Change:  In previous version, a flag in bnx2x.c was required
+                 in order to compile under SUSE. In the new implementation
+                 the make file can be used in the following way:
+                 SLES9  command: make EXTRA_CFLAGS+=-DBNX2X_SLES_9
+                 SLES10 command: make EXTRA_CFLAGS+=-DBNX2X_SLES_10
+
+        Impact:  SLES compilation procedure is different now
+
+Version 0.40.14 (November 06, 2007)
+==================================
+
+    Enhancements
+    ------------
+    1. Naming the TCP performance improvement feature TPA (still for demos only)
+
+Version 0.40.13 (November 05, 2007)
+==================================
+
+   Enhancements
+   ------------
+    1. Added support for L2 Rx TCP performance improvements in a special mode
+       (implementation for demos only). This support is disabled by default and
+       requires a change of compilation flag to enable.
+    2. Added support for vanilla kernel 2.6.18.5, SLES9, and RHES4
+
+Version 0.40.12 (October 29, 2007)
+==================================
+
+   Fixes
+   -----
+    1.  Problem: A fragmented Tcp/Udp packet might have been wrongly dropped
+
+        Cause:   parser doesn't checks tcp/udp checksum for fragmented
+                 packets
+
+        Fix:     FW will report to driver the tcp/udp checksum wasn't
+                 Validated if the packet was fragmented
+
+    2.  Problem: ethtool -S|r|t eth[x] on un-configured port causes
+                 errors/panic
+
+        Cause:   When port is un-configured memory is not allocated and
+                 blocks in chip can be in reset
+
+        Fix:     Check driver state in nway_reset() and self_test() and
+                 check memory pointer in get_ethtool_stats()
+
+   Enhancements
+   ------------
+   1. Supporting the upstream Kernel including new NAPI approach
+   2. Open source coding standard modifications throughout the code,
+      including new init code, new HSI header files, new registers
+      definitions, SPARSE fixes and checkpatch.pl fixes
+   3. Replaced patches mechanism with #ifdefs
+   4. Supporting big-endian machines
+   5. Supporting nVidia chipsets with MCP55
+   6. Support checksum offload for A1 boards (modification with some flag in
+      PBF command)
+
+Version 0.40.10 (August 27, 2007)
+=================================
+
+       Bug fix version, no new features
+
+
+
+Version 4.0.9 (August 10, 2007)
+===============================
+
+       New features:
+       -------------
+
+       1. Updated to firmware version 4.0.7.
+
+       2. Added support for ethtool EEPROM options.
+
+
+
+
+Version 4.0.7 (July 23, 2007)
+=============================
+
+
+       New features:
+       -------------
+
+       1. Added support for flow control.
+
+       2. Added patch for Kernel 2.6.22.x.
+
+
+
+
+Version 4.0.6 (July 11, 2007)
+=============================
+
+
+       New features:
+       -------------
+
+       1. Added support for new bootcode 4.0.2.
+
+
+
+Version 4.0.5 (June 29, 2007)
+=============================
+
+
+       Fixes:
+       ------
+
+       1. Problem:
+               Linux stack rechecked the RX checksum.
+
+          Cause:
+               In most cases, the indication of RX checksum was wrong
+               causing the Linux stack to recheck.
+
+          Fix:
+               Indication mistake was fixed.
+
+       2. Problem:
+               NFS UDP test failed writing to server.
+
+          Cause:
+               Incorrect HW init values.
+
+          Fix:
+               HW init values were corrected in the driver.
+
+       3. Problem:
+               MTU change cause system to assert.
+
+          Cause:
+               Memory leak in the ifconfig up/down sequence.
+
+          Fix:
+               Memory leak fixed in driver.
+
+
+
+Version 4.0.1 (June 15, 2007)
+=============================
+
+       New features:
+       -------------
+
+       1. Added Power management is support.
+
+       2. Added WoL is support.
+
+       3. Auto-negotiation and speed & duplex is supported.
+
+       4. Updated firmware version to v4.0.2.
+
+       5. Support for Ethtool.
+
+       6. Changing MTU can be done when link is up.
+
+
+
+Version 0.30.1 (June 4, 2007)
+============================
+
+       New features:
+       -------------
+
+       1. Updated firmware version to v0.30.0.
+
+
+Version 0.29.1 (May 21, 2007)
+============================
+
+       New features:
+       -------------
+
+       1. Updated firmware version to v0.29.0.
+
+
+
+Version 0.27.5 (May 7, 2007)
+============================
+
+       New features:
+       -------------
+
+       1. Interrupt coalescing values have been optimized.
+
+       2. Updated to Linux Kernel 2.6.20.7.
+
+
+       Fixes:
+       ------
+
+       1. Problem:
+               High performance scenarios involving many threads could have
+               caused tx ring overrun.
+
+          Cause:
+               SNP concurrency driver bug.
+
+          Fix:
+               Driver related code was fixed.
+
+
+
+
+Version 0.27.1 (Apr 23, 2007)
+============================
+
+       New features:
+       -------------
+
+       1. Added speed and activity support for LEDs.
+
+
+
+       Fixes:
+       ------
+
+       1. Problem:
+               Low performance when running Netperf TCP_RR.
+
+          Cause:
+               Driver bug caused a the driver to enter a busy loop in
+               certain cases when there was no RX processing queued.
+
+          Fix:
+               The logic used to decide if there is pending RX work was
+               corrected.
+
+
+       2. Problem:
+               XFP link detection problem - intermittent issue.
+
+          Cause:
+               Driver would not get link change interrupt.
+
+          Fix:
+               Corrected the setting of the link change interrupt.

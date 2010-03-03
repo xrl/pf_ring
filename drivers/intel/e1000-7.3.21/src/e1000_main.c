@@ -32,7 +32,7 @@
 #define HAVE_PF_RING
 
 #ifdef HAVE_PF_RING
-#include "../../../kernel/linux/pf_ring.h"
+#include "../../../../kernel/linux/pf_ring.h"
 #endif
 
 char e1000_driver_name[] = "e1000";
