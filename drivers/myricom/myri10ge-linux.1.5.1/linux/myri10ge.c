@@ -165,7 +165,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define HAVE_PF_RING 1 
 
 #ifdef HAVE_PF_RING
-#include "../../../kernel/linux/pf_ring.h"
+#include "../../../../kernel/linux/pf_ring.h"
 #endif
 
 struct myri10ge_rx_buffer_state {
