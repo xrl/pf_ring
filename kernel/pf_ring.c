@@ -44,7 +44,11 @@
  */
 #include <linux/version.h>
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
+#include <generated/autoconf.h>
+#else
 #include <linux/autoconf.h>
+#endif
 #else
 #include <linux/config.h>
 #endif
@@ -2695,7 +2699,11 @@ static int ring_create(
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 		       struct net *net,
 #endif
-		       struct socket *sock, int protocol)
+		       struct socket *sock, int protocol
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
+		       , int kern
+#endif
+		       )
 {
   struct sock *sk;
   struct ring_opt *pfr;
