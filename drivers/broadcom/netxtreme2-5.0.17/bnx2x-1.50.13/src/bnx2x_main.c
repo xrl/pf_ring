@@ -1572,7 +1572,9 @@ static void bnx2x_tpa_stop(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 		    int rc;
 			  
 		    if(debug)
-		      printk(KERN_INFO "[PF_RING] alive [%s][len=%d]\n", bp->dev->name, skb->len);
+		      printk(KERN_INFO "[PF_RING] alive [%s][len=%d][queue=%d/%d]\n",
+			     bp->dev->name, skb->len,
+			     queue, BNX2X_NUM_QUEUES(bp));
 			  
 		    if(*hook->transparent_mode != standard_linux_path) {
 		      rc = hook->ring_handler(skb, 1, 1, queue, BNX2X_NUM_QUEUES(bp));
