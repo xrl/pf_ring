@@ -1563,7 +1563,6 @@ static void bnx2x_tpa_stop(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 
 #ifdef HAVE_PF_RING
 		{
-
 		  int debug = 0;
 		  struct pfring_hooks *hook = (struct pfring_hooks*)bp->dev->pfring_ptr;
 		  
@@ -1574,7 +1573,7 @@ static void bnx2x_tpa_stop(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 		    if(debug)
 		      printk(KERN_INFO "[PF_RING] alive [%s][len=%d][queue=%d/%d]\n",
 			     bp->dev->name, skb->len,
-			     queue, BNX2X_NUM_QUEUES(bp));
+			     fp->index  /* queue */, BNX2X_NUM_QUEUES(bp));
 			  
 		    if(*hook->transparent_mode != standard_linux_path) {
 		      rc = hook->ring_handler(skb, 1, 1, queue, BNX2X_NUM_QUEUES(bp));
@@ -1585,8 +1584,11 @@ static void bnx2x_tpa_stop(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 			}
 		      }
 		    } else {
-		      if(debug) printk(KERN_INFO "[PF_RING] not present on %s\n", bp->dev->name);
+		      if(debug) printk(KERN_INFO "[PF_RING] present but transparent_mode=0\n");
 		    }
+		  } else {
+		      if(debug) printk(KERN_INFO "[PF_RING] not present on %s [hook=%p]\n",
+				       bp->dev->name, hook);
 		  }
 		}
 #endif
@@ -1885,7 +1887,45 @@ reuse_rx:
 				le16_to_cpu(cqe->fast_path_cqe.vlan_tag));
 		else
 #endif
+
+#ifdef HAVE_PF_RING
+		{
+
+		  int debug = 0;
+		  struct pfring_hooks *hook = (struct pfring_hooks*)bp->dev->pfring_ptr;
+		  
+		  if(hook && (hook->magic == PF_RING)) {
+		    /* Wow: PF_RING is alive & kickin' ! */
+		    int rc, queue = fp->index;
+			  
+		    if(debug)
+		      printk(KERN_INFO "[2] [PF_RING] alive [%s][len=%d][queue=%d/%d]\n",
+			     bp->dev->name, skb->len,
+			     queue, BNX2X_NUM_QUEUES(bp));
+			  
+		    if(*hook->transparent_mode != standard_linux_path) {
+		      rc = hook->ring_handler(skb, 1, 1, queue, BNX2X_NUM_QUEUES(bp));
+		      if(rc == 1 /* Packet handled by PF_RING */) {
+			if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
+			  /* PF_RING has already freed the memory */
+			  goto next_pkt2;
+			}
+		      }
+		    } else {
+		      if(debug) printk(KERN_INFO "[2] [PF_RING] present but transparent_mode=0\n");
+		    }
+		  } else {
+		      if(debug) printk(KERN_INFO "[2] [PF_RING] not present on %s [hook=%p]\n",
+				       bp->dev->name, hook);
+		  }
+		}
+#endif
+		
 			netif_receive_skb(skb);
+
+#ifdef HAVE_PF_RING
+	next_pkt2:
+#endif
 
 #if (LINUX_VERSION_CODE < 0x02061b) /* ! BNX2X_UPSTREAM */
 		bp->dev->last_rx = jiffies;
