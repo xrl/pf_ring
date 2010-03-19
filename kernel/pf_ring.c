@@ -26,6 +26,7 @@
  * - Raja Mukerji <raja@mukerji.com>
  * - Davide Viti <zinosat@tiscali.it>
  * - Will Metcalf <william.metcalf@gmail.com>
+ * - Godbach <nylzhaowei@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -236,7 +237,7 @@ MODULE_PARM_DESC(enable_ip_defrag,
 
 /* ***************** Legacy code ************************ */
 
-#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16))
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
   return(struct iphdr *)skb->nh.iph;
