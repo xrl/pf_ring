@@ -68,6 +68,7 @@
 #include <linux/udp.h>
 #include <linux/list.h>
 #include <linux/netdevice.h>
+#include <linux/etherdevice.h>
 #include <linux/proc_fs.h>
 #include <net/xfrm.h>
 #include <net/sock.h>
@@ -146,6 +147,11 @@ static void ring_proc_add(struct ring_opt *pfr);
 static void ring_proc_remove(struct ring_opt *pfr);
 static void ring_proc_init(void);
 static void ring_proc_term(void);
+
+static int reflect_packet(struct sk_buff *skb,
+			  struct ring_opt *pfr,
+			  struct net_device *reflector_dev,
+			  int displ);
 
 /*
   Caveat
@@ -1539,17 +1545,30 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
   struct pfring_pkthdr *hdr = (struct pfring_pkthdr*)bucket;
   u_int payload_len = hdr->caplen + hdr->parsed_header_len;
-  // char *payload = &bucket[sizeof(struct pfring_pkthdr)];
+  char *payload = &bucket[sizeof(struct pfring_pkthdr) + hdr->parsed_header_len];
   struct net_device *forward_dev = pfr->reflector_dev;
+  struct sk_buff *skb;
 
   if(forward_dev == NULL) return(-1);
 
-  printk("[PF_RING] forward_slot_packet(): %u bytes -> device %s\n",
-	 payload_len, forward_dev->name);
+#if 1
+  printk("[PF_RING] forward_slot_packet(): %u bytes -> device %s [%02X %02X %02X]\n",
+	 payload_len, forward_dev->name, payload[0], payload[1], payload[2]);
+#endif
 
-  /* FIX - Add missing code here */
+  skb = dev_alloc_skb(payload_len);
+  if (!skb) {
+    printk("[PF_RING] forward_slot_packet(): unable to allocate memory\n");
+    return -ENOMEM;
+  }
+  
+  skb->dev = forward_dev;
+  skb_put(skb, payload_len);
+  skb_copy_from_linear_data(skb, payload, payload_len);
+  skb->protocol = eth_type_trans(skb, forward_dev);
 
-  return(0);
+  // FIX: missing src ethernet address
+  return(reflect_packet(skb, pfr, forward_dev, 0));
 }
 
 /* ********************************** */
@@ -1594,7 +1613,9 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   ring_bucket = &theSlot->bucket;
 
   if(theSlot->slot_state == 2) {
+#if defined(RING_DEBUG)
     printk("[PF_RING] --> slot_state=%d\n", theSlot->slot_state);
+#endif
 
     if(pfr->reflector_dev != NULL) {
       /* We have to forward the packet prior to overwrite it */
