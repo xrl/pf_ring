@@ -242,9 +242,7 @@ static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
   return(struct iphdr *)skb->nh.iph;
 }
-#endif
 
-#if(LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,16))
 static inline void skb_set_network_header(struct sk_buff *skb, const int offset)
 {
   skb->nh.iph = (struct iphdr *)skb->data + offset;
