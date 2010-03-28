@@ -243,7 +243,7 @@ MODULE_PARM_DESC(enable_ip_defrag,
 
 /* ***************** Legacy code ************************ */
 
-#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
   return(struct iphdr *)skb->nh.iph;
