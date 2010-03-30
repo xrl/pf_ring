@@ -4679,6 +4679,8 @@ int add_device_to_ring_list(struct net_device *dev) {
 			 ring_proc_dev_get_info /* read */, dev_ptr);
 
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
+  /* Fix the problem below !!!!! */
+#if 0
   if(dev_ptr->dev->ethtool_ops->set_coalesce != NULL) {
     hw_filtering_rule_element element;
     int rc;
@@ -4705,6 +4707,7 @@ int add_device_to_ring_list(struct net_device *dev) {
       printk("[PF_RING] Device %s does NOT support hw filtering [1]\n", dev->name);
   } else
     printk("[PF_RING] Device %s does NOT support hw filtering [2]\n", dev->name);
+#endif
 #endif
 
   list_add(&dev_ptr->list, &ring_aware_device_list);
