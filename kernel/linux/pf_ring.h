@@ -239,7 +239,6 @@ typedef struct {
 #define CHECK_COMMAND       2
 
 typedef struct {
-  u_int32_t magic; /* MAGIC_HW_FILTERING_RULE_ELEMENT */
   u_int8_t add_rule, command;
   hw_filtering_rule rule;
 } hw_filtering_rule_element;

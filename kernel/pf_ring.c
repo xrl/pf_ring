@@ -483,22 +483,25 @@ int handle_hw_filtering_rule(struct net_device *dev, hw_filtering_rule *rule,
 			     u_int8_t add_rule) {
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   int debug = 1;
+  struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
   hw_filtering_rule_element element;
-
-  if(dev == NULL) return(-1);
+  
+  if(dev == NULL) return(-1); 
 
   if(debug) printk("[PF_RING] hw_filtering_rule[%s][add=%d][id=%d][%p]\n",
 		   dev->name, add_rule ? 1 : 0, rule->rule_id,
-		   dev->ethtool_ops->set_coalesce);
+		   dev->ethtool_ops->set_eeprom);
 
-  if(dev->ethtool_ops->set_coalesce == NULL) return(-1);
+  if(dev->ethtool_ops->set_eeprom == NULL) return(-1);
 
-  element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+  memset(&element, 0, sizeof(element));
+  eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+
   element.command = RULE_COMMAND;
   element.add_rule = add_rule;
   memcpy(&element.rule, rule, sizeof(hw_filtering_rule));
 
-  return(dev->ethtool_ops->set_coalesce(dev, (struct ethtool_coalesce*)&element));
+  return(dev->ethtool_ops->set_eeprom(dev, &eeprom, (u8*)&element));
 #else
   return(-1);
 #endif
@@ -2549,7 +2552,7 @@ static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
 /*
    NOTE
 
-   I jeopardize the get_coalesce/set_coalesce fields for my purpose
+   I jeopardize the get_coalesce/set_eeprom fields for my purpose
    until hw filtering support is part of the kernel
 
 */
@@ -4679,17 +4682,16 @@ int add_device_to_ring_list(struct net_device *dev) {
 			 ring_proc_dev_get_info /* read */, dev_ptr);
 
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
-  /* Fix the problem below !!!!! */
-#if 0
-  if(dev_ptr->dev->ethtool_ops->set_coalesce != NULL) {
+  /* Dirty trick to fix at some point; FIXME */
+  if(dev_ptr->dev->ethtool_ops->set_eeprom != NULL) {
+    struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
     hw_filtering_rule_element element;
     int rc;
-
-    element.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+    
+    memset(&element, 0, sizeof(element));
+    eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
     element.command = CHECK_COMMAND;
-
-    rc = dev_ptr->dev->ethtool_ops->set_coalesce(dev_ptr->dev,
-						 (struct ethtool_coalesce*)&element);
+    rc = dev_ptr->dev->ethtool_ops->set_eeprom(dev_ptr->dev, &eeprom, (u8*)&element);
 
     if(rc == 0) {
       /* This device supports hardware filtering */
@@ -4707,7 +4709,6 @@ int add_device_to_ring_list(struct net_device *dev) {
       printk("[PF_RING] Device %s does NOT support hw filtering [1]\n", dev->name);
   } else
     printk("[PF_RING] Device %s does NOT support hw filtering [2]\n", dev->name);
-#endif
 #endif
 
   list_add(&dev_ptr->list, &ring_aware_device_list);
