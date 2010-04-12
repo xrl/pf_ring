@@ -113,6 +113,7 @@ struct pfring_pkthdr {
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
+  int if_index;         /* index of the interface on which the packet has been received */
   struct pkt_parsing_info parsed_pkt; /* packet parsing info */
   u_int16_t parsed_header_len; /* Extra parsing data before packet */
 };
@@ -125,9 +126,9 @@ struct pfring_pkthdr {
 /* ************************************************* */
 
 typedef struct {
-  u_int8_t dmac[ETH_ALEN], 
-    smac[ETH_ALEN];            /* Use '0' (zero-ed MAC address) for any MAC address. 
-				  This is applied to both source and destination. */   
+  u_int8_t dmac[ETH_ALEN],
+    smac[ETH_ALEN];            /* Use '0' (zero-ed MAC address) for any MAC address.
+				  This is applied to both source and destination. */
   u_int16_t vlan_id;                 /* Use '0' for any vlan */
   u_int8_t  proto;                   /* Use 0 for 'any' protocol */
   u_int32_t host_low, host_high;     /* User '0' for any host. This is applied to both source
@@ -281,8 +282,16 @@ typedef struct _filtering_hash_bucket {
 #define RING_MIN_SLOT_SIZE    (60+sizeof(struct pfring_pkthdr))
 #define RING_MAX_SLOT_SIZE    (1514+sizeof(struct pfring_pkthdr))
 
+#if !defined(__cplusplus)
+
 #ifndef min
 #define min(a,b) ((a < b) ? a : b)
+#endif
+
+#ifndef max
+#define max(a,b) ((a > b) ? a : b)
+#endif
+
 #endif
 
 /* *********************************** */
@@ -538,7 +547,7 @@ typedef struct {
 
 typedef struct {
   filtering_rule rule;
-  
+
 #ifdef CONFIG_TEXTSEARCH
   struct ts_config *pattern[MAX_NUM_PATTERN];
 #endif
@@ -657,8 +666,8 @@ typedef int (*handle_add_hdr_to_ring)(struct ring_opt *pfr,
 
 /* Hack to jump from a device directly to PF_RING */
 struct pfring_hooks {
-  u_int32_t magic; /* 
-		      It should be set to PF_RING 
+  u_int32_t magic; /*
+		      It should be set to PF_RING
 		      and be the first one on this struct
 		   */
   unsigned int *transparent_mode;
@@ -680,18 +689,18 @@ static u_int16_t pfring_plugin_id = 0;
 
 int add_plugin_to_device_list(struct net_device *dev) {
   ring_device_element *dev_ptr;
-	
+
   printk("[PF_RING] add_plugin_to_device_list(%s, plugin_id=%d)\n",
 	 dev->name, pfring_plugin_id);
 
   if ((dev_ptr = kmalloc(sizeof(ring_device_element),
 			 GFP_KERNEL)) == NULL)
     return (-ENOMEM);
-	
+
   INIT_LIST_HEAD(&dev_ptr->list);
   dev_ptr->dev = dev;
 
-  list_add(&dev_ptr->list, &plugin_registered_devices_list); 
+  list_add(&dev_ptr->list, &plugin_registered_devices_list);
 
   return(0);
 }
@@ -703,10 +712,10 @@ void remove_plugin_from_device_list(struct net_device *dev) {
   if(hook && (hook->magic == PF_RING)) {
     hook->pfring_unregistration(pfring_plugin_id);
   }
-	
+
   list_for_each_safe(ptr, tmp_ptr, &plugin_registered_devices_list) {
     ring_device_element *dev_ptr;
-		
+
     dev_ptr = list_entry(ptr, ring_device_element, list);
     if(dev_ptr->dev == dev) {
       list_del(ptr);
@@ -764,7 +773,7 @@ static void unregister_plugin(int pfring_plugin_id) {
     dev_ptr = list_entry(ptr, ring_device_element, list);
     hook = (struct pfring_hooks*)dev_ptr->dev->pfring_ptr;
     if(hook && (hook->magic == PF_RING)) {
-      printk("[PF_RING] Unregister plugin_id %d for %s\n", 
+      printk("[PF_RING] Unregister plugin_id %d for %s\n",
 	     pfring_plugin_id, dev_ptr->dev->name);
       hook->pfring_unregistration(pfring_plugin_id);
       list_del(ptr);

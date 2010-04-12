@@ -27,6 +27,7 @@
  * - Davide Viti <zinosat@tiscali.it>
  * - Will Metcalf <william.metcalf@gmail.com>
  * - Godbach <nylzhaowei@gmail.com>
+ * - Nicola Bonelli <bonelli@antifork.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -485,8 +486,8 @@ int handle_hw_filtering_rule(struct net_device *dev, hw_filtering_rule *rule,
   int debug = 1;
   struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
   hw_filtering_rule_element element;
-  
-  if(dev == NULL) return(-1); 
+
+  if(dev == NULL) return(-1);
 
   if(debug) printk("[PF_RING] hw_filtering_rule[%s][add=%d][id=%d][%p]\n",
 		   dev->name, add_rule ? 1 : 0, rule->rule_id,
@@ -611,9 +612,9 @@ static int ring_proc_dev_rule_write(struct file *file,
   printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (1)\n", buf, num);
 
   if(num == 19) {
-    if(proto[0] == 't') 
+    if(proto[0] == 't')
       protocol = 6; /* TCP */
-    else if(proto[0] == 'u') 
+    else if(proto[0] == 'u')
       protocol = 17; /* UDP */
     else
       protocol = 0; /* any */
@@ -635,9 +636,9 @@ static int ring_proc_dev_rule_write(struct file *file,
     printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (2)\n", buf, num);
 
     if(num == 16) {
-      if(proto[0] == 't') 
+      if(proto[0] == 't')
 	protocol = 6; /* TCP */
-      else if(proto[0] == 'u') 
+      else if(proto[0] == 'u')
 	protocol = 17; /* UDP */
       else
 	protocol = 0; /* any */
@@ -1564,7 +1565,7 @@ static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
     printk("[PF_RING] forward_slot_packet(): unable to allocate memory\n");
     return -ENOMEM;
   }
-  
+
   skb->dev = forward_dev;
   skb_put(skb, payload_len);
   skb_copy_from_linear_data(skb, payload, payload_len);
@@ -2365,6 +2366,11 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
   hdr.len = hdr.caplen = skb->len + displ;
+
+  if(skb->dev)
+    hdr.if_index = skb->dev->ifindex;
+  else
+    hdr.if_index = -1;
 
   /* Avoid the ring to be manipulated while playing with it */
   read_lock_bh(&ring_mgmt_lock);
@@ -4214,7 +4220,7 @@ static int ring_setsockopt(struct socket *sock,
     if(copy_from_user(&hw_rule, optval, sizeof(hw_rule)))
       return -EFAULT;
 
-    ret = handle_hw_filtering_rule(pfr->ring_netdev, &hw_rule, 
+    ret = handle_hw_filtering_rule(pfr->ring_netdev, &hw_rule,
 				   (optname == SO_ADD_HW_FILTERING_RULE) ? 1 : 0);
     break;
 
@@ -4252,7 +4258,9 @@ static int ring_getsockopt(struct socket *sock,
     {
       u_int32_t version = RING_VERSION_NUM;
 
-      if(copy_to_user(optval, &version, sizeof(version)))
+      if(len < sizeof(u_int32_t))
+	return -EINVAL;
+      else if(copy_to_user(optval, &version, sizeof(version)))
 	return -EFAULT;
     }
     break;
@@ -4261,8 +4269,8 @@ static int ring_getsockopt(struct socket *sock,
     {
       struct tpacket_stats st;
 
-      if(len > sizeof(struct tpacket_stats))
-	len = sizeof(struct tpacket_stats);
+      if(len < sizeof(struct tpacket_stats))
+	return -EINVAL;
 
       st.tp_packets = pfr->slots_info->tot_insert;
       st.tp_drops = pfr->slots_info->tot_lost;
@@ -4399,9 +4407,7 @@ static int ring_getsockopt(struct socket *sock,
 		pfring_plugin_get_stats(pfr, rule, NULL, buffer, len);
 
 	    if(rc > 0) {
-	      if(copy_to_user
-		  (optval, buffer,
-		   rc)) {
+	      if(copy_to_user(optval, buffer, rc)) {
 		rc = -EFAULT;
 	      }
 	    }
@@ -4421,13 +4427,11 @@ static int ring_getsockopt(struct socket *sock,
 
   case SO_GET_MAPPED_DNA_DEVICE:
     {
-      if(pfr->dna_device == NULL)
+      if((pfr->dna_device == NULL)
+	 || (len < sizeof(dna_device)))
 	return -EFAULT;
 
-      if(len > sizeof(dna_device))
-	len = sizeof(dna_device);
-
-      if(copy_to_user(optval, pfr->dna_device, len))
+      if(copy_to_user(optval, pfr->dna_device, sizeof(dna_device)))
 	return -EFAULT;
 
       break;
@@ -4450,7 +4454,9 @@ static int ring_getsockopt(struct socket *sock,
     break;
 
   case SO_GET_RING_ID:
-    if(copy_to_user(optval, &pfr->ring_id, sizeof(pfr->ring_id)))
+    if(len < sizeof(pfr->ring_id))
+      return -EINVAL;
+    else if(copy_to_user(optval, &pfr->ring_id, sizeof(pfr->ring_id)))
       return -EFAULT;
     break;
 
@@ -4687,7 +4693,7 @@ int add_device_to_ring_list(struct net_device *dev) {
     struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
     hw_filtering_rule_element element;
     int rc;
-    
+
     memset(&element, 0, sizeof(element));
     eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
     element.command = CHECK_COMMAND;
