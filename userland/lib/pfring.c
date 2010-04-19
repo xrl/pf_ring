@@ -358,8 +358,10 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
       ring->slots = (char *)(ring->buffer+sizeof(FlowSlotInfo));
 
       /* Safety check */
-      if(ring->slots_info->remove_idx >= ring->slots_info->tot_slots)
+      if(ring->slots_info->remove_idx >= ring->slots_info->tot_slots) {
 	ring->slots_info->remove_idx = 0;
+	wmb();
+      }
 
       ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
 
@@ -872,6 +874,14 @@ int pfring_notify(pfring *ring, u_int8_t reflect_packet) {
 
   if(ring->last_slot_to_update) {
     ring->last_slot_to_update->slot_state = reflect_packet ? 2 : 0; /* Empty slot */
+
+#if 0
+    {
+      static int num_updated = 0;
+      printf("DEBUG ==> slot_state[%d]=%d\n", num_updated++, ring->last_slot_to_update->slot_state);
+    }
+#endif
+
     ring->last_slot_to_update = NULL;
   }
   
@@ -1008,6 +1018,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	ring->last_slot_to_update = slot;
       }      
 
+      wmb();
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
       return(1);
     } else {

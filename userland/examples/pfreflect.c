@@ -370,6 +370,7 @@ void printHelp(void) {
 
 void* packet_consumer_thread(void* _id) {
   //u_int thread_id = (u_int)_id;
+  int num = 0, debug = 0;
   
   while(1) {
     struct simple_stats {
@@ -388,11 +389,25 @@ void* packet_consumer_thread(void* _id) {
 		   0 /* Don't consume the packet now */) > 0) {
       if(do_shutdown) break;
       dummyProcesssPacket(&hdr, buffer);
+      num++;
+
       if(1) {
 	/* Tell pf_ring that the packet has been consumed */
+	if(debug) {
+	  int i=0;
+
+	  for(i=0; i<hdr.caplen; i++)
+	    printf("%02X ", buffer[i] & 0xFF);
+	  
+	  printf("\n");
+	}
+
 	rc = pfring_notify(pd, 1 /* Reflect packet */);
-	printf("pfring_notify() returned %d\n", rc);
+	if(debug) printf("pfring_notify(len=%d) returned %d\n", hdr.caplen, rc);
+	//break;
       }
+
+      //if(num == 3) break;
     }
 
     if(0) {

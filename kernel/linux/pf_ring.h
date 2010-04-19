@@ -302,10 +302,7 @@ typedef struct flowSlotInfo {
   u_int32_t tot_slots, slot_len, data_len, tot_mem;
   u_int64_t tot_pkts, tot_lost, tot_insert, tot_read;
   u_int64_t tot_fwd_ok, tot_fwd_notok;
-  u_int32_t insert_idx;
-  u_int8_t  padding[72]; /* Used to avoid false sharing */
-  u_int32_t remove_idx;
-  u_int32_t  padding2[31]; /* Used to avoid false sharing */
+  u_int32_t insert_idx, remove_idx, forward_idx;
 } FlowSlotInfo;
 
 /* *********************************** */
