@@ -159,11 +159,10 @@ void add_rule(u_int add_rule) {
 void sigproc(int sig) {
   static int called = 0;
 
- {
-   add_rule(0);
-   printf("Removing filter\n");
-   
- }
+  if(0) {
+    add_rule(0);
+    printf("Removing filter\n");
+  }
 
   fprintf(stderr, "Leaving...\n");
   if(called) return; else called = 1;
@@ -378,8 +377,20 @@ void printHelp(void) {
 /* *************************************** */
 
 void* packet_consumer_thread(void* _id) {
-  //u_int thread_id = (u_int)_id;
-  
+  int s;
+  u_int thread_id = (u_int)_id; 
+  u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
+  u_int core_id = thread_id % numCPU;
+  cpu_set_t cpuset;
+
+  /* Bind this thread to a specific core */
+  CPU_SET(core_id, &cpuset);
+  if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
+    printf("Error while binding thread %d to core %d: errno=%i\n", thread_id, core_id, s);
+  else {
+    printf("Set thread %u on core %u/%u\n", thread_id, core_id, numCPU);
+  }
+
   while(1) {
     struct simple_stats {
       u_int64_t num_pkts, num_bytes;
@@ -427,7 +438,7 @@ int main(int argc, char* argv[]) {
 
   schedparam.sched_priority = 99;
   if(sched_setscheduler(0, SCHED_FIFO, &schedparam) == -1) {
-    printf("error while setting the scheduler, errno=%i\n",errno);
+    printf("error while setting the scheduler, errno=%i\n", errno);
     exit(1);
   }
 

@@ -460,7 +460,7 @@ struct ring_element {
 
 /* ************************************************* */
 
-struct ring_opt *pfr; /* Forward */
+extern struct ring_opt *pfr; /* Forward */
 
 typedef int (*do_handle_filtering_hash_bucket)(struct ring_opt *pfr,
 					       filtering_hash_bucket* rule,
