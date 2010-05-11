@@ -28,6 +28,8 @@
  * - Will Metcalf <william.metcalf@gmail.com>
  * - Godbach <nylzhaowei@gmail.com>
  * - Nicola Bonelli <bonelli@antifork.org>
+ * - Jan Alsenz
+ * - valxdater@seznam.cz
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
