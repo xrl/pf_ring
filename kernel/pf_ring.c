@@ -489,11 +489,11 @@ int handle_hw_filtering_rule(struct net_device *dev, hw_filtering_rule *rule,
 
   if(dev == NULL) return(-1);
 
+  if((dev->ethtool_ops == NULL) || (dev->ethtool_ops->set_eeprom == NULL)) return(-1);
+ 
   if(debug) printk("[PF_RING] hw_filtering_rule[%s][add=%d][id=%d][%p]\n",
 		   dev->name, add_rule ? 1 : 0, rule->rule_id,
 		   dev->ethtool_ops->set_eeprom);
-
-  if(dev->ethtool_ops->set_eeprom == NULL) return(-1);
 
   memset(&element, 0, sizeof(element));
   eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
@@ -4728,7 +4728,7 @@ int add_device_to_ring_list(struct net_device *dev) {
 
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   /* Dirty trick to fix at some point; FIXME */
-  if(dev_ptr->dev->ethtool_ops->set_eeprom != NULL) {
+  if((dev_ptr->dev->ethtool_ops != NULL) && (dev_ptr->dev->ethtool_ops->set_eeprom != NULL)) {
     struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
     hw_filtering_rule_element element;
     int rc;
