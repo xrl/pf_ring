@@ -1,0 +1,90 @@
+                          ============================
+                           R E L E A S E    N O T E S
+                          ============================
+
+                         Broadcom NetXtreme II iSCSI Driver
+                            	For Linux
+
+                  Copyright (c) 2006-2009 Broadcom Corporation
+                              All rights reserved.
+
+Version 2.0.1e-05 (Dec 16, 2009)
+================================
+
+  Fixes
+  =====
+    1. Problem: CQ 44851 iscsiboot image intermittently does not restart with
+                init 6 command 
+       Cause:   Driver called to libiscsi routine with improper pointer
+                dereference
+       Change:  Fixed the pointer dereferencing
+       Impact:  All chipsets
+
+    2. Problem: CQ 44842 Session get disconnected on broadcom offload with 
+                lunreset
+       Cause:   Driver not processing sense data if the SCSI response status
+                is not CHECK_CONDITION
+       Change:  Modified so that sense data processing will occur for all
+                fail status
+       Impact:  All chipsets
+
+Version 2.0.1e-04 (Nov 04, 2009)
+================================
+
+  Fixes
+  =====
+    1. Problem: CQ 44224 Not able to login to the target using jumbo frames 
+       Cause:   Driver did not support max mtu to be > 1500
+       Change:  Added support for max mtu = 9000
+       Impact:  All chipsets
+
+Version 2.0.1e-03 (Sep 18, 2009)
+================================
+
+  Fixes
+  =====
+    1. Problem: Failed to operate with 57711E 
+       Cause:   Driver did not identify the chipset correctly
+       Change:  Fixed the identification procedure
+       Impact:  57711E
+
+Version 2.0.1e-02 (Aug 24, 2009)
+================================
+
+  Fixes
+  =====
+    1. Problem: CQ 43247 - Failing iLab iSCSI test 6.1 
+                (Error from initiator to target)
+       Cause:   Driver did not send iSCSI tmf request pkts correctly
+       Change:  Fixed tmf request sending
+       Impact:  All chipsets, SLES11U0
+
+Version 2.0.1e-01 (Aug 17, 2009)
+================================
+
+  Fixes
+  =====
+    1. Problem: Disk does not appear in filesystem after login to iscsi target
+       Cause:   Driver did not return proper SCSI host number in create_session()
+		and this caused stack to scan an invalid host
+       Change:  return correct shost->host_no in create_session() call
+       Impact:  All chipsets, SLES11U0
+
+    2. Problem: Unable to logon to target using 5771x chipsets
+       Cause:   Bug in usage for 'sq_size' caused driver to use '0' send queue
+		size and eventual connection offload failure.
+       Change:  Fixed SQ handling
+       Impact:  5771x chipsets, SLES11U0
+
+  Enhancements
+  ============
+    Back ported a bunch of bug fixes/clean-up's from upstream driver,
+	1) convert hba->net_dev_lock and bnx2i_dev_lock to mutex
+	2) Fix for invalid cid (cid #0) freed under certain error conditions
+	3) Fix for CMDSN jump seen during cable pull tests
+
+
+Version 2.0.1e (Apr 21, 2009)
+================================
+    Initial Release
+

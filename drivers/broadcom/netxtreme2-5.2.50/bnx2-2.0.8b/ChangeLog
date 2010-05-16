@@ -1,0 +1,4455 @@
+commit 89f13816d5c24f561be035e6977bcaebfa288114
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 3 14:35:57 2009 -0800
+
+    bnx2: Refine VPD logic.
+    
+    - Replace magic values with constants
+    - Simplify length calculation and fix a bug
+    
+    Based on valuable feedback from Ben Hutchings <bhutchings@solarflare.com>
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+
+commit 55dbabee63462a455d8fb57caf08b69db256b012
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 3 09:46:35 2009 +0000
+
+    bnx2: Update version to 2.0.3.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 76d9906170259b581691c3cec6bc5d4ab3aaaede
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 3 09:46:34 2009 +0000
+
+    bnx2: Read firmware version from VPD.
+    
+    And display it through ethtool -i.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b929e53cb7796a8abe47174dfdfdf90cbb65a8bf
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 3 09:46:33 2009 +0000
+
+    bnx2: Print warning when unable to allocate the full SKB/page ring.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 20175c57f23cde2049c509eb00a2f9d373478107
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 3 09:46:32 2009 +0000
+
+    bnx2: Dump some state during tx timeout.
+    
+    To help debug the problem.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 51bf6bb424c14bfd3590a0de03fbd07fc800435e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 3 09:46:31 2009 +0000
+
+    bnx2: Protect tx timeout reset with rtnl_lock().
+    
+    To prevent race conditions with other reset events.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit e00484023ebe94dce03fdd1270edf3e191c2bc79
+Merge: 3248e16 1f5865e
+Author: David S. Miller <davem@davemloft.net>
+Date:   Wed Dec 2 22:00:34 2009 -0800
+
+    Merge branch 'master' of master.kernel.org:/pub/scm/linux/kernel/git/davem/net-2.6
+
+commit e95524a726904a1d2b91552f0577838f67d53c6c
+Author: Alexander Duyck <alexander.h.duyck@intel.com>
+Date:   Wed Dec 2 16:47:57 2009 +0000
+
+    bnx2: remove skb_dma_map/unmap calls from driver
+    
+    Due to the fact that skb_dma_map/unmap do not work correctly when a HW
+    IOMMU is enabled it has been recommended to go about removing the calls
+    from the network device drivers.
+    
+    [ Fix bnx2_free_tx_skbs() ring indexing and use NETDEV_TX_OK return
+      code in bnx2_start_xmit() after cleaning up DMA mapping errors. -Mchan ]
+    
+    Signed-off-by: Alexander Duyck <alexander.h.duyck@intel.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Jeff Kirsher <jeffrey.t.kirsher@intel.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 529fab67d78747ddc3a8a2bbd0d1aab1d059439f
+Author: Breno Leitao <leitao@linux.vnet.ibm.com>
+Date:   Thu Nov 26 07:31:49 2009 +0000
+
+    bnx2: EEH is failing with timeout
+    
+    bnx2 is failing when a PCI error is detected. The error is the
+    following:
+    
+    bnx2: Chip not in correct endian mode
+    bnx2: fw sync timeout, reset code = 404001d
+    
+    This error was caused because the way pci_restore_state() is working
+    after commit 4b77b0a2ba27d64f58f16d8d4d48d8319dda36ff ("PCI: Clear
+    saved_state after the state has been restored").
+    
+    Signed-off-by: Breno Leitao<leitao@linux.vnet.ibm.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c7079857cd89cb5bc686df1d441db8ef0137abf1
+Author: Eric Dumazet <eric.dumazet@gmail.com>
+Date:   Mon Nov 2 23:17:42 2009 +0000
+
+    bnx2: avoid compiler warnings
+    
+    drivers/net/bnx2.c: In function ‘bnx2_enable_forced_2g5’:
+    drivers/net/bnx2.c:1447: warning: ‘bmcr’ may be used uninitialized in this function
+    drivers/net/bnx2.c: In function ‘bnx2_disable_forced_2g5’:
+    drivers/net/bnx2.c:1482: warning: ‘bmcr’ may be used uninitialized in this function
+    
+    One fix would be to have an initial value, but a plain return might be better.
+    
+    Signed-off-by: Eric Dumazet <eric.dumazet@gmail.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7ab0f2736bfe137a82a7084bbfb5f809da95cabd
+Author: Ben Hutchings <bhutchings@solarflare.com>
+Date:   Thu Sep 3 10:39:43 2009 +0000
+
+    netdev: Remove redundant checks for CAP_NET_ADMIN in MDIO implementations
+    
+    dev_ioctl() already checks capable(CAP_NET_ADMIN) before calling the
+    driver's implementation of MDIO ioctls.
+    
+    Signed-off-by: Ben Hutchings <bhutchings@solarflare.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 61357325f377889a1daffa14962d705dc814dd0e
+Author: Stephen Hemminger <shemminger@vyatta.com>
+Date:   Mon Aug 31 19:50:58 2009 +0000
+
+    netdev: convert bulk of drivers to netdev_tx_t
+    
+    In a couple of cases collapse some extra code like:
+       int retval = NETDEV_TX_OK;
+       ...
+       return retval;
+    into
+       return NETDEV_TX_OK;
+    
+    Signed-off-by: Stephen Hemminger <shemminger@vyatta.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 078b0735881c7969aaf21469f3577831cddd9f8c
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Aug 29 00:02:46 2009 -0700
+
+    bnx2: Update firmware to 5.0.0.j3.
+    
+    - Better small packet receive performance.
+    - Better handling of Flow control on 5709.
+    - Fixed iSCSI TMP ABORT TASK problem.
+    - Added iSCSI TCP timestamp option.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8fea0f0db87a4aaed41a93eed147af61cc5f9e3f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:50 2009 +0000
+
+    bnx2: Update version to 2.0.2.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0ced9d01d19795f913b95cebedd7d03986671379
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:49 2009 +0000
+
+    bnx2: Use const on flash_table structure.
+    
+    The structure, once initialized, never changes.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit cf7474a6f4eda22603591b7d6253dffc224e4784
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:48 2009 +0000
+
+    bnx2: Refine coalescing parameters.
+    
+    - Set the USE_INT_PARAM bit so the rx-frames-irq and tx-frames-irq will take
+      effect on 5709.
+    - Increase the default rx-frames to reduce interrupt count.
+    - Decrease the default rx-frames-irq and tx-frames-irq to catch more events
+      during NAPI poll.
+    
+    All these will reduce interrupts without affecting latency.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 790dab2f671cb477e6179322a6c48c898e311e72
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:47 2009 +0000
+
+    bnx2: Report FTQ discard counter.
+    
+    Report this counter to ethtool -S and include it in netstat.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 61d9e3fa7eacabfb7879e3da91709f1a5420c507
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:46 2009 +0000
+
+    bnx2: Apply BROKEN_STATS workaround to 5706 and 5708.
+    
+    Add flag to expand the workaround to both chips.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6fefb65e78f098c09d0ab877b2c70421e4c84116
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:45 2009 +0000
+
+    bnx2: Close device if MTU change or ring size change fails.
+    
+    When unable to allocate memory for new MTU or new ring size, we need
+    to close the device to prevent it from crashing.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3767546cc24de8f104e745d59a0a43a09d9267df
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:44 2009 +0000
+
+    bnx2: Check if_running() before touching chip registers.
+    
+    Add this check to bnx2_netif_stop() and bnx2_vlan_rx_register() to
+    prevent bus lockups on some systems when the chip is in low power state.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 155d5561f570c5b3af7a178670061927d89209fb
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 21 16:20:43 2009 +0000
+
+    bnx2: Zero out status block before chip reset.
+    
+    In case IRQs are shared, we will not mistakenly start processing
+    the ring based on old status block indices.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c5a889508203446c1abc1d670599b3a816841813
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 14 15:49:45 2009 +0000
+
+    bnx2: Use mutex on slow path cnic calls.
+    
+    The slow path calls to the cnic driver are sleepable calls so we
+    cannot use rcu_read_lock().  Use mutex for these slow path calls
+    instead.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Reviewed-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 2ec3de26d2dc666159b79a8b9394fa00b6f414ae
+Author: Dean Nelson <dnelson@redhat.com>
+Date:   Fri Jul 31 09:13:18 2009 +0000
+
+    bnx2: return PCI_ERS_RESULT_DISCONNECT on permanent failure
+    
+    PCI drivers that implement the struct pci_error_handlers' error_detected
+    callback should return PCI_ERS_RESULT_DISCONNECT if the state passed in is
+    pci_channel_io_perm_failure. This patch fixes the issue for bnx2.
+    
+    Signed-off-by: Dean Nelson <dnelson@redhat.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 72dccb01e8632aa5ffe58070003d0fa19d007116
+Author: Eric Dumazet <eric.dumazet@gmail.com>
+Date:   Thu Jul 23 02:01:38 2009 +0000
+
+    bnx2: Update vlan_features
+    
+    [PATCH net-next-2.6] bnx2: Update vlan_features
+    
+    In order to get full use of some advanced features of BNX2, we now need to
+    fill dev->vlan_features.
+    
+    Patch successfully tested with vlan devices built on top of bonding.
+    (bond0 : one bnx2 slave, one tg3 slave (not yet vlan_features enabled)
+    
+    Signed-off-by: Eric Dumazet <eric.dumazet@gmail.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7959ea254ed18faee41160b1c50b3c9664735967
+Author: Ooiwa Naohiro <nooiwa@miraclelinux.com>
+Date:   Wed Jun 24 00:19:06 2009 -0700
+
+    bnx2: Fix the behavior of ethtool when ONBOOT=no
+    
+    I found a little bug.
+    
+    When configure in ifcfg-eth* is ONBOOT=no,
+    the behavior of ethtool command is wrong.
+    
+        # grep ONBOOT /etc/sysconfig/network-scripts/ifcfg-eth2
+        ONBOOT=no
+        # ethtool eth2 | tail -n1
+                Link detected: yes
+    
+    I think "Link detected" should be "no".
+    
+    Signed-off-by: Ooiwa Naohiro <nooiwa@miraclelinux.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 31278e71471399beaff9280737e52b47db4dc345
+Author: Jiri Pirko <jpirko@redhat.com>
+Date:   Wed Jun 17 01:12:19 2009 +0000
+
+    net: group address list and its count
+    
+    This patch is inspired by patch recently posted by Johannes Berg. Basically what
+    my patch does is to group list and a count of addresses into newly introduced
+    structure netdev_hw_addr_list. This brings us two benefits:
+    1) struct net_device becames a bit nicer.
+    2) in the future there will be a possibility to operate with lists independently
+       on netdevices (with exporting right functions).
+    I wanted to introduce this patch before I'll post a multicast lists conversion.
+    
+    Signed-off-by: Jiri Pirko <jpirko@redhat.com>
+    
+     drivers/net/bnx2.c              |    4 +-
+     drivers/net/e1000/e1000_main.c  |    4 +-
+     drivers/net/ixgbe/ixgbe_main.c  |    6 +-
+     drivers/net/mv643xx_eth.c       |    2 +-
+     drivers/net/niu.c               |    4 +-
+     drivers/net/virtio_net.c        |   10 ++--
+     drivers/s390/net/qeth_l2_main.c |    2 +-
+     include/linux/netdevice.h       |   17 +++--
+     net/core/dev.c                  |  130 ++++++++++++++++++--------------------
+     9 files changed, 89 insertions(+), 90 deletions(-)
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 9cbc1cb8cd46ce1f7645b9de249b2ce8460129bb
+Merge: ca44d6e... 45e3e19...
+Author: David S. Miller <davem@davemloft.net>
+Date:   Mon Jun 15 03:02:23 2009 -0700
+
+    Merge branch 'master' of master.kernel.org:/pub/scm/linux/kernel/git/torvalds/linux-2.6
+    
+    Conflicts:
+    	Documentation/feature-removal-schedule.txt
+    	drivers/scsi/fcoe/fcoe.c
+    	net/core/drop_monitor.c
+    	net/core/net-traces.c
+
+commit 4edd473f208cff77ce1f7ef26d5a41f31fa198e0
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 8 18:14:42 2009 -0700
+
+    [SCSI] bnx2: Add support for CNIC driver.
+    
+    Add interface and functions to support a new CNIC driver to drive
+    the Broadcom bnx2 hardware for iSCSI offload.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: David S. Miller <davem@davemloft.net>
+    Signed-off-by: James Bottomley <James.Bottomley@HansenPartnership.com>
+
+commit d62fda082c48b417b47a553860abf75d9cf8b591
+Author: Eric Dumazet <dada1@cosmosbay.com>
+Date:   Tue May 12 20:48:02 2009 +0000
+
+    bnx2: bnx2_tx_int() optimizations
+    
+    When using bnx2 in a high transmit load, bnx2_tx_int() cost is pretty high.
+    
+    There are two reasons.
+    
+    One is an expensive call to bnx2_get_hw_tx_cons(bnapi) for each freed skb
+    
+    One is cpu stalls when accessing skb_is_gso(skb) / skb_shinfo(skb)->nr_frags
+    because of two cache line misses.
+    (One to get skb->end/head to compute skb_shinfo(skb),
+     one to get is_gso/nr_frags)
+    
+    This patch :
+    
+    1) avoids calling bnx2_get_hw_tx_cons(bnapi) too many times.
+    
+    2) makes bnx2_start_xmit() cache is_gso & nr_frags into sw_tx_bd descriptor.
+       This uses a litle bit more ram (256 longs per device on x86), but helps a lot.
+    
+    3) uses a prefetch(&skb->end) to speedup dev_kfree_skb(), bringing
+      cache line that will be needed in skb_release_data()
+    
+    result is 5 % bandwidth increase in benchmarks, involving UDP or TCP receive
+     & transmits, when a cpu is dedicated to ksoftirqd for bnx2.
+    
+    bnx2_tx_int going from 3.33 % cpu to 0.5 % cpu in oprofile
+    
+    Note : skb_dma_unmap() still very expensive but this is for another patch,
+    not related to bnx2 (2.9 % of cpu, while it does nothing on x86_32)
+    
+    Signed-off-by: Eric Dumazet <dada1@cosmosbay.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 06d4a1dac60723a1fca2dcd0107a962759749908
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed May 6 10:15:34 2009 -0700
+
+    bnx2: Fix panic in bnx2_poll_work().
+    
+    Add barrier() to bnx2_get_hw_{tx|rx}_cons() to fix this issue:
+    
+    http://bugzilla.kernel.org/show_bug.cgi?id=12698
+    
+    This issue was reported by multiple i386 users.  Without barrier(),
+    the compiled code looks like the following where %eax contains the
+    address of the tx_cons or rx_cons in the DMA status block.  The
+    status block contents can change between the cmpb and the movzwl
+    instruction.  The driver would crash if the value was not 0xff during
+    the cmpb instruction, but changed to 0xff during the movzwl
+    instruction.
+    
+    6828:	80 38 ff             	cmpb   $0xff,(%eax)
+    682b:	0f b7 10             	movzwl (%eax),%edx
+    
+    With the added barrier(), the compiled code now looks correct:
+    
+    683d:	0f b7 10             	movzwl (%eax),%edx
+    6840:	0f b6 c2             	movzbl %dl,%eax
+    6843:	3d ff 00 00 00       	cmp    $0xff,%eax
+    
+    Thanks to Pascal de Bruijn <pmjdebruijn@pcode.nl> for reporting the
+    problem and Holger Noefer <hnoefer@pironet-ndh.com> for patiently
+    testing test patches for us.
+    
+    Also updated version to 2.0.1.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+
+commit 690103137267e9ed893febf7ff061af63e8235a9
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Mar 18 18:11:51 2009 -0700
+
+    bnx2: Fix problem of using wrong IRQ handler.
+    
+    The MSI-X handler was chosen before the call to pci_enable_msix().
+    If MSI-X was not available, the wrong MSI-X handler would be used in
+    INTA mode.  This would cause a screaming interrupt problem because
+    INTA would not be cleared by the MSI-X handler.
+    
+    Fixed by assigning MSI-X handler after pci_enable_msix() returns
+    successfully.  Also update version to 1.9.3.
+    
+    Thomas Chenault <thomas_chenault@dell.com> helped us find this problem.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit a6952b5299ab506051f05395f7c26ff1352759ad
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Feb 12 16:54:48 2009 -0800
+
+    bnx2: Update version to 1.9.2 and copyright.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 990ec3804bb9fd37fcce3e165c95e8b79a783aa3
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Feb 12 16:54:13 2009 -0800
+
+    bnx2: Fix jumbo frames error handling.
+    
+    If errors are reported on a frame descriptor, we need to
+    account for the buffer pages that may have been used for this
+    error packet and recycle them.  Otherwise, we may get the wrong
+    pages for the next packet.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 259436a505bedc59a0114f2d17fa56af71d94129
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Feb 12 16:53:48 2009 -0800
+
+    bnx2: Update 5709 firmware.
+    
+    New firmware fixes a data corruption issue when receiving and
+    placing jumbo frames into host buffers.  In some cases, the
+    buffer descriptor is not updated correctly and this will lead
+    to the driver linking the wrong number of pages into the SKB.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 86f95f9eac4370ca7b9cf5d34dea24faae5e4be6
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Feb 12 16:53:22 2009 -0800
+
+    bnx2: Update 5706/5708 firmware.
+    
+    New firmware fixes a data corruption issue when receiving and
+    placing jumbo frames into host buffers.  In some cases, the
+    buffer descriptor is not updated correctly and this will lead
+    to the driver linking the wrong number of pages into the SKB.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0c8dfc830aadd978e461dad66c33741b71c6a0be
+Author: David S. Miller <davem@davemloft.net>
+Date:   Tue Jan 27 16:22:32 2009 -0800
+
+    net: Add skb_record_rx_queue() calls to multiqueue capable drivers.
+    
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 52d07b1f5039f51101a589856d9058e9cc8ce5dc
+Author: Harvey Harrison <harvey.harrison@gmail.com>
+Date:   Mon Jan 19 17:27:06 2009 -0800
+
+    bnx2: annotate bp->phy_lock functions
+    
+    It looks like the locking is OK as the locks were being taken before the
+    various phy setup functions, add the annotations as they release and
+    reacquire the phy_lock.
+    
+    Signed-off-by: Harvey Harrison <harvey.harrison@gmail.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 288379f050284087578b77e04f040b57db3db3f8
+Author: Ben Hutchings <bhutchings@solarflare.com>
+Date:   Mon Jan 19 16:43:59 2009 -0800
+
+    net: Remove redundant NAPI functions
+    
+    Following the removal of the unused struct net_device * parameter from
+    the NAPI functions named *netif_rx_* in commit 908a7a1, they are
+    exactly equivalent to the corresponding *napi_* functions and are
+    therefore redundant.
+    
+    Signed-off-by: Ben Hutchings <bhutchings@solarflare.com>
+    Acked-by: Neil Horman <nhorman@tuxdriver.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 908a7a16b852ffd618a9127be8d62432182d81b4
+Author: Neil Horman <nhorman@tuxdriver.com>
+Date:   Mon Dec 22 20:43:12 2008 -0800
+
+    net: Remove unused netdev arg from some NAPI interfaces.
+    
+    When the napi api was changed to separate its 1:1 binding to the net_device
+    struct, the netif_rx_[prep|schedule|complete] api failed to remove the now
+    vestigual net_device structure parameter.  This patch cleans up that api by
+    properly removing it..
+    
+    Signed-off-by: Neil Horman <nhorman@tuxdriver.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3298a7388c00227e736d1037328788073c80c7b4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 17 19:06:08 2008 -0800
+
+    bnx2: Fix bug in bnx2_free_rx_mem().
+    
+    DMA memory for the jumbo rx page rings was freed incorrectly using the
+    wrong local variable as the array index.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1f2435e532bd64742c3f766b7d5c17cc9d0b8558
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Dec 16 20:28:13 2008 -0800
+
+    bnx2: Update version to 1.9.0.
+    
+    And fix the 5716S pci_device_id entry to point to the proper string.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 4e1d0de95c55383f598516ebf82969260c18e4bd
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Dec 16 20:27:45 2008 -0800
+
+    bnx2: Rename MSI-X vectors.
+    
+    Change MSI-X vector names to "ethx-%d".
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit efba01803c8570bab11d0d6188a630231d0ddccf
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 3 00:36:15 2008 -0800
+
+    bnx2: Add workaround to handle missed MSI.
+    
+    The bnx2 chips do not support per MSI vector masking.  On 5706/5708, new MSI
+    address/data are stored only when the MSI enable bit is toggled.  As a result,
+    SMP affinity no longer works in the latest kernel.  A more serious problem is
+    that the driver will no longer receive interrupts when the MSI receiving CPU
+    goes offline.
+    
+    The workaround in this patch only addresses the problem of CPU going offline.
+    When that happens, the driver's timer function will detect that it is making
+    no forward progress on pending interrupt events and will recover from it.
+    
+    Eric Dumazet reported the problem.
+    
+    We also found that if an interrupt is internally asserted while MSI and INTA
+    are disabled, the chip will end up in the same state after MSI is re-enabled.
+    The same workaround is needed for this problem.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Tested-by: Eric Dumazet <dada1@cosmosbay.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0421eae68ffaf5ecfac860ee86e6a92e5b32a992
+Author: Stephen Hemminger <shemminger@vyatta.com>
+Date:   Fri Nov 21 17:31:27 2008 -0800
+
+    bnx2: convert to net_device_ops
+    
+    Convert driver to new net_device_ops. Compile tested only.
+    
+    Signed-off-by: Stephen Hemminger <shemminger@vyatta.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b2af2c1d3e4ddeea9d02c46d0df0c322cc7b7061
+Author: Neil Horman <nhorman@tuxdriver.com>
+Date:   Wed Nov 12 16:23:44 2008 -0800
+
+    bnx2: fix poll_controller to pass proper structures and check all rx queues
+    
+    Fix bnx2 so that netpoll works properly.  Specifically:
+    
+    1) Fix parameters to bnx2_interrupt to be a struct bnx2_napi rather than a
+    struct net_device
+    
+    2) Fix poll_controller method to check every queue in the rx case so frames
+    aren't missed
+    
+    Signed-off-by: Neil Horman <nhorman@tuxdriver.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit e4412cb8a6b4190cf73ae44c859fd7e3727d8b13
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Nov 12 16:03:05 2008 -0800
+
+    bnx2: Update version to 1.8.2.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 40105c0b0753515711318db87d36c8338dc74490
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Nov 12 16:02:45 2008 -0800
+
+    bnx2: Reorganize timeout constants.
+    
+    Move all related timeout constants to the same location.  BNX2
+    prefix is also added to make them more consistent.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d8026d939495c105cf747c0196a8fa738cf2ad20
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Nov 12 16:02:20 2008 -0800
+
+    bnx2: Set rx buffer water marks based on MTU.
+    
+    The default rx buffer water marks for XOFF/XON are for 1500 MTU.  At
+    larger MTUs, these water marks need to be adjusted for effective
+    flow control.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 5ec6d7bf195c2e70003ff30e4f51390ef7e85a31
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Nov 12 16:01:41 2008 -0800
+
+    bnx2: Restrict WoL support.
+    
+    On some quad-port cards that cannot support WoL on all ports due
+    to excessive power consumption, the driver needs to restrict WoL
+    on some ports by checking VAUX_PRESET bit.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1caacecb7cb2b72e798f06a32b5061075cf397fa
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Nov 12 16:01:12 2008 -0800
+
+    bnx2: Add PCI ID for 5716S.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit babcda74e9d96bb58fd9c6c5112dbdbff169e695
+Author: David S. Miller <davem@davemloft.net>
+Date:   Mon Nov 3 21:11:17 2008 -0800
+
+    drivers/net: Kill now superfluous ->last_rx stores.
+    
+    The generic packet receive code takes care of setting
+    netdev->last_rx when necessary, for the sake of the
+    bonding ARP monitor.
+    
+    Drivers need not do it any more.
+    
+    Some cases had to be skipped over because the drivers
+    were making use of the ->last_rx value themselves.
+    
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ec7e6fabbe72f1fe65eed14c106a0fbc00f6c2f1
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Oct 9 12:27:06 2008 -0700
+
+    bnx2: Update version to 1.8.1.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3d16af8665504c89f9ef3aae56f54fb93e48da61
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Thu Oct 9 12:26:41 2008 -0700
+
+    bnx2: Handle DMA mapping errors.
+    
+    Before, the driver would not care about the return codes from pci_map_*
+    functions.  This could be potentially dangerous if a mapping failed.
+    Now, we will check all pci_map_* calls.  On the transmit side, we switch
+    to use the new function skb_dma_map().  On the receive side, we add
+    pci_dma_mapping_error().
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit a1efb4b686babf38e5e63add8b990f18e38becc4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Oct 9 12:24:39 2008 -0700
+
+    bnx2: Eliminate TSO header modifications.
+    
+    This is now possible with updated firmware.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d5321e309c2fd1a1d534fc7bb674a1fff9f25d94
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Oct 9 12:22:38 2008 -0700
+
+    bnx2: Update 5706/5708 firmware.
+    
+    With this new firmware, the driver no longer has to modify the
+    TCP/IP header fields when transmitting TSO packets.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 9f52b564b7162ede5a73a4f4b421ccf93c55b025
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Oct 9 12:21:46 2008 -0700
+
+    bnx2: Check netif_running() in all ethtool operations.
+    
+    We need to check netif_running() state in most ethtool operations
+    and properly handle the !netif_running() state where the chip is
+    in an uninitailzed state or low power state that may not accept
+    any MMIO.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 74bf4ba3d367aacbc04fef167289767f162cd730
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Oct 9 12:21:08 2008 -0700
+
+    bnx2: Add bnx2_shutdown_chip().
+    
+    This logic is used in bnx2_close() and bnx2_suspend() and
+    so should be separated out into a separate function.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ac392abce936d78f7b731d90bfbc1001ddb446ea
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Thu Sep 18 16:40:49 2008 -0700
+
+    bnx2: Remove timer_interval field from the bnx2 structure
+    
+    The timer_interval field is only assigned once, and never reassigned.
+    We can safely replace all instances of the timer_interval with a
+    constant value.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit fbbf68b7f88953a9c56b7a7b4019fa5212987b34
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Thu Sep 18 16:40:03 2008 -0700
+
+    bnx2: Remove name field from bnx2 structure
+    
+    The name of the board is only used during the initialization of
+    the adapter.  We can save the space of a pointer by not storing
+    this information.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 453a9c6e995149c4a43e50b5482a48ed0298b0dc
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Thu Sep 18 16:39:16 2008 -0700
+
+    bnx2: Update MODULE_DESCRIPTION to include the 5716
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 344478db5385194ec27f6aaf780ea21c4b4ff02c
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Thu Sep 18 16:38:24 2008 -0700
+
+    bnx2: In bnx2_set_mac_link() return void rather then int
+    
+    bnx2_set_mac_link() doesn't need to return any error codes.  And
+    all the callers don't check the return code. It is safe to
+    change the return type to a void.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 27ed9ddfde8d2967076c51815e4ce297c4a18139
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Thu Sep 18 16:46:11 2008 -0700
+
+    bnx2: Promote vector field in bnx2_irq structure from u16 to unsigned int
+    
+    The bnx2 driver stores/uses the irq value from the pci_dev internally.
+    But when it stores the irq value, it has been performing an
+    integer demotion.  Because of the recent changes made to
+    arch/x86/kernel/io_apic.c, the new method in creating the irq value
+    (using build_irq_for_pci_dev()) has exposed this bug on x86 systems.
+    
+    Because of this demotion when calling request_irq() from
+    bnx2_request_irq(), the driver would get a return code of -EINVAL.
+    This is because the kernel could not find the requested irq descriptor.
+    By storing the irq value properly, the kernel can find the correct
+    irq descriptor and the bnx2 driver can operate normally.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 08013fa353fdcfc0a03cae805393abfc56722387
+Author: David S. Miller <davem@davemloft.net>
+Date:   Fri Aug 15 19:46:01 2008 -0700
+
+    bnx2: Fix build with VLAN_8021Q disabled.
+    
+    Reported by Randy Dunlap.
+    
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0eb8b1fe9238ca4c1797e4c105d5790abda1726f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 14 15:30:31 2008 -0700
+
+    bnx2: Update version to 1.8.0.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f22828e89f4f3e8c74ca7ffa69b0410afbd80eee
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 14 15:30:14 2008 -0700
+
+    bnx2: Reinsert VLAN tag when necessary.
+    
+    In certain cases when ASF or other management firmware is running, the
+    chip may be configured to always strip out the VLAN tag even when
+    VLAN acceleration is not enabled.  This causes some VLAN tagged
+    packets to be received by the host stack without any knowledge that
+    the original packet was VLAN tagged.
+    
+    We fix this by re-inserting the VLAN tag into the packet when necessary.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 729b85cd47f4e63657505cb5c6af104e19250805
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 14 15:29:39 2008 -0700
+
+    bnx2: Use proper CONFIG_VLAN_8021Q to compile the VLAN code.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7c6337a15e3d4689efe703e8bb65ae82cc13c435
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 14 15:29:09 2008 -0700
+
+    bnx2: Fix logic to setup VLAN rx tagging.
+    
+    We should now be checking BNX2_FLAG_CAN_KEEP_VLAN to determine how
+    to set the VLAN rx tagging in the RX_MODE register.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Matt Carlson <mcarlson@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3ca4095f246c21c285d9e4be2ea4d3ee7fbacebd
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Fri Jul 18 17:58:57 2008 -0700
+
+    bnx2: Update version to 1.7.9.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8a31329eae0949a8a73b64fcead84bb44a350591
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Fri Jul 18 17:57:26 2008 -0700
+
+    bnx2: Fix Sparse warnings
+    
+    This patch will fix the following sparse warnings:
+    
+    /home/benli/sparse/bnx2.c:297:8: warning: symbol 'val' shadows an earlier one
+    /home/benli/sparse/bnx2.c:286:60: originally declared here
+    /home/benli/sparse/bnx2.c:7461:7: warning: symbol 'i' shadows an earlier one
+    /home/benli/sparse/bnx2.c:7265:10: originally declared here
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 706bf24038ba88ec77503b4829b16da712a32f04
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Fri Jul 18 17:55:11 2008 -0700
+
+    bnx2: Add TX multiqueue support.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 4f83ec19bbd0c78a2158c7a5d28f70d8b4417803
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Fri Jul 18 17:54:17 2008 -0700
+
+    bnx2: Update TPAT firmware
+    
+    This change allows the first TX ring (CID 16) and the first TSS TX ring
+    (CID 32) to be used concurrently.  Before this change, we could get TSO
+    errors when both TX rings were used concurrently.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3cb29b1bca00736e984ea8ab368af40394a1bca0
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 14 22:40:21 2008 -0700
+
+    bnx2: Update version to 1.7.8.
+    
+    Signed-off-by: Michael Chan <mchan@braodcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 5fcaed0124cde73124227542bfce4ed57fccbb50
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Mon Jul 14 22:39:52 2008 -0700
+
+    bnx2: Support secondary MAC addresses.
+    
+    Add support for configuring secondary unicast addresses.  There
+    are 4 additional perfect match filters which can be used for
+    secondary unicast address support.
+    
+      *  Modified bnx2_set_mac_addr() to be more generic in handling
+         the setting of the perfect match filters
+      *  Changed bnx2_set_rx_mode() to handle the unicast dev_addr_list
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7c62e83beb1446d690ed921beddb0dcf34c9baa9
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 14 22:39:03 2008 -0700
+
+    bnx2: Allow flexible VLAN tag settings.
+    
+    Negotiate with boot code and ASF firmware to see if it can
+    support keeping VLAN tags in the RX packets.  If supported
+    by firmware, the VLAN tag will be kept in the RX packet
+    unless VLAN acceleration is registered.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit a2f138900d5c342742c369293edaf92d2173c92e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 14 22:38:23 2008 -0700
+
+    bnx2: Add ack parameter to bnx2_fw_sync().
+    
+    ack=1 means wait for firmware acknowledgement, and ack=0
+    means don't wait.  All current callers will set it to 1.
+    
+    In the next patch, new calls will set ack=0.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7bb0a04fcd610e5db59690332b2a46b6068c8bc3
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 14 22:37:47 2008 -0700
+
+    bnx2: Add PCI ID for 5716.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <Benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d6b14486953d0e8d1c57db29bf6104cea198b884
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 14 22:37:21 2008 -0700
+
+    bnx2: Prevent ethtool -s from crashing when device is down.
+    
+    The device may be in D3-hot state and may crash if we try to
+    configure the speed settings by accessing the registers.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8427f1361225ca27679a6d810c04ddbc357602a7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 19 16:44:44 2008 -0700
+
+    bnx2: Update driver version to 1.7.7.
+    
+    And update module description.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 2739a8bb5b13653999827da09565b1bca5cec67d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 19 16:44:10 2008 -0700
+
+    bnx2: Cleanup error handling in bnx2_open().
+    
+    All error handling in bnx2_open() can be consolidated.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 5e9ad9e108883503fedfac3279ac101dce00bb56
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 19 16:43:17 2008 -0700
+
+    bnx2: Turn on multi rx rings.
+    
+    Enable multiple rx rings if MSI-X vectors are available.  We enable
+    up to 7 rx rings.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f0ea2e63859cf234b7017a2d7bba2a5a1db3bf25
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 19 16:41:57 2008 -0700
+
+    bnx2: Use one handler for all MSI-X vectors.
+    
+    Use the same MSI-X handler to schedule NAPI.  Change the dev_instance
+    void pointer to the bnx2_napi struct instead so we can have the proper
+    context for each MSI-X vector.
+    
+    Add a new bnx2_poll_msix() that is optimized for handling MSI-X
+    NAPI polling of rx/tx work only.  Remove the old bnx2_tx_poll() that
+    is no longer needed.  Each MSI-X vector handles 1 tx and 1 rx ring.
+    The first vector handles link events as well.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 43e80b89b65cbc62b5e0fde09b47c9fc572a8b11
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 19 16:41:08 2008 -0700
+
+    bnx2: Optimize fast-path tx and rx work.
+    
+    Add hw_tx_cons_ptr and hw_rx_cons_ptr to speed up the retreival of
+    the tx and rx consumer index, since the MSI-X and default status
+    blocks have different structures.
+    
+    Combine status_blk and status_blk_msix into a union.  We'll only use
+    one type of status block for each vector.
+    
+    Separate the code to detect more rx and tx work from the code to
+    detect link related work.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit bb4f98abf590cf9899017f14f1a54984f02a0009
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 19 16:38:19 2008 -0700
+
+    bnx2: Put rx ring variables in a separate struct.
+    
+    In preparation for multi-ring support, rx ring variables are now put
+    in a separate bnx2_rx_ring_info struct.  With MSI-X, we can support
+    multiple rx rings.
+    
+    The functions to allocate/free rx memory and to initialize rx rings
+    are now modified to handle multiple rings.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 35e9010b22503f42cbf88144ffe1feff90ea3835
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 19 16:37:42 2008 -0700
+
+    bnx2: Put tx ring variables in a separate struct.
+    
+    In preparation for multi-ring support, tx ring variables are now put
+    in a separate bnx2_tx_ring_info struct.  Multi tx ring will not be
+    enabled until it is fully supported by the stack.  Only 1 tx ring
+    will be used at the moment.
+    
+    The functions to allocate/free tx memory and to initialize tx rings
+    are now modified to handle multiple rings.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 4ae127d1b6c71f9240dd4245f240e6dd8fc98014
+Merge: 875ec43... 7775c97...
+Author: David S. Miller <davem@davemloft.net>
+Date:   Fri Jun 13 20:52:39 2008 -0700
+
+    Merge branch 'master' of master.kernel.org:/pub/scm/linux/kernel/git/davem/net-2.6
+    
+    Conflicts:
+    
+    	drivers/net/smc911x.c
+
+commit 4bb073c0e32a0862bdb5215d11af19f6c0180c98
+Author: David S. Miller <davem@davemloft.net>
+Date:   Thu Jun 12 02:22:02 2008 -0700
+
+    net: Eliminate flush_scheduled_work() calls while RTNL is held.
+    
+    If the RTNL is held when we invoke flush_scheduled_work() we could
+    deadlock.  One such case is linkwatch, it is a work struct which tries
+    to grab the RTNL semaphore.
+    
+    The most common case are net driver ->stop() methods.  The
+    simplest conversion is to instead use cancel_{delayed_}work_sync()
+    explicitly on the various work struct the driver uses.
+    
+    This is an OK transformation because these work structs are doing
+    things like resetting the chip, restarting link negotiation, and so
+    forth.  And if we're bringing down the device, we're about to turn the
+    chip off and reset it anways.  So if we cancel a pending work event,
+    that's fine here.
+    
+    Some drivers were working around this deadlock by using a msleep()
+    polling loop of some sort, and those cases are converted to instead
+    use cancel_{delayed_}work_sync() as well.
+    
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 236ae64063faf7d3398b4f9a889421b0d27a69d2
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 16 22:20:59 2008 -0700
+
+    bnx2: Update version to 1.7.6.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 10343cca2bad3f9fdad214385bed0a9aadf4ffd4
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Fri May 16 22:20:27 2008 -0700
+
+    bnx2: Pre-initialize struct cpu_reg.
+    
+    Instead of assigning values for the struct cpu_reg's at runtime,
+    we already know these values at compile time.  Therefore, we can use
+    designated initializers, to initialize these structures and not have
+    to incur this assignment cost at run-time.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 601d3d18b2c1e4c197aa3cd902fb77bd99c41f10
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Fri May 16 22:19:35 2008 -0700
+
+    bnx2: Rename RX_COPY_THRESH to BNX2_RX_COPY_THRESH.
+    
+    To make the bnx2 code more consistent, all instances of
+    RX_COPY_THRESH have been changed to BNX2_RX_COPY_THRESH.
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d89cb6af41559a601e9cfe081d34de07945b0d8b
+Author: Benjamin Li <benli@broadcom.com>
+Date:   Fri May 16 22:18:57 2008 -0700
+
+    bnx2: Remove the rx_offset field from the bnx2 structure.
+    
+    The rx_offset field is set to a constant value and initialized
+    only once.  By replacing all references to the rx_offset field,
+    we can eliminate rx_offset from the bnx2 structure.  This will
+    save 4 bytes for every bnx2 instance.
+    
+    [Added parentheses to the definition of BNX2_RX_OFFSET, as noted
+    by Ben Hutchings.]
+    
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6ff2da49c8a68320c2564006c94a492db58de5cd
+Author: Wendy Xiong <wendyx@us.ibm.com>
+Date:   Fri May 16 22:18:21 2008 -0700
+
+    bnx2: Add EEH PCI recovery.
+    
+    Add PCI recovery functions to the driver.  The initial pci state is
+    also saved so the the MSI state can be restored during PCI recovery.
+    
+    Signed-off-by: Wendy Xiong <wendyx@us.ibm.com>
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 9a120bc570627342c17befaa6af9b0a556dfda48
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 16 22:17:45 2008 -0700
+
+    bnx2: Allow phy reset to be skipped during chip reset.
+    
+    Andy Gospodarek <andy@greyhouse.net> found that netconsole would
+    panic when resetting bnx2 devices.
+    
+    >From Andy:
+    "The issue is the bnx2_set_link in bnx2_init_nic will print a link-status
+    message before we are fully initialized and ready to start polling.
+    Polling is currently disabled in this state, but since the
+    __LINK_STATE_RX_SCHED is overloaded to not only try and disable polling
+    but also to make the system aware there is something waiting to be
+    polled, we really have to fix this in drivers.
+    
+    The problematic call is the one to netif_rx_complete as it tries to
+    remove an entry from the poll_list when there isn't one."
+    
+    While this netconsole problem should be fixed separately, we really
+    should not reset the PHY when changing ring sizes, MTU, or other
+    similar settings.  The PHY reset causes several seconds of unnecessary
+    link disruptions.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Andy Gospodarek <andy@greyhouse.net>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 705d209168681b4408d10fca7257de3343be573d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 2 16:58:18 2008 -0700
+
+    bnx2: Update version to 1.7.5.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d25be1d3ecf0b1b95ae29919786372b87b2bfea6
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 2 16:57:59 2008 -0700
+
+    bnx2: Update RV2P firmware for 5709.
+    
+    The new RV2P firmware fixes 2 issues:
+    
+    1. The jumbo rx buffer page size is now configurable and set to the
+       proper PAGE_SIZE.  Before, it was assumed to be always 4K.
+    
+    2. Driver sometimes would crash when receiving jumbo packets mixed
+       with firmware management packets.  This was caused by the old
+       firmware DMA'ing to the wrong address.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 352f76879ebde543817360ce9c18c973d4300f4f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 2 16:57:26 2008 -0700
+
+    bnx2: Zero out context memory for 5709.
+    
+    We should zero out the context memory for 5709 before each reset.  When
+    we resume after suspend for example, the memory may not be zero and the
+    chip may not function correctly.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 15b169cccff1503a88f12f104e5657c65c53ade7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 2 16:57:08 2008 -0700
+
+    bnx2: Fix register test on 5709.
+    
+    The register BNX2_CTX_STATUS (0x1004) should be skipped on 5709 as it
+    contains reserved bits.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 543a827d7a5600a71855bd6afacac78536c86822
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 2 16:56:44 2008 -0700
+
+    bnx2: Fix remote PHY initial link state.
+    
+    On some remote PHY blade systems, the driver receives no initial link
+    interrupt.  As a result, the GMII/MII MAC mode does not get setup properly.
+    To fix this problem, we add an initial poll of the link state after chip
+    reset.
+    
+    With this change, the setting of the initial carrier state in the init
+    code can be eliminated.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 74ecc62d6e595ca64bbef2471787bf53b94e5d3c
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri May 2 16:56:16 2008 -0700
+
+    bnx2: Refine remote PHY locking.
+    
+    bnx2_set_remote_link() should be called under bp->phy_lock to protect
+    against concurrent polling and interrupt calls.  This change is needed
+    by the next patch which will add one initial poll of the remote PHY
+    link status.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: Benjamin Li <benli@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ab59859de1946a098b091308380179e92dc7683b
+Author: Harvey Harrison <harvey.harrison@gmail.com>
+Date:   Thu May 1 02:47:38 2008 -0700
+
+    net: fix returning void-valued expression warnings
+    
+    drivers/net/8390.c:37:2: warning: returning void-valued expression
+    drivers/net/bnx2.c:1635:3: warning: returning void-valued expression
+    drivers/net/xen-netfront.c:1806:2: warning: returning void-valued expression
+    net/ipv4/tcp_hybla.c:105:3: warning: returning void-valued expression
+    net/ipv4/tcp_vegas.c:171:3: warning: returning void-valued expression
+    net/ipv4/tcp_veno.c:123:3: warning: returning void-valued expression
+    net/sysctl_net.c:85:2: warning: returning void-valued expression
+    
+    Signed-off-by: Harvey Harrison <harvey.harrison@gmail.com>
+    Acked-by: Alan Cox <alan@redhat.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c73b1d1f26d4c9d54b49526edf9ee958ee5b80c1
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Feb 23 19:49:48 2008 -0800
+
+    [BNX2]: Update version to 1.7.4.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 38ea3686f6d1110a3787dfd7c5cf7bad1926818b
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Feb 23 19:48:57 2008 -0800
+
+    [BNX2]: Disable parallel detect on an HP blade.
+    
+    Because of some board issues, we need to disable parallel detect on
+    an HP blade.  Without this patch, the link state can become stuck
+    when it goes into parallel detect mode.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit a2724e2559a3c41ac6182da6e2446d3abf0720a5
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Feb 23 19:47:44 2008 -0800
+
+    [BNX2]: More 5706S link down workaround.
+    
+    The previous patches to workaround the 5706S on an HP blade were not
+    sufficient.  The link state still does not change properly in some
+    cases.  This patch adds polling to make it completely reliable.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit fefa864530766d8da2b8606235387c5173fb2309
+Author: Andrew Morton <akpm@linux-foundation.org>
+Date:   Sat Feb 9 23:17:15 2008 -0800
+
+    bnx2: section fix
+    
+    gcc-3.4.4 on powerpc:
+    
+    drivers/net/bnx2.c:67: error: version causes a section type conflict
+    
+    Cc: Jeff Garzik <jeff@garzik.org>
+    Cc: Sam Ravnborg <sam@ravnborg.org>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c26736ec171760a41307d775bbf05983ea45ea9e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jan 31 17:07:21 2008 -0800
+
+    [BNX2]: Fix ASYM PAUSE advertisement for remote PHY.
+    
+    We were checking for the ASYM_PAUSE bit for 1000Base-X twice instead
+    checking for both the 1000Base-X bit and the 10/100/1000Base-T bit.
+    The purpose of the logic is to tell the firmware that ASYM_PAUSE is
+    set on either the Serdes or Copper interface.
+    
+    Problem was discovered by Roel Kluin <12o3l@tiscali.nl>
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 18c0226e3c0a75b0f1d6828c118bcedf59d7ee99
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jan 29 21:38:52 2008 -0800
+
+    [BNX2]: Update version to 1.7.3.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit df7f1ed6b85b936a4dd341c48e30aa207697997c
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jan 29 21:38:06 2008 -0800
+
+    [BNX2]: Update firmware.
+    
+    Update firmware to support programmable flow control.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 83e3fc89bb2b7bb27b3a6da5a541c43ce7706f42
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jan 29 21:37:17 2008 -0800
+
+    [BNX2]: Fine-tune flow control on 5709.
+    
+    Make use of the programmable high/low water marks in 5709 for
+    802.3 flow control.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 62a8313cddbea04f2a28d1d76acf317c2a56cfae
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jan 29 21:35:40 2008 -0800
+
+    [BNX2]: Remove CTX_WR macro.
+    
+    The CTX_WR macro is unnecessary and obfuscates the code.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 2726d6e126c0c16efeba30356d4ae105f1854d1e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jan 29 21:35:05 2008 -0800
+
+    [BNX2]: Remove REG_WR_IND/REG_RD_IND macros.
+    
+    The REG_WR_IND/REG_RD_IND macros are unnecessary and obfuscate the
+    code.  Many callers to these macros read and write shared memory from
+    the bp->shmem_base, so we add 2 similar functions that automatically
+    add the shared memory base.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6f743ca052575a26439d796249d9e7740b8192d7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jan 29 21:34:08 2008 -0800
+
+    [BNX2]: Refine tx coalescing setup.
+    
+    Make the tx coalescing setup code independent of the MSIX vector.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f3014c0cb60ec15a0a2542cbfae7e8d888aa5cf8
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jan 29 21:33:03 2008 -0800
+
+    [BNX2]: Fix 5706 serdes link down bug.
+    
+    1. Correct the MII expansion serdes control register definition.
+    2. Check an additional RUDI_INVALID bit when determining 5706S link.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b491edd5817f1618f4e06d67638739591a714bdb
+Author: Al Viro <viro@ftp.linux.org.uk>
+Date:   Sat Dec 22 19:44:51 2007 +0000
+
+    bnx2 annotations
+    
+    Signed-off-by: Al Viro <viro@zeniv.linux.org.uk>
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 583c28e5645c464b57b4f5d3d53113c06bb0ac5f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 21 19:51:35 2008 -0800
+
+    [BNX2]: Fix driver phy_flags name space.
+    
+    Prefix "bp->phy_flags" names with BNX2_PHY_FLAG_* for consistency.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f86e82fb547efe05457391df069cce7ab530b181
+Author: David S. Miller <davem@davemloft.net>
+Date:   Mon Jan 21 17:15:40 2008 -0800
+
+    [BNX2]: Fix driver software flag namespace.
+    
+    Prefix "bnx2->flags" names with BNX2_* for consistency.
+    
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit feebb33183cee0fdf8e8a9c4f0da3231f0cfa2bb
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 21 17:07:29 2008 -0800
+
+    [BNX2] Update version to 1.7.2.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b2fadeae1334008c1bb4d87bc507141cb7aaf0e8
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 21 17:07:06 2008 -0800
+
+    [BNX2]: Add link-down workaround on 5706 serdes.
+    
+    In some blade systems using the 5706 serdes, the hardware sometimes
+    does not properly generate link down interrupts.  We add a workaround
+    in the driver's timer to force a link-down when some PHY registers
+    report loss of SYNC.
+    
+    The parallel detect logic is cleaned up slightly to better integrate
+    the workaround.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1097f5e92107ca3950fabf5e1d724faa80c91e7f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 21 17:06:41 2008 -0800
+
+    [BNX2]: Fix minor bug in bnx2_has_work().
+    
+    It is more correct to get the status block from the bnx2_napi struct
+    instead of the bnx2 struct.  It happens that they are the same in this
+    case because we are using the first MSIX vector.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 2dd201d7b735f252df1a915a3f2e6a71910a3d87
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 21 17:06:09 2008 -0800
+
+    [BNX2]: Disable jumbo rx paging on 5709 Ax.
+    
+    The chip has problem running in this mode and needs to be disabled.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 79ea13ce07c951bb4d95471e7300baa0f1be9e78
+Author: Al Viro <viro@zeniv.linux.org.uk>
+Date:   Thu Jan 24 02:06:46 2008 -0800
+
+    NULL noise in drivers/net
+    
+    Signed-off-by: Al Viro <viro@zeniv.linux.org.uk>
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 2ba582b782071c038b312ea330d3090a39f3c66a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Dec 21 15:04:49 2007 -0800
+
+    [BNX2]: Fix compiler warning.
+    
+    Change bnx2_init_napi() to void.
+    
+    Warning was noted by DaveM.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 66a85fbe780c1c63778f0f56921b568f66f85202
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 20:02:14 2007 -0800
+
+    [BNX2]: Update version to 1.7.1.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8147c82e94c16aca4f54e0618ac9895227929118
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 20:01:44 2007 -0800
+
+    [BNX2]: Enable new tx ring.
+    
+    Enable new tx ring and add new MSIX handler and NAPI poll function
+    for the new tx ring.  Enable MSIX when the hardware supports it.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3fa6295d85117d39292ae7fe156a750a9ed12dcf
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 20:01:19 2007 -0800
+
+    [BNX2]: Add support for a new tx ring.
+    
+    To separate TX IRQs into a different MSIX vector, we need to
+    support a new tx ring.  The original tx ring will still be used
+    when not using MSIX.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 849b0261c0132a0c658eb5a7de23438f4a64975a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 19:59:30 2007 -0800
+
+    [BNX2]: Support multiple MSIX IRQs.
+    
+    Change bnx2_napi struct into an array and add code to manage multiple
+    IRQs.  MSIX hardware structures and new registers are also added.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 24020b2831d5e1a718ce3084f8cf9d35f6eb94c4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 19:57:19 2007 -0800
+
+    [BNX2]: Move rx indexes into bnx2_napi struct.
+    
+    Rx related fields used in NAPI polling are moved from the main
+    bnx2 struct to the bnx2_napi struct.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f0395c3e8bb8c92f5a1bd6635319a6b27b6e138f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 19:56:59 2007 -0800
+
+    [BNX2]: Move tx indexes into bnx2_napi struct.
+    
+    Tx related fields used in NAPI polling are moved from the main
+    bnx2 struct to the bnx2_napi struct.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit bc68ce52acc25ab3c199c04ad24ccaca49c8d07c
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 19:56:37 2007 -0800
+
+    [BNX2]: Introduce new bnx2_napi structure.
+    
+    Introduce a bnx2_napi structure that will hold a napi_struct and
+    other fields to handle NAPI polling for the napi_struct.  Various tx
+    and rx indexes and status block pointers will be moved from the main
+    bnx2 structure to this bnx2_napi structure.
+    
+    Most NAPI path functions are modified to be passed this bnx2_napi
+    struct pointer.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7b3ba00e5614b549013978dce4189780e04df3f3
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 19:56:09 2007 -0800
+
+    [BNX2]: Restructure IRQ datastructures.
+    
+    Add a table to keep track of multiple IRQs and restructure the IRQ
+    request and free functions so that they can be easily expanded to
+    handle multiple IRQs.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit a8d05ac5cb6b6f4fb5fd341248c52a2792fbc77a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 20 19:55:39 2007 -0800
+
+    [BNX2]: Add function to fetch hardware tx index.
+    
+    This makes the code cleaner and easier to support different tx rings.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit dc2d76df54c8211df766819749beb802f69733fc
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:20:22 2007 -0800
+
+    [BNX2]: Update version to 1.6.9.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit eb5015797535422720a2258b01770ca20ae124a4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:19:57 2007 -0800
+
+    [BNX2]: Enable S/G for jumbo RX.
+    
+    If the MTU requires more than 1 page for the SKB, enable the page ring
+    and calculate the size of the page ring.  This will guarantee order-0
+    allocation regardless of the MTU size.
+    
+    Fixup loopback test packet size so that we don't deal with the pages
+    during loopback test.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c2d60259485422c436f82d52038313031db0e9d0
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:19:35 2007 -0800
+
+    [BNX2]: Add fast path code to handle RX pages.
+    
+    Add function to reuse a page in case of allocation or other errors.
+    Add code to construct the completed SKB with the additional data in
+    the pages.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d98b035a014eb6a93719a5daee83994b4dfbd91b
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:19:12 2007 -0800
+
+    [BNX2]: Add init. code to handle RX pages.
+    
+    Add new fields to keep track of the pages and the page rings.
+    Add functions to allocate and free pages.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ce8dcd8f8e771515778143ca3d503aa4804412a8
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:18:34 2007 -0800
+
+    [BNX2]: Update firmware to support S/G RX buffers.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ce4585172ba03e808364a352fe6142293f950155
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:17:43 2007 -0800
+
+    [BNX2]: Restructure RX ring init. code.
+    
+    Factor out the common functions that will be used to initialize the
+    normal RX rings and the page rings.
+    
+    Change the copybreak constant RX_COPY_THRESH to 128.  This same
+    constant will be used for the max. size of the linear SKB when pages
+    are used.  Copybreak will be turned off when pages are used.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 08bacdc7d57c4db4a57b948e3ff711483c64d7fe
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:17:01 2007 -0800
+
+    [BNX2]: Restructure RX fast path handling.
+    
+    Add a new function to handle new SKB allocation and to prepare the
+    completed SKB.  This makes it easier to add support for non-linear
+    SKB.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 736a4da6abcb164bfc2aecafd214bc009ab9dbd4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Dec 12 11:16:19 2007 -0800
+
+    [BNX2]: Add ring constants.
+    
+    Define the various ring constants to make the code cleaner.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit bbe42974215eb7a483c344fca50652b3b9dd1ae4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Dec 10 17:18:51 2007 -0800
+
+    [BNX2]: Update version to 1.6.9.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c09c262783dcac62352293912d82b794063cefc3
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Dec 10 17:18:37 2007 -0800
+
+    [BNX2]: Fix RX packet rot.
+    
+    Packets can be left in the RX ring if the NAPI budget is reached.
+    This is caused by storing the latest rx index at the beginning of
+    bnx2_rx_int().  We may not process all the work up to this index
+    if the budget is reached and so some packets in the RX ring may rot
+    when we later check for more work using this stored rx index.
+    
+    The fix is to not store this latest hw index and only store the
+    processed rx index.  We use a new function bnx2_get_hw_rx_cons()
+    to fetch the latest hw rx index.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit fb0c18bd1f61086fcfac90017b59891a356cc288
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Dec 10 17:18:23 2007 -0800
+
+    [BNX2]: Add PHY_DIS_EARLY_DAC workaround.
+    
+    5709 Ax and Bx chips all need this workaround.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1977f032722c27ee3730284582fd3991ad9ac81b
+Author: Jiri Slaby <jirislaby@gmail.com>
+Date:   Thu Oct 18 23:40:25 2007 -0700
+
+    remove asm/bitops.h includes
+    
+    remove asm/bitops.h includes
+    
+    including asm/bitops directly may cause compile errors. don't include it
+    and include linux/bitops instead. next patch will deny including asm header
+    directly.
+    
+    Cc: Adrian Bunk <bunk@kernel.org>
+    Signed-off-by: Jiri Slaby <jirislaby@gmail.com>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+commit 898eb71cb17644964c5895fb190e79e3d0c49679
+Author: Joe Perches <joe@perches.com>
+Date:   Thu Oct 18 03:06:30 2007 -0700
+
+    Add missing newlines to some uses of dev_<level> messages
+    
+    Found these while looking at printk uses.
+    
+    Add missing newlines to dev_<level> uses
+    Add missing KERN_<level> prefixes to multiline dev_<level>s
+    Fixed a wierd->weird spelling typo
+    Added a newline to a printk
+    
+    Signed-off-by: Joe Perches <joe@perches.com>
+    Cc: "Luck, Tony" <tony.luck@intel.com>
+    Cc: Jens Axboe <jens.axboe@oracle.com>
+    Cc: Mark M. Hoffman <mhoffman@lightlink.com>
+    Cc: Roland Dreier <rolandd@cisco.com>
+    Cc: Tilman Schmidt <tilman@imap.cc>
+    Cc: David Woodhouse <dwmw2@infradead.org>
+    Cc: Jeff Garzik <jeff@garzik.org>
+    Cc: Stephen Hemminger <shemminger@linux-foundation.org>
+    Cc: Greg KH <greg@kroah.com>
+    Cc: Jeremy Fitzhardinge <jeremy@goop.org>
+    Cc: Geert Uytterhoeven <geert@linux-m68k.org>
+    Cc: Alessandro Zummo <a.zummo@towertech.it>
+    Cc: David Brownell <david-b@pacbell.net>
+    Cc: James Smart <James.Smart@Emulex.Com>
+    Cc: Andrew Vasquez <andrew.vasquez@qlogic.com>
+    Cc: "Antonino A. Daplas" <adaplas@pol.net>
+    Cc: Evgeniy Polyakov <johnpol@2ka.mipt.ru>
+    Cc: Russell King <rmk@arm.linux.org.uk>
+    Cc: Jaroslav Kysela <perex@suse.cz>
+    Cc: Takashi Iwai <tiwai@suse.de>
+    Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+commit 0c2bef49764d0a5a404ae0bd65217f7dadbd1821
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Oct 17 19:26:28 2007 -0700
+
+    [BNX2]: Update version to 1.6.8.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 239cd34327d12e84f5528caa7b11c9e651372c39
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Oct 17 19:26:15 2007 -0700
+
+    [BNX2]: Fix Serdes WoL bug.
+    
+    The bug is in the code in bnx2_set_power_state() that assumes copper
+    devices when setting up WoL.  This is no longer true after adding WoL
+    support for Serdes devices.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8499fb594ad34ccde38058d7c3ae8093058b346a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Oct 17 19:25:27 2007 -0700
+
+    [BNX2]: Update 5709 firmware to 3.7.1.
+    
+    This firmware update fixes a problem running with IPMI management
+    firmware.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6dee6421581d3484e9a01d403dbf158161942db6
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Oct 12 01:40:38 2007 -0700
+
+    [BNX2]: Refine napi poll loop.
+    
+    Need to read and store sblk->status_idx before checking for more work.
+    The status idx is later written back to the hardware when enabling
+    interrupts to acknowledge how much work has been processed.  If the
+    order is reversed, we can end up acknowledging work we haven't
+    processed.
+    
+    When completing bnx2_poll(), we should always break out of the while
+    loop and return work_done instead of returning 0.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6f535763165331bb91277d7519b507fed22034e5
+Author: David S. Miller <davem@sunset.davemloft.net>
+Date:   Thu Oct 11 18:08:29 2007 -0700
+
+    [NET]: Fix NAPI completion handling in some drivers.
+    
+    In order for the list handling in net_rx_action() to be
+    correct, drivers must follow certain rules as stated by
+    this comment in net_rx_action():
+    
+    		/* Drivers must not modify the NAPI state if they
+    		 * consume the entire weight.  In such cases this code
+    		 * still "owns" the NAPI instance and therefore can
+    		 * move the instance around on the list at-will.
+    		 */
+    
+    A few drivers do not do this because they mix the budget checks
+    with reading hardware state, resulting in crashes like the one
+    reported by takano@axe-inc.co.jp.
+    
+    BNX2 and TG3 are taken care of here, SKY2 fix is from Stephen
+    Hemminger.
+    
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 32d1316b91424423d7b44944f18cdaca268f3db2
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Oct 10 16:17:11 2007 -0700
+
+    [BNX2]: Update version to 1.6.7.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 846f5c622fe033520c775cc2c40c06f3e2adea85
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Oct 10 16:16:51 2007 -0700
+
+    [BNX2]: Fix default WoL setting.
+    
+    Change the default WoL setting to match the NVRAM's setting.  It
+    always defaulted to WoL disabled before and caused a lot of confusion
+    for users.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 489310a440e606512b1fd79d8562d1da6b715448
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Oct 10 16:16:31 2007 -0700
+
+    [BNX2]: Fix remote PHY media detection problems.
+    
+    The remote PHY media type and link status can change between
+    ->probe() and ->open().  For correct operation, we need to get the
+    new status again during ->open().
+    
+    The ethtool link test and loopback test are also fixed to work with
+    remote PHY.  PHY loopback is simply skipped when remote PHY is
+    present.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f74347d7ac0aa175b2bbd85eb58a13fbe80a3785
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Oct 2 16:28:09 2007 -0700
+
+    [BNX2]: Update version to 1.6.6.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ea1f8d5c3a593a791463c2efc07e5dfebd056500
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Oct 2 16:27:35 2007 -0700
+
+    [BNX2]: Optimize firmware loading.
+    
+    This is a follow up to the patches from Denys Vlasenkos
+    <vda.linux@googlemail.com> to further optimize firmware loading.
+    
+    1. In bnx2_init_cpus(), we allocate memory for decompression once
+    and use it repeatedly instead of doing this for every firmware image.
+    
+    2. We eliminate the BSS and SBSS firmware sections in bnx2_fw*.h since
+    these are always zeros.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8336793baf962163c9fab5a3f39614295fdbab27
+Author: Denys Vlasenko <vda.linux@googlemail.com>
+Date:   Sun Sep 30 17:56:49 2007 -0700
+
+    [ZLIB]: Move bnx2 driver gzip unpacker into zlib.
+    
+    Signed-off-by: Denys Vlasenko <vda.linux@googlemail.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b3448b0bde5f1a858397fe791f76632e978a1dc8
+Author: Denys Vlasenko <vda.linux@googlemail.com>
+Date:   Sun Sep 30 17:55:51 2007 -0700
+
+    [BNX2]: factor out gzip unpacker
+    
+    This patch modifies gzip unpacking code in bnx2 driver so that
+    it does not depend on bnx2 internals. I will move this code
+    out of the driver and into zlib in follow-on patch.
+    
+    It can be useful in other drivers which need to store firmwares
+    or any other relatively big binary blobs - fonts, cursor bitmaps,
+    whatever.
+    
+    Patch is run tested by Michael Chan (driver author).
+    
+    Signed-off-by: Denys Vlasenko <vda.linux@googlemail.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b9f2c0440d806e01968c3ed4def930a43be248ad
+Author: Jeff Garzik <jeff@garzik.org>
+Date:   Wed Oct 3 18:07:32 2007 -0700
+
+    [netdrvr] Stop using legacy hooks ->self_test_count, ->get_stats_count
+    
+    These have been superceded by the new ->get_sset_count() hook.
+    
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0795af5729b18218767fab27c44b1384f72dc9ad
+Author: Joe Perches <joe@perches.com>
+Date:   Wed Oct 3 17:59:30 2007 -0700
+
+    [NET]: Introduce and use print_mac() and DECLARE_MAC_BUF()
+    
+    This is nicer than the MAC_FMT stuff.
+    
+    Signed-off-by: Joe Perches <joe@perches.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 88d3aafdae5c5e1d2dd9489a5c8a24e29d335f2e
+Author: Jeff Garzik <jeff@garzik.org>
+Date:   Sat Sep 15 14:41:06 2007 -0700
+
+    [ETHTOOL] Provide default behaviors for a few ethtool sub-ioctls
+    
+    For the operations
+    	get-tx-csum
+    	get-sg
+    	get-tso
+    	get-ufo
+    the default ethtool_op_xxx behavior is fine for all drivers, so we
+    permit op==NULL to imply the default behavior.
+    
+    This provides a more uniform behavior across all drivers, eliminating
+    ethtool(8) "ioctl not supported" errors on older drivers that had
+    not been updated for the latest sub-ioctls.
+    
+    The ethtool_op_xxx() functions are left exported, in case anyone
+    wishes to call them directly from a driver-private implementation --
+    a not-uncommon case.  Should an ethtool_op_xxx() helper remain unused
+    for a while, except by net/core/ethtool.c, we can un-export it at a
+    later date.
+    
+    [ Resolved conflicts with set/get value ethtool patch... -DaveM ]
+    
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ff8ac60948ba819b89e9c87083e8050fc2f89999
+Author: Denis Cheng <crquan@gmail.com>
+Date:   Sun Sep 2 18:30:18 2007 +0800
+
+    drivers/net/: all drivers/net/ cleanup with ARRAY_SIZE
+    
+    Signed-off-by: Denis Cheng <crquan@gmail.com>
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 10d024c1b2fd58af8362670d7d6e5ae52fc33353
+Author: Ralf Baechle <ralf@linux-mips.org>
+Date:   Mon Sep 17 13:11:17 2007 -0700
+
+    [NET]: Nuke SET_MODULE_OWNER macro.
+    
+    It's been a useless no-op for long enough in 2.6 so I figured it's time to
+    remove it.  The number of people that could object because they're
+    maintaining unified 2.4 and 2.6 drivers is probably rather small.
+    
+    [ Handled drivers added by netdev tree and some missed IRDA cases... -DaveM ]
+    
+    Signed-off-by: Ralf Baechle <ralf@linux-mips.org>
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit bea3348eef27e6044b6161fd04c3152215f96411
+Author: Stephen Hemminger <shemminger@linux-foundation.org>
+Date:   Wed Oct 3 16:41:36 2007 -0700
+
+    [NET]: Make NAPI polling independent of struct net_device objects.
+    
+    Several devices have multiple independant RX queues per net
+    device, and some have a single interrupt doorbell for several
+    queues.
+    
+    In either case, it's easier to support layouts like that if the
+    structure representing the poll is independant from the net
+    device itself.
+    
+    The signature of the ->poll() call back goes from:
+    
+    	int foo_poll(struct net_device *dev, int *budget)
+    
+    to
+    
+    	int foo_poll(struct napi_struct *napi, int budget)
+    
+    The caller is returned the number of RX packets processed (or
+    the number of "NAPI credits" consumed if you want to get
+    abstract).  The callee no longer messes around bumping
+    dev->quota, *budget, etc. because that is all handled in the
+    caller upon return.
+    
+    The napi_struct is to be embedded in the device driver private data
+    structures.
+    
+    Furthermore, it is the driver's responsibility to disable all NAPI
+    instances in it's ->stop() device close handler.  Since the
+    napi_struct is privatized into the driver's private data structures,
+    only the driver knows how to get at all of the napi_struct instances
+    it may have per-device.
+    
+    With lots of help and suggestions from Rusty Russell, Roland Dreier,
+    Michael Chan, Jeff Garzik, and Jamal Hadi Salim.
+    
+    Bug fixes from Thomas Graf, Roland Dreier, Peter Zijlstra,
+    Joseph Fannin, Scott Wood, Hans J. Koch, and Michael Chan.
+    
+    [ Ported to current tree and all drivers converted.  Integrated
+      Stephen's follow-on kerneldoc additions, and restored poll_list
+      handling to the old style to fix mutual exclusion issues.  -DaveM ]
+    
+    Signed-off-by: Stephen Hemminger <shemminger@linux-foundation.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit cd46171c7297739dc7e46d885862e98023eab9c7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Sep 20 11:04:58 2007 -0700
+
+    [BNX2]: Add PHY workaround for 5709 A1.
+    
+    Add the DIS_EARLY_DAC PHY workaround for 5709 A1.  Without it, link
+    sometimes does not come up.
+    
+    Update version to 1.6.5.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 594a9dfae7113d9601b2c353754c40d0b7e00a03
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Aug 28 15:39:42 2007 -0700
+
+    [BNX2]: Add write posting comment.
+    
+    Add comment to explain why we cannot read back after chip reset
+    before delaying.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8e54588161577435d64dfb5cfdf40a73a5705ea0
+Author: Arjan van de Ven <arjan@linux.intel.com>
+Date:   Tue Aug 28 14:34:43 2007 -0700
+
+    [BNX2]: Use msleep().
+    
+    bnx2.c (incorrectly) sets current->state directly to
+    TASK_UNINTERRUPTIBLE, without going through set_task_state(). However
+    all the code wants to do is an msleep so just make it do that instead...
+    
+    Signed-off-by: Arjan van de Ven <arjan@linux.intel.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6caebb02294b503c5eced4a3f90e6166548ce879
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Aug 3 20:57:25 2007 -0700
+
+    [BNX2]: Fix suspend/resume problem.
+    
+    The device would not resume properly if it was shutdown before the system
+    was suspended.  In such scenario where the netif_running state is 0,
+    bnx2_suspend() would not save the PCI state and so the memory enable bit
+    and bus master enable bit would be lost.
+    
+    We fix this by always saving and restoring the PCI state in
+    bnx2_suspend() and bnx2_resume() regardless of netif_running() state.
+    
+    Update version to 1.6.4.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 313674afa8fdced2fe79f50f38e1c387b63d8790
+Author: Matthew Wilcox <matthew@wil.cx>
+Date:   Tue Jul 31 14:00:29 2007 -0700
+
+    [NET]: ethtool_perm_addr only has one implementation
+    
+    All drivers implement ethtool get_perm_addr the same way -- by calling
+    the generic function.  So we can inline the generic function into the
+    caller and avoid going through the drivers.
+    
+    Signed-off-by: Matthew Wilcox <matthew@wil.cx>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit dd121c4bbf60336773485e91b5cfc57596b45151
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 16 18:27:32 2007 -0700
+
+    [BNX2]: Update version to 1.6.3.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7ea6920ee9480118e2bd2d712d667820703f55cd
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 16 18:27:10 2007 -0700
+
+    [BNX2]: Use constants for stats ticks.
+    
+    Change all stats related magic numbers to constants.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c2d3db8c7cbb94e77461627085b85d74dc64d716
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 16 18:26:43 2007 -0700
+
+    [BNX2]: Add delay before reading firmware version.
+    
+    The management firmware may still be loading during bnx2_init_one()
+    because of the D3hot -> D0 transition and the firmware version may
+    not be available without waiting a bit.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit e30372c91273bb5777597362c74e63f96d9cd434
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jul 16 18:26:23 2007 -0700
+
+    [BNX2]: Support NVRAM on 5709.
+    
+    The NVRAM interface is slightly modified on the 5709.  To properly
+    support it, we need to change the buffered flag in the flash data
+    structure into multiple flags to indicate buffered operation, address
+    translation, and the use of write enable (WREN).  The 5709 flash
+    only requires the buffered operation bit to be set.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6460d948f3ebf7d5040328a60a0ab7221f69945b
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 14 19:07:52 2007 -0700
+
+    [NET]: Add ethtool support for NETIF_F_IPV6_CSUM devices.
+    
+    Add ethtool utility function to set or clear IPV6_CSUM feature flag.
+    Modify tg3.c and bnx2.c to use this function when doing ethtool -K
+    to change tx checksum.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit de081fa517fed81b0369f2e90ca87c30182879c8
+Author: Linus Torvalds <torvalds@woody.linux-foundation.org>
+Date:   Thu Jul 12 16:40:08 2007 -0700
+
+    Revert "[BNX2]: Seems to not need net/tcp.h"
+    
+    This reverts commit 963bd949b12158d9b5380b718b31c4b33372ed73.  The
+    driver _does_ need the networking header files;
+    
+    	  CC [M]  drivers/net/bnx2.o
+    	drivers/net/bnx2.c: In function 'bnx2_start_xmit':
+    	drivers/net/bnx2.c:5177: warning: implicit declaration of function 'tcp_optlen'
+    	drivers/net/bnx2.c:5181: error: invalid application of 'sizeof' to incomplete type 'struct ipv6hdr'
+    	drivers/net/bnx2.c:5202: error: invalid application of 'sizeof' to incomplete type 'struct tcphdr'
+    	drivers/net/bnx2.c:5207: warning: implicit declaration of function 'tcp_hdr'
+    	drivers/net/bnx2.c:5207: error: invalid type argument of '->'
+    	make[2]: *** [drivers/net/bnx2.o] Error 1
+    	make[1]: *** [drivers/net] Error 2
+    	make: *** [drivers] Error 2
+    
+    Cc: Ilpo Jävinen <ilpo.jarvinen@helsinki.fi>
+    Cc: David Miller <davem@davemloft.net>
+    Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+
+commit 963bd949b12158d9b5380b718b31c4b33372ed73
+Author: Ilpo Järvinen <ilpo.jarvinen@helsinki.fi>
+Date:   Sat Jul 7 22:54:56 2007 -0700
+
+    [BNX2]: Seems to not need net/tcp.h
+    
+    Got bored to always recompile it for no reason.
+    
+    Signed-off-by: Ilpo Järvinen <ilpo.jarvinen@helsinki.fi>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3a334b34b62d94be0275e5c76fa153cf7fd42770
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:52:37 2007 -0700
+
+    [BNX2]: Update version to 1.6.2.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 58fc2ea4057511f84deaa182b1a3612327ecbf2d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:52:02 2007 -0700
+
+    [BNX2]: Print management firmware version.
+    
+    Add management firmware version for ethtool -i.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit df149d70e1f34ec4995c8a703dbde38071ff4a05
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:51:36 2007 -0700
+
+    [BNX2]: Enhance the heartbeat.
+    
+    In addition to the periodic heartbeat, we're adding a heartbeat
+    request interrupt when the heartbeat is late.  This is needed during
+    netpoll where the timer is not available.  -rt kernels will also
+    benefit since the timer is not as accurate.
+    
+    [ We discussed this patch last time and we decided that the -rt
+      kernel problem alone did not justify this patch.  I think the
+      netpoll problem makes this patch necessary. ]
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b8a7ce7bedb2134acb731e08e588ad92087a40ff
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:51:03 2007 -0700
+
+    [BNX2]: Reduce spurious INTA interrupts.
+    
+    Spurious interrupts are often encountered especially on systems
+    using the 8259 PIC mode.  This is because the I/O write to deassert
+    the interrupt is posted and won't get to the chip immediately.  As
+    a result, the IRQ may remain asserted after the IRQ handler exits,
+    causing spurious interrupts.
+    
+    Add read back to flush the I/O write to deassert the IRQ immediately.
+    We also store the last_status_idx immediately in the IRQ handler to
+    help detect whether the interrupt is ours or not when the IRQ is
+    entered again before ->poll gets called.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 9b1084b8f99a6b5e97c0c9bc1b4455db4fa51a07
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:50:37 2007 -0700
+
+    [BNX2]: Modify link up message.
+    
+    Modify the link up dmesg to report remote copper or Serdes link.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7b6b83474cb9bdd07dadfb7497a29c3005ad9d1d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:50:15 2007 -0700
+
+    [BNX2]: Add ethtool support for remote PHY.
+    
+    Modify the driver's ethtool_ops->get_settings and set_settings
+    functions to support remote PHY.  Users control the remote copper
+    PHY settings by specifying link settings for the tp (twisted pair)
+    port.
+    
+    The nway_reset function is also modified to support remote PHY.
+    mii-tool operations are not supported on remote PHY and we will
+    return -EOPNOTSUPP.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0d8a6571051d23c214d7a316976138a6fd8bda1c
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:49:43 2007 -0700
+
+    [BNX2]: Add support for remote PHY.
+    
+    In blade servers, the Serdes PHY in 5708S can control the remote
+    copper PHY through autonegotiation on the backplane.  This patch adds
+    the logic to interface with the firmware to control the remote PHY
+    autonegotiation and to handle remote PHY link events.
+    
+    When remote PHY is present, the 5708S Serdes device practically
+    becomes a copper device with full control over the 1000Base-T
+    link settings.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit deaf391b4cc9d9f8e2b2793ebd56da776b54197a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sat Jul 7 22:48:00 2007 -0700
+
+    [BNX2]: Add bnx2_set_default_link().
+    
+    Put existing code to setup the default link settings in this new
+    function.  This makes it easier to support the remote PHY feature in
+    the next few patches.
+    
+    Also change ETHTOOL_ALL_FIBRE_SPEED to include 2500Mbps if supported.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d212f87b068c9d72065ef579d85b5ee6b8b59381
+Author: Stephen Hemminger <shemminger@linux-foundation.org>
+Date:   Wed Jun 27 00:47:37 2007 -0700
+
+    [NET]: IPV6 checksum offloading in network devices
+    
+    The existing model for checksum offload does not correctly handle
+    devices that can offload IPV4 and IPV6 only. The NETIF_F_HW_CSUM flag
+    implies device can do any arbitrary protocol.
+    
+    This patch:
+     * adds NETIF_F_IPV6_CSUM for those devices
+     * fixes bnx2 and tg3 devices that need it
+     * add NETIF_F_IPV6_CSUM to ipv6 output (incl GSO)
+     * fixes assumptions about NETIF_F_ALL_CSUM in nat
+     * adjusts bridge union of checksumming computation
+    
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 5befdf807a6574a53e1b8c3af543ad6b4ed74c40
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 4 21:24:42 2007 -0700
+
+    [BNX2]: Update version and reldate.
+    
+    Update to version 1.5.11.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c3e9c5db307359cf98885f12f566ef87679f4e4f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 4 21:24:07 2007 -0700
+
+    [BNX2]: Fix occasional counter corruption on 5708.
+    
+    The statistics block DMA on 5708 can be messed up occasionally on the
+    average of about once per hour.  If the user is reading the counters
+    within one second after the corruption, the counters will be all
+    messed up.  One second later, the counters will be ok again until the
+    next corruption occurs.
+    
+    The workaround is to disable the periodic statistics DMA.  Instead,
+    we manually trigger the DMA once a second in bnx2_timer().  This
+    manual trigger of the DMA avoids the problem.
+    
+    As a consequence, we can only allow 0 or 1 second settings for
+    ethtool -C statistics block.
+    
+    Thanks to Jean-Daniel Pauget <jd@disjunkt.com> and
+    CaT <cat@zip.com.au> for reporting this rare problem.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 80e945a500f68558d8236a107d4ee03b4a1eca88
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 4 21:23:06 2007 -0700
+
+    [BNX2]: Enable DMA on 5709.
+    
+    Add missing code to enable DMA on 5709 A1.  The bit is a no-op on A0
+    and therefore can be set on all 5709 chips.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f0e8602f418a597d73865af2854b90cd24c90d6f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 4 21:22:24 2007 -0700
+
+    [BNX2]: Add missing wait in bnx2_init_5709_context().
+    
+    For correctness, we need to wait for the MEM_INIT bit to be cleared
+    in the BNX2_CTX_COMMAND register before proceeding.
+    
+    [Added return -EBUSY when the MEM_INIT bit doesn't clear, suggested
+    by Jeff Garzik.]
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 19322456884bffde9703f0fec8df3581d41fc244
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 4 21:17:10 2007 -0700
+
+    [BNX2]: Fix netdev watchdog on 5708.
+    
+    There's a bug in the driver that only initializes half of the context
+    memory on the 5708.  Surprisingly, this works most of the time except
+    for some occasional netdev watchdogs when sending a lot of 64-byte
+    packets.  The fix is to add the missing code to initialize the 2nd
+    halves of all context memory.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 25805dcf9d83098cf5492117ad2669cd14cc9b24
+Author: Stephen Hemminger <shemminger@linux-foundation.org>
+Date:   Fri Jun 1 09:44:01 2007 -0700
+
+    network drivers: eliminate unneeded kill_vid code
+    
+    Many drivers had code that did kill_vid, but they weren't doing vlan
+    filtering. With new API the stub is unneeded unless device sets
+    NETIF_F_HW_VLAN_FILTER.
+    
+    Bad habit: I couldn't resist fixing a couple of nearby style things
+    in acenic, and forcedeth.
+    
+    Signed-off-by: Stephen Hemminger <shemminger@linux-foundation.org>
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit fde82055c1d0e64ff660d83c705db0e1abc9d12e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 17:23:35 2007 -0700
+
+    [BNX2]: Fix TSO problem with small MSS.
+    
+    Remove the check for skb->len greater than MTU when doing TSO.  When
+    the destination has a smaller MSS than the source, a TSO packet may
+    be smaller than the MTU at the source and we still need to process it
+    as a TSO packet.
+    
+    Thanks to Brian Ristuccia <bristuccia@starentnetworks.com> for
+    reporting the problem.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 72fbaeb623971c321112de7fe3fa4e24e12ca59e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:25:32 2007 -0700
+
+    [BNX2]: Update version and reldate.
+    
+    Update version to 1.5.10.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 883e51511815930154c64a2645f4df112aa066fb
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:25:11 2007 -0700
+
+    [BNX2]: Print bus information for PCIE devices.
+    
+    Fix the code to print PCI or PCIE bus information for all devices.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 8e6a72c435bf8bdd738ad08a746d697abedacfc0
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:24:48 2007 -0700
+
+    [BNX2]: Add 1-shot MSI handler for 5709.
+    
+    The 5709 supports the one-shot MSI handler similar to some of the tg3
+    chips.  In this mode, the MSI disables itself automatically until it
+    is re-enabled at the end of NAPI poll.
+    
+    Put the request_irq/free_irq logic in common procedures.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit da3e4fbed21a5d7edab10ffb77a8c04a725f9eff
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:24:23 2007 -0700
+
+    [BNX2]: Restructure PHY event handling.
+    
+    Restructure by adding bnx2_phy_event_is_set() to make code cleaner
+    and easier to understand.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1b8227c48e164655f02aa0eff55862af2d05da51
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:24:05 2007 -0700
+
+    [BNX2]: Add indirect spinlock.
+    
+    The indirect register access method will be used by more than one
+    caller in BH context (NAPI poll and timer), so a spinlock is required.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 27a005b883984ef3a3cf24e7ddd78eb78902f494
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:23:41 2007 -0700
+
+    [BNX2]: Add support for 5709 Serdes.
+    
+    Add PCI ID and code to support the 5709 Serdes PHY.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 605a9e20aaea23f31a5403e969bd4ab4d0405dab
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:23:13 2007 -0700
+
+    [BNX2]: Re-structure the 2.5G Serdes code.
+    
+    Add some common procedures to handle enabling and disabling 2.5G.
+    Add some missing code to resolve flow control.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ca58c3af99b15f729e56dffe9b74b8b2ce157e8d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:22:52 2007 -0700
+
+    [BNX2]: Put MII register offsets in the bnx2 struct.
+    
+    The 5709 Serdes device uses non-standard MII register offsets.  This
+    re-structuring will make it easier to support 5709 Serdes.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 4666f87a82cf74b63737a7f55a8b3b057a7b83df
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:22:28 2007 -0700
+
+    [BNX2]: Add ipv6 TSO and checksum for 5709.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 874bb672fdd939aec37ad3a06b50be4ff8b4feac
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:21:48 2007 -0700
+
+    [BNX2]: Update 5709 firmware.
+    
+    Add ipv6 TSO support in firmware.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 41ccf61cf09c9a042415c04ccf0dc3c198623a9a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:21:13 2007 -0700
+
+    [BNX2]: Update 5708 firmware.
+    
+    This fixes the problem of not counting all dropped multicast packets.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 30c517b29130ddede977300235afcda1c256530b
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:20:40 2007 -0700
+
+    [BNX2]: Save PCI state during suspend.
+    
+    This is needed to save the MSI state which will be lost during
+    suspend.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1b2f922f6869eb13dadfe1ba3f8337bd42e50a2e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:20:19 2007 -0700
+
+    [BNX2]: Fix race conditions when calling register_netdev().
+    
+    Hot-plug scripts can call bnx2_open() as soon as register_netdev() is
+    called in bnx2_init_one().  We need to call pci_set_drvdata() and
+    setup everything before calling register_netdev(). netif_carrier_off()
+    also needs to be moved to bnx2_open() to avoid race conditions with
+    the irq.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 40453c839fdbf86738256cae1c9c1ebe55645d4a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:19:18 2007 -0700
+
+    [BNX2]: Add 40-bit DMA workaround for 5708.
+    
+    The internal PCIE-to-PCIX bridge of the 5708 has the same 40-bit DMA
+    limitation as some of the tg3 chips.  Set dma_mask and persistent DMA
+    mask to 40-bit to workaround.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 5bae30c96a3bd09563e484b4ac7211b4b4664679
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:18:46 2007 -0700
+
+    [BNX2]: Fix register and memory test on 5709.
+    
+    Tweak registers and memory test range for 5709.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit dad3e452dacd3c6c637e2f7c6469556cc8ffcd94
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 3 13:18:03 2007 -0700
+
+    [BNX2]: Block MII access when ifdown.
+    
+    The device may be in D3hot state and should not allow MII register
+    access.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit aa8223c7bb0b05183e1737881ed21827aa5b9e73
+Author: Arnaldo Carvalho de Melo <acme@redhat.com>
+Date:   Tue Apr 10 21:04:22 2007 -0700
+
+    [SK_BUFF]: Introduce tcp_hdr(), remove skb->h.th
+    
+    Signed-off-by: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ab6a5bb6b28a970104a34f0f6959b73cf61bdc72
+Author: Arnaldo Carvalho de Melo <acme@redhat.com>
+Date:   Sun Mar 18 17:43:48 2007 -0700
+
+    [TCP]: Introduce tcp_hdrlen() and tcp_optlen()
+    
+    The ip_hdrlen() buddy, created to reduce the number of skb->h.th-> uses and to
+    avoid the longer, open coded equivalent.
+    
+    Ditched a no-op in bnx2 in the process.
+    
+    I wonder if we should have a BUG_ON(skb->h.th->doff < 5) in tcp_optlen()...
+    
+    Signed-off-by: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit eddc9ec53be2ecdbf4efe0efd4a83052594f0ac0
+Author: Arnaldo Carvalho de Melo <acme@redhat.com>
+Date:   Fri Apr 20 22:47:35 2007 -0700
+
+    [SK_BUFF]: Introduce ip_hdr(), remove skb->nh.iph
+    
+    Signed-off-by: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c9bdd4b5257406b0608385d19c40b5511decf4f6
+Author: Arnaldo Carvalho de Melo <acme@redhat.com>
+Date:   Mon Mar 12 20:09:15 2007 -0300
+
+    [IP]: Introduce ip_hdrlen()
+    
+    For the common sequence "skb->nh.iph->ihl * 4", removing a good number of open
+    coded skb->nh.iph uses, now to go after the rest...
+    
+    Just out of curiosity, here are the idioms found to get the same result:
+    
+    skb->nh.iph->ihl << 2
+    skb->nh.iph->ihl<<2
+    skb->nh.iph->ihl * 4
+    skb->nh.iph->ihl*4
+    (skb->nh.iph)->ihl * sizeof(u32)
+    
+    Signed-off-by: Arnaldo Carvalho de Melo <acme@redhat.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 68c9f75a0539db583db074059d54deb607d1a475
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Apr 24 15:35:53 2007 -0700
+
+    [BNX2]: Fix occasional NETDEV WATCHDOG on 5709.
+    
+    Tweak a register setting to prevent the tx mailbox from halting.
+    
+    Update version to 1.5.8.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c873879c4db31bab414655e191cf56019b48c751
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Mar 30 14:53:06 2007 -0700
+
+    [BNX2]: Fix nvram write logic.
+    
+    The nvram dword alignment logic was broken when writing less than 4
+    bytes on a non-aligned offset.  It was missing logic to round the
+    length to 4 bytes.
+    
+    The page erase code is also moved so that it is only called when
+    using non-buffered flash for better code clarity.
+    
+    Update version to 1.5.7.
+    
+    Based on initial patch from Tony Cureington <tony.cureington@hp.com>.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit db8b22550d4b83f0910d27a34d05aa16f7f7159f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Wed Mar 28 14:17:36 2007 -0700
+
+    [BNX2]: Fix link interrupt problem.
+    
+    bnx2_has_work()'s logic is flawed and can cause the driver to miss
+    a link event.  The fix is to compare the status block's attn_bits
+    and attn_bits_ack to determine if there is a link event.
+    
+    Update version to 1.5.6.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 5c15bdec5c38f4ccf73ef2585fc80a6164de9554
+Author: Dan Aloni <da-x@monatomic.org>
+Date:   Fri Mar 2 20:44:51 2007 -0800
+
+    [VLAN]: Avoid a 4-order allocation.
+    
+    This patch splits the vlan_group struct into a multi-allocated struct. On
+    x86_64, the size of the original struct is a little more than 32KB, causing
+    a 4-order allocation, which is prune to problems caused by buddy-system
+    external fragmentation conditions.
+    
+    I couldn't just use vmalloc() because vfree() cannot be called in the
+    softirq context of the RCU callback.
+    
+    Signed-off-by: Dan Aloni <da-x@monatomic.org>
+    Acked-by: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 78149df6d565c36675463352d0bfe0000b02b7a7
+Merge: c96e2c9... 14719f3...
+Author: Linus Torvalds <torvalds@woody.linux-foundation.org>
+Date:   Wed Feb 7 19:23:44 2007 -0800
+
+    Merge master.kernel.org:/pub/scm/linux/kernel/git/gregkh/pci-2.6
+    
+    * master.kernel.org:/pub/scm/linux/kernel/git/gregkh/pci-2.6: (41 commits)
+      Revert "PCI: remove duplicate device id from ata_piix"
+      msi: Make MSI useable more architectures
+      msi: Kill the msi_desc array.
+      msi: Remove attach_msi_entry.
+      msi: Fix msi_remove_pci_irq_vectors.
+      msi: Remove msi_lock.
+      msi: Kill msi_lookup_irq
+      MSI: Combine pci_(save|restore)_msi/msix_state
+      MSI: Remove pci_scan_msi_device()
+      MSI: Replace pci_msi_quirk with calls to pci_no_msi()
+      PCI: remove duplicate device id from ipr
+      PCI: remove duplicate device id from ata_piix
+      PCI: power management: remove noise on non-manageable hw
+      PCI: cleanup MSI code
+      PCI: make isa_bridge Alpha-only
+      PCI: remove quirk_sis_96x_compatible()
+      PCI: Speed up the Intel SMBus unhiding quirk
+      PCI Quirk: 1k I/O space IOBL_ADR fix on P64H2
+      shpchp: delete trailing whitespace
+      shpchp: remove DBG_XXX_ROUTINE
+      ...
+
+commit 88187dfa4d8bb565df762f272511d2c91e427e0d
+Author: Michael Ellerman <michael@ellerman.id.au>
+Date:   Thu Jan 25 19:34:07 2007 +1100
+
+    MSI: Replace pci_msi_quirk with calls to pci_no_msi()
+    
+    I don't see any reason why we need pci_msi_quirk, quirk code can just
+    call pci_no_msi() instead.
+    
+    Remove the check of pci_msi_quirk in msi_init(). This is safe as all
+    calls to msi_init() are protected by calls to pci_msi_supported(),
+    which checks pci_msi_enable, which is disabled by pci_no_msi().
+    
+    The pci_disable_msi routines didn't check pci_msi_quirk, only
+    pci_msi_enable, but as far as I can see that was a bug not a feature.
+    
+    Signed-off-by: Michael Ellerman <michael@ellerman.id.au>
+    Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+
+commit b659f44e4e144bae02c5beaba78a37db60783ba2
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Feb 2 00:46:35 2007 -0800
+
+    [BNX2]: PHY workaround for 5709 A0.
+    
+    5709 A0 copper devices will not link up with some link partners
+    without this workaround.
+    
+    Update driver to 1.5.5.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 24cb230b587cf3aad8794b150682d8d8303a2120
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jan 25 15:49:56 2007 -0800
+
+    [BNX2]: Fix 2nd port's MAC address.
+    
+    On the 5709, we need to add the proper offset to calculate the shared
+    memory base address of the 2nd port correctly.  Otherwise, the 2nd
+    port's MAC address and other information will be the same as the 1st
+    port.
+    
+    Update version to 1.5.4.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d6aa4acebafe3acb0aade7704ec5b2f03742ea14
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 8 19:56:31 2007 -0800
+
+    [BNX2]: Update version and reldate.
+    
+    Update version to 1.5.3.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit e6be763f63420c334710a5a0818e6bfcf5d593f8
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 8 19:56:13 2007 -0800
+
+    [BNX2]: Fix bug in bnx2_nvram_write().
+    
+    The bug was a bogus pointer being passed to kfree().  The pointer was
+    incremented in the write loop and then passed to kfree().
+    
+    The fix is to use align_buf to save the original address.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 253c8b75546c5f21d5321d691df92c1e84d9b0fb
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 8 19:56:01 2007 -0800
+
+    [BNX2]: Fix 5709 Serdes detection.
+    
+    5709 has a new register to detect copper/fiber PHYs.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 261dd5ca05c6f36c9216f2d60b018f59f92620c4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 8 19:55:46 2007 -0800
+
+    [BNX2]: Don't apply CRC PHY workaround to 5709.
+    
+    The workaround is only needed on 5706/5708 and cannot be applied on
+    5709.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6634292be47856c571634944dc0f6c8498602032
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 14 15:57:04 2006 -0800
+
+    [BNX2]: Fix minor loopback problem.
+    
+    Use the configured MAC address instead of the permanent MAC address
+    for loopback frames.
+    
+    Update version to 1.5.2.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6a13add1e1b802a29187a9af98a6ca26539dc33d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 14 15:56:50 2006 -0800
+
+    [BNX2]: Fix bug in bnx2_nvram_write().
+    
+    Length was not calculated correctly if the NVRAM offset is on a non-
+    aligned offset.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit faac9c4b753f420c02bdce0785d2657087830a12
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Dec 14 15:56:32 2006 -0800
+
+    [BNX2]: Fix panic in bnx2_tx_int().
+    
+    There was an off-by-one bug in bnx2_tx_avail().  If the tx ring is
+    completely full, the producer and consumer indices may be apart by
+    256 even though the ring size is only 255.  One entry in the ring is
+    unused and must be properly accounted for when calculating the number
+    of available entries.  The bug caused the tx ring entries to be
+    reused by mistake, overwriting active entries, and ultimately causing
+    it to crash.
+    
+    This bug rarely occurs because the tx ring is rarely completely full.
+    We always stop when there is less than MAX_SKB_FRAGS entries available
+    in the ring.
+    
+    Thanks to Corey Kovacs <cjk@techma.com> and Andy Gospodarek
+    <agospoda@redhat.com> for reporting the problem and helping to collect
+    debug information.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6c1bbcc8836358294c431e0c09e85e3480895659
+Author: Adrian Bunk <bunk@stusta.de>
+Date:   Thu Dec 7 15:10:06 2006 -0800
+
+    [BNX2]: Add an error check.
+    
+    This patch adds a missing error check spotted by the Coverity checker.
+    
+    Signed-off-by: Adrian Bunk <bunk@stusta.de>
+    Acked-by: Jeff Garzik <jgarzik@pobox.com>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit a49ec9f0df6da3ea2b316cba333ff2a03417ca4c
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:15:31 2006 -0800
+
+    [BNX2]: Update version and rel date.
+    
+    Update version to 1.5.1.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 699e9760f3bf0171da9c6238f7c4a03428a650be
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:15:05 2006 -0800
+
+    [BNX2]: Add 5709 PCI ID.
+    
+    Add PCI ID and detection for 5709 copper and SerDes chips.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c002ceca7d1ffd9c9b6b84dbc8d7de8099465e33
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:14:35 2006 -0800
+
+    [BNX2]: Download 5709 firmware.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6a81f85b845c0e73a8e7fba294dc520cc044e053
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:13:52 2006 -0800
+
+    [BNX2]: New firmware to support 5709 (part 4).
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1b9338fea4e2560e909a6a8e092d6b9b951db9fb
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:13:23 2006 -0800
+
+    [BNX2]: New firmware to support 5709 (part 3).
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c57d62d5963deae42db5a1a623ff0a4b50f2b0b4
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:12:55 2006 -0800
+
+    [BNX2]: New firmware to support 5709 (part 2).
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 775795f207bf197e3e23e50ca7c7f8f45547a64b
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:12:28 2006 -0800
+
+    [BNX2]: New firmware to support 5709 (part 1).
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7976227c57d5f3b2847df87775f2eba04feb85f7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:11:41 2006 -0800
+
+    [BNX2]: Add 5709 reset and runtime code.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 39008dbc89aff49407d0e71ab3e2262c76ea2268
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:10:45 2006 -0800
+
+    [BNX2]: Add 5709 init code.
+    
+    Add basic support to initialize the 5709 chip.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 421d4e096f0cf3a34bd18cc53ddb42cda43974f8
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:10:12 2006 -0800
+
+    [BNX2]: Add new 5709 registers (part 2).
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 9276b3445d3146a61b18c473738f407623d2f14e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:09:48 2006 -0800
+
+    [BNX2]: Add new 5709 registers (part 1).
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit e051495ae3bf9d4b36e3b8611930c6bdf2193702
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:09:25 2006 -0800
+
+    [BNX2]: Re-organize firmware structures.
+    
+    Re-organize the firmware handling code and declarations a bit to make
+    the code more compact.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b62c8680c0694969cb206ff9971cf0e246454569
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:08:56 2006 -0800
+
+    [BNX2]: Remove udelay() in copper PHY code.
+    
+    Change a long udelay() in bnx2_setup_copper_phy() to msleep().
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3092dd42615b8e8ec1dfe8c242a2835fb43862f7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:08:29 2006 -0800
+
+    [BNX2]: Add 5708S parallel detection.
+    
+    Add code to parallel detect 1Gbps and 2.5Gbps link speeds.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 2e5f34adf1cfd7c5dc076a3a3ca49ede52993688
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:08:00 2006 -0800
+
+    [BNX2]: Add bnx2_5706_serdes_timer().
+    
+    Separate the 5706S SerDes handling code in bnx2_timer() and put it
+    in a new function.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 275adaf3765cd9fc6df270f963d2554fe4f60331
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:07:28 2006 -0800
+
+    [BNX2]: Improve SerDes handling.
+    
+    1. Add support for 2.5Gbps forced speed setting.
+    2. Remove a long udelay() loop and change to msleep().
+    3. Other misc. SerDes fixes.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit fdfbd1e956322b44d9fcba0bb2832cca29cbf4aa
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Sun Nov 19 14:06:40 2006 -0800
+
+    [BNX2]: Fix Xen problem.
+    
+    This fixes the problem of not receiving packets in the Xen bridging
+    environment.  The Xen script sets the device's MAC address to
+    FE:FF:FF:FF:FF:FF and puts the device in promiscuous mode.  The
+    firmware had problem receiving all packets in this configuration.
+    
+    New firmware and setting the PROM_VLAN bit when in promiscuous mode
+    will fix this problem.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7d12e780e003f93433d49ce78cfedf4b4c52adc5
+Author: David Howells <dhowells@redhat.com>
+Date:   Thu Oct 5 14:55:46 2006 +0100
+
+    IRQ: Maintain regs pointer globally rather than passing to IRQ handlers
+    
+    Maintain a per-CPU global "struct pt_regs *" variable which can be used instead
+    of passing regs around manually through all ~1800 interrupt handlers in the
+    Linux kernel.
+    
+    The regs pointer is used in few places, but it potentially costs both stack
+    space and code to pass it around.  On the FRV arch, removing the regs parameter
+    from all the genirq function results in a 20% speed up of the IRQ exit path
+    (ie: from leaving timer_interrupt() to leaving do_IRQ()).
+    
+    Where appropriate, an arch may override the generic storage facility and do
+    something different with the variable.  On FRV, for instance, the address is
+    maintained in GR28 at all times inside the kernel as part of general exception
+    handling.
+    
+    Having looked over the code, it appears that the parameter may be handed down
+    through up to twenty or so layers of functions.  Consider a USB character
+    device attached to a USB hub, attached to a USB controller that posts its
+    interrupts through a cascaded auxiliary interrupt controller.  A character
+    device driver may want to pass regs to the sysrq handler through the input
+    layer which adds another few layers of parameter passing.
+    
+    I've build this code with allyesconfig for x86_64 and i386.  I've runtested the
+    main part of the code on FRV and i386, though I can't test most of the drivers.
+    I've also done partial conversion for powerpc and MIPS - these at least compile
+    with minimal configurations.
+    
+    This will affect all archs.  Mostly the changes should be relatively easy.
+    Take do_IRQ(), store the regs pointer at the beginning, saving the old one:
+    
+    	struct pt_regs *old_regs = set_irq_regs(regs);
+    
+    And put the old one back at the end:
+    
+    	set_irq_regs(old_regs);
+    
+    Don't pass regs through to generic_handle_irq() or __do_IRQ().
+    
+    In timer_interrupt(), this sort of change will be necessary:
+    
+    	-	update_process_times(user_mode(regs));
+    	-	profile_tick(CPU_PROFILING, regs);
+    	+	update_process_times(user_mode(get_irq_regs()));
+    	+	profile_tick(CPU_PROFILING);
+    
+    I'd like to move update_process_times()'s use of get_irq_regs() into itself,
+    except that i386, alone of the archs, uses something other than user_mode().
+    
+    Some notes on the interrupt handling in the drivers:
+    
+     (*) input_dev() is now gone entirely.  The regs pointer is no longer stored in
+         the input_dev struct.
+    
+     (*) finish_unlinks() in drivers/usb/host/ohci-q.c needs checking.  It does
+         something different depending on whether it's been supplied with a regs
+         pointer or not.
+    
+     (*) Various IRQ handler function pointers have been moved to type
+         irq_handler_t.
+    
+    Signed-Off-By: David Howells <dhowells@redhat.com>
+    (cherry picked from 1b16e7ac850969f38b375e511e3fa2f474a33867 commit)
+
+commit f9317a40c4e09e20ef01601fc9f5de9e6acb5b96
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Sep 29 17:06:23 2006 -0700
+
+    [BNX2]: Disable MSI on 5706 if AMD 8132 bridge is present.
+    
+    MSI is defined to be 32-bit write.  The 5706 does 64-bit MSI writes
+    with byte enables disabled on the unused 32-bit word.  This is legal
+    but causes problems on the AMD 8132 which will eventually stop
+    responding after a while.
+    
+    Without this patch, the MSI test done by the driver during open will
+    pass, but MSI will eventually stop working after a few MSIs are
+    written by the device.
+    
+    AMD believes this incompatibility is unique to the 5706, and
+    prefers to locally disable MSI rather than globally disabling it
+    using pci_msi_quirk.
+    
+    Update version to 1.4.45.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 84fa7933a33f806bbbaae6775e87459b1ec584c0
+Author: Patrick McHardy <kaber@trash.net>
+Date:   Tue Aug 29 16:44:56 2006 -0700
+
+    [NET]: Replace CHECKSUM_HW by CHECKSUM_PARTIAL/CHECKSUM_COMPLETE
+    
+    Replace CHECKSUM_HW by CHECKSUM_PARTIAL (for outgoing packets, whose
+    checksum still needs to be completed) and CHECKSUM_COMPLETE (for
+    incoming packets, device supplied full checksum).
+    
+    Patch originally from Herbert Xu, updated by myself for 2.6.18-rc3.
+    
+    Signed-off-by: Patrick McHardy <kaber@trash.net>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7282d491ecaee9883233a0e27283c4c79486279a
+Author: Jeff Garzik <jeff@garzik.org>
+Date:   Wed Sep 13 14:30:00 2006 -0400
+
+    drivers/net: const-ify ethtool_ops declarations
+    
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 6aa20a2235535605db6d6d2bd850298b2fe7f31e
+Author: Jeff Garzik <jeff@garzik.org>
+Date:   Wed Sep 13 13:24:59 2006 -0400
+
+    drivers/net: Trim trailing whitespace
+    
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 299176206b266f204be859adf9e66efd06628ab2
+Author: Jeff Garzik <jeff@garzik.org>
+Date:   Sat Aug 19 17:48:59 2006 -0400
+
+    drivers/net: Remove deprecated use of pci_module_init()
+    
+    From: Michal Piotrowski <michal.k.k.piotrowski@gmail.com>
+    
+    Signed-off-by: Michal Piotrowski <michal.k.k.piotrowski@gmail.com>
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 38f26d7e0b77770bf537d475fcc80174f51e2b4a
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Aug 15 01:39:36 2006 -0700
+
+    [BNX2]: Convert to netdev_alloc_skb()
+    
+    Convert dev_alloc_skb() to netdev_alloc_skb() and increase default
+    rx ring size to 255. The old ring size of 100 was too small.
+    
+    Update version to 1.4.44.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b1952e0f3691835620b3629e0674c80255b56def
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Aug 15 01:39:10 2006 -0700
+
+    [BNX2]: Fix tx race condition.
+    
+    Fix a subtle race condition between bnx2_start_xmit() and bnx2_tx_int()
+    similar to the one in tg3 discovered by Herbert Xu:
+    
+    CPU0					CPU1
+    bnx2_start_xmit()
+    	if (tx_ring_full) {
+    		tx_lock
+    					bnx2_tx()
+    						if (!netif_queue_stopped)
+    		netif_stop_queue()
+    		if (!tx_ring_full)
+    						update_tx_ring 
+    			netif_wake_queue()
+    		tx_unlock
+    	}
+    
+    Even though tx_ring is updated before the if statement in bnx2_tx_int() in
+    program order, it can be re-ordered by the CPU as shown above.  This
+    scenario can cause the tx queue to be stopped forever if bnx2_tx_int() has
+    just freed up the entire tx_ring.  The possibility of this happening
+    should be very rare though.
+    
+    The following changes are made, very much identical to the tg3 fix:
+    
+    1. Add memory barrier to fix the above race condition.
+    
+    2. Eliminate the private tx_lock altogether and rely solely on
+    netif_tx_lock.  This eliminates one spinlock in bnx2_start_xmit()
+    when the ring is full.
+    
+    3. Because of 2, use netif_tx_lock in bnx2_tx_int() before calling
+    netif_wake_queue().
+    
+    4. Add memory barrier to bnx2_tx_avail().
+    
+    5. Add bp->tx_wake_thresh which is set to half the tx ring size.
+    
+    6. Check for the full wake queue condition before getting
+    netif_tx_lock in tg3_tx().  This reduces the number of unnecessary
+    spinlocks when the tx ring is full in a steady-state condition.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 89114afd435a486deb8583e89f490fc274444d18
+Author: Herbert Xu <herbert@gondor.apana.org.au>
+Date:   Sat Jul 8 13:34:32 2006 -0700
+
+    [NET] gso: Add skb_is_gso
+    
+    This patch adds the wrapper function skb_is_gso which can be used instead
+    of directly testing skb_shinfo(skb)->gso_size.  This makes things a little
+    nicer and allows us to change the primary key for indicating whether an skb
+    is GSO (if we ever want to do that).
+    
+    Signed-off-by: Herbert Xu <herbert@gondor.apana.org.au>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 9b91cf9daac41eeaaea57ecfe68dc13bb0305fa9
+Author: Jeff Garzik <jeff@garzik.org>
+Date:   Tue Jun 27 11:39:50 2006 -0400
+
+    [netdrvr] use dev_xxx() printk helpers, rather than dev_printk(KERN_xxx, ...
+    
+    Suggested by Jiri Slaby.
+    
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 2e8a538d865de0eb9813c8a0f2284e920299c0cc
+Author: Jeff Garzik <jeff@garzik.org>
+Date:   Tue Jun 27 10:47:51 2006 -0400
+
+    [netdrvr] Use dev_printk() when ethernet interface isn't available
+    
+    For messages prior to register_netdev(), prefer dev_printk() because
+    that prints out both our driver name and our [PCI | whatever] bus id.
+    
+    Updates: 8139{cp,too}, b44, bnx2, cassini, {eepro,epic}100, fealnx,
+    	 hamachi, ne2k-pci, ns83820, pci-skeleton, r8169.
+    
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 1fb9df5d3069064c037c81c0ab8bf783ffa5e373
+Author: Thomas Gleixner <tglx@linutronix.de>
+Date:   Sat Jul 1 19:29:39 2006 -0700
+
+    [PATCH] irq-flags: drivers/net: Use the new IRQF_ constants
+    
+    Signed-off-by: Thomas Gleixner <tglx@linutronix.de>
+    Cc: Ingo Molnar <mingo@elte.hu>
+    Cc: "David S. Miller" <davem@davemloft.net>
+    Cc: Benjamin Herrenschmidt <benh@kernel.crashing.org>
+    Cc: Jeff Garzik <jeff@garzik.org>
+    Signed-off-by: Andrew Morton <akpm@osdl.org>
+    Signed-off-by: Linus Torvalds <torvalds@osdl.org>
+
+commit 6ab3d5624e172c553004ecc862bfeac16d9d68b7
+Author: Jörn Engel <joern@wohnheim.fh-wedel.de>
+Date:   Fri Jun 30 19:25:36 2006 +0200
+
+    Remove obsolete #include <linux/config.h>
+    
+    Signed-off-by: Jörn Engel <joern@wohnheim.fh-wedel.de>
+    Signed-off-by: Adrian Bunk <bunk@stusta.de>
+
+commit 6c4f095eae35e83eb6148dec7f72874eeadf0c9b
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 29 12:38:15 2006 -0700
+
+    [BNX2]: Turn off link during shutdown
+    
+    Minor change in shutdown logic to effect a link down.
+    
+    Update version to 1.4.43.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 745720e58303f940e12944bf7fab52bc9ce48bda
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 29 12:37:41 2006 -0700
+
+    [BNX2]: Use dev_kfree_skb() instead of the _irq version
+    
+    Change all dev_kfree_skb_irq() and dev_kfree_skb_any() to
+    dev_kfree_skb().  These calls are never used in irq context.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b11d6213529b33d81c21eeba97343e3b714e62e7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Jun 29 12:31:21 2006 -0700
+
+    [BNX2]: Add NETIF_F_TSO_ECN
+    
+    Add NETIF_F_TSO_ECN feature for all bnx2 hardware.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 7967168cefdbc63bf332d6b1548eca7cd65ebbcc
+Author: Herbert Xu <herbert@gondor.apana.org.au>
+Date:   Thu Jun 22 02:40:14 2006 -0700
+
+    [NET]: Merge TSO/UFO fields in sk_buff
+    
+    Having separate fields in sk_buff for TSO/UFO (tso_size/ufo_size) is not
+    going to scale if we add any more segmentation methods (e.g., DCCP).  So
+    let's merge them.
+    
+    They were used to tell the protocol of a packet.  This function has been
+    subsumed by the new gso_type field.  This is essentially a set of netdev
+    feature bits (shifted by 16 bits) that are required to process a specific
+    skb.  As such it's easy to tell whether a given device can process a GSO
+    skb: you just have to and the gso_type field and the netdev's features
+    field.
+    
+    I've made gso_type a conjunction.  The idea is that you have a base type
+    (e.g., SKB_GSO_TCPV4) that can be modified further to support new features.
+    For example, if we add a hardware TSO type that supports ECN, they would
+    declare NETIF_F_TSO | NETIF_F_TSO_ECN.  All TSO packets with CWR set would
+    have a gso_type of SKB_GSO_TCPV4 | SKB_GSO_TCPV4_ECN while all other TSO
+    packets would be SKB_GSO_TCPV4.  This means that only the CWR packets need
+    to be emulated in software.
+    
+    Signed-off-by: Herbert Xu <herbert@gondor.apana.org.au>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 9e1881dec9e3e8f8408551cddfda489857a7ec99
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jun 13 15:04:12 2006 -0700
+
+    [BNX2]: Update version and reldate
+    
+    Update driver version to 1.4.42.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c86a31f452f7dd132a1765d6d7160b0947f37b14
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Tue Jun 13 15:03:47 2006 -0700
+
+    [BNX2]: Use CPU native page size
+    
+    Use CPU native page size to determine various ring sizes. This allows
+    order-0 memory allocations on all systems.
+    
+    Added check to limit the page size to 16K since that's the maximum rx
+    ring size that will be used. This will prevent using unnecessarily
+    large page sizes on some architectures with large page sizes.
+    [Suggested by David Miller]
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit fba9fe911bb4213c3de1d142fe0ee127cd361a78
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 12 22:21:25 2006 -0700
+
+    [BNX2]: Add firmware decompression
+    
+    Add functions to decompress firmware before loading to the internal
+    CPUs. Compressing the firmware reduces the driver size significantly.
+    
+    Added file name length sanity check in the gzip header to prevent
+    going past the end of buffer [suggested by DaveM].
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 160882722cb21cbe5cead55cf38a5e70fc3af63e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 12 22:16:43 2006 -0700
+
+    [BNX2]: Allow WoL settings on new 5708 chips
+    
+    Allow WOL settings on 5708 B2 and newer chips that have the problem
+    fixed.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit cea94db9b496d7fe25bbd3ebd0f24afaac2069d5
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jun 12 22:16:13 2006 -0700
+
+    [BNX2]: Add an rx drop counter
+    
+    Add a counter for packets dropped by firmware.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit d1e100ba69131bb788e89a07b94b08f6e006725a
+Author: Alexey Dobriyan <adobriyan@gmail.com>
+Date:   Sun Jun 11 20:57:17 2006 -0700
+
+    [BNX2]: Endian fixes.
+    
+    Signed-off-by: Alexey Dobriyan <adobriyan@gmail.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 932ff279a43ab7257942cddff2595acd541cc49b
+Author: Herbert Xu <herbert@gondor.apana.org.au>
+Date:   Fri Jun 9 12:20:56 2006 -0700
+
+    [NET]: Add netif_tx_lock
+    
+    Various drivers use xmit_lock internally to synchronise with their
+    transmission routines.  They do so without setting xmit_lock_owner.
+    This is fine as long as netpoll is not in use.
+    
+    With netpoll it is possible for deadlocks to occur if xmit_lock_owner
+    isn't set.  This is because if a printk occurs while xmit_lock is held
+    and xmit_lock_owner is not set can cause netpoll to attempt to take
+    xmit_lock recursively.
+    
+    While it is possible to resolve this by getting netpoll to use
+    trylock, it is suboptimal because netpoll's sole objective is to
+    maximise the chance of getting the printk out on the wire.  So
+    delaying or dropping the message is to be avoided as much as possible.
+    
+    So the only alternative is to always set xmit_lock_owner.  The
+    following patch does this by introducing the netif_tx_lock family of
+    functions that take care of setting/unsetting xmit_lock_owner.
+    
+    I renamed xmit_lock to _xmit_lock to indicate that it should not be
+    used directly.  I didn't provide irq versions of the netif_tx_lock
+    functions since xmit_lock is meant to be a BH-disabling lock.
+    
+    This is pretty much a straight text substitution except for a small
+    bug fix in winbond.  It currently uses
+    netif_stop_queue/spin_unlock_wait to stop transmission.  This is
+    unsafe as an IRQ can potentially wake up the queue.  So it is safer to
+    use netif_tx_disable.
+    
+    The hamradio bits used spin_lock_irq but it is unnecessary as
+    xmit_lock must never be taken in an IRQ handler.
+    
+    Signed-off-by: Herbert Xu <herbert@gondor.apana.org.au>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ae181bc44c65fdc93d0d2d908534b22e43f60f56
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon May 22 16:39:20 2006 -0700
+
+    [BNX2]: Use kmalloc instead of array
+    
+    Use kmalloc() instead of a local array in bnx2_nvram_write().
+    
+    Update version to 1.4.40.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+
+commit bae25761c92c5eec781b6ea72bbe7e98fc8382a0
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon May 22 16:38:38 2006 -0700
+
+    [BNX2]: Fix bug in bnx2_nvram_write()
+    
+    Fix a bug in bnx2_nvram_write() caused by a counter variable not
+    correctly incremented by 4.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+
+commit e19360f2945f54eb44ae170ec9c33910d29834a2
+Author: Randy Dunlap <rdunlap@xenotime.net>
+Date:   Mon Apr 10 23:22:06 2006 -0700
+
+    [PATCH] net drivers: fix section attributes for gcc
+    
+    If CONFIG_HOTPLUG=n, gcc doesn't like some __initdata to be const (rodata)
+    and other __initdata not const, so make the non-const __initdata const.
+    
+    gcc errors:
+    drivers/net/bnx2.c:66: error: version causes a section type conflict
+    drivers/net/starfire.c:338: error: version causes a section type conflict
+    drivers/net/typhoon.c:137: error: version causes a section type conflict
+    drivers/net/natsemi.c:241: error: version causes a section type conflict
+    
+    Signed-off-by: Randy Dunlap <rdunlap@xenotime.net>
+    Signed-off-by: Andrew Morton <akpm@osdl.org>
+    Signed-off-by: Jeff Garzik <jeff@garzik.org>
+
+commit 5e2e71141ca93a3e2543966ced6a6077d4fb8fd8
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Mar 23 01:14:09 2006 -0800
+
+    [BNX2]: Update version and reldate
+    
+    Update version to 1.4.39.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 29b12174ac14f110225d6d9ebb66c30df5023baf
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Mar 23 01:13:43 2006 -0800
+
+    [BNX2]: Separate tx producer and consumer fields
+    
+    Put the tx producer and consumer fields in separate cache lines in
+    the device structure, similar to the VJ net channel queue structure.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f2a4f05216e95f3b8c06b858abc0fe9a77500816
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Mar 23 01:13:12 2006 -0800
+
+    [BNX2]: Move .h files to bnx2.c
+    
+    Move all #include <> from bnx2.h to bnx2.c.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0f31f99446270e66c6f18c7d87aadd7db1dad214
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Mar 23 01:12:38 2006 -0800
+
+    [BNX2]: Combine small mem allocations
+    
+    Combine two small (56 byte and 320 byte) pci consistent memory
+    allocations into one allocation. Jeff Garzik suggested to store
+    the combined size in the bp structure for later use when freeing
+    the memory.
+    
+    Use kzalloc() instead of kmalloc() + memset().
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit bf5295bba804a6aead9bc1c0d5970173a9d4e08e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Mar 23 01:11:56 2006 -0800
+
+    [BNX2]: Fix link change handling
+    
+    Fix some link-related problems by doing a coalesce_now after link
+    change interrupt to flush out the transient link status.
+    
+    To facilitate this, the host coalesce cmd register value is cached in
+    the device structure.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 0d36f37bb1e1cbadca6dc90a840bb2bc9ab51c44
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Mar 20 17:55:25 2006 -0800
+
+    [BNX2]: include <linux/vmalloc.h>
+    
+    Include <linux/vmalloc.h> so that it compiles properly on all archs.
+    
+    Update version to 1.4.38.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1d60290f27e7dc4bce2c43922d0bfa9abd246fc9
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Mar 20 17:50:08 2006 -0800
+
+    [BNX2]: Update version
+    
+    Update version to 1.4.37.
+    
+    Add missing flush_scheduled_work() in bnx2_suspend as noted by Jeff
+    Garzik.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 3fdfcc2c95ffc7ee04b480a4c1fd4809b5ff2f7c
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Mar 20 17:49:49 2006 -0800
+
+    [BNX2]: Support larger rx ring sizes (part 2)
+    
+    Support bigger rx ring sizes (up to 1020) in the rx fast path.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 13daffa2f2ba65674e7816a0e95e7b93246cb686
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Mar 20 17:49:20 2006 -0800
+
+    [BNX2]: Support larger rx ring sizes (part 1)
+    
+    Increase maximum receive ring size from 255 to 1020 by supporting
+    up to 4 linked pages of receive descriptors. To accomodate the
+    higher memory usage, each physical descriptor page is allocated
+    separately and the software ring that keeps track of the SKBs and the
+    DMA addresses is allocated using vmalloc.
+    
+    Some of the receive-related fields in the bp structure are re-
+    organized a bit for better locality of reference.
+    
+    The max. was reduced to 1020 from 4080 after discussion with David
+    Miller.
+    
+    This patch contains ring init code changes only. This next patch
+    contains rx data path code changes.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 236b6394bb49ea58465c6f935a286d2342576f8d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Mar 20 17:49:02 2006 -0800
+
+    [BNX2]: Fix bug when rx ring is full
+    
+    Fix the rx code path that does not handle the full rx ring correctly.
+    
+    When the rx ring is set to the max. size (i.e. 255), the consumer and
+    producer indices will be the same when completing an rx packet. Fix
+    the rx code to handle this condition properly.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 244ac4f446ac6a19caf5eb692c4844f29e6478bf
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Mar 20 17:48:46 2006 -0800
+
+    [BNX2]: Add ethtool -d support
+    
+    Add ETHTOOL_GREGS support.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 6b39777c5924b9db2406c5769a044da383782d0e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Mar 20 17:48:32 2006 -0800
+
+    [BNX2]: Reduce register test size
+    
+    Eliminate some of the registers in ethtool register test to reduce
+    driver size.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit f71e130966ba429dbd24be08ddbcdf263df9a5ad
+Author: Arjan van de Ven <arjan@infradead.org>
+Date:   Fri Mar 3 21:33:57 2006 -0500
+
+    Massive net driver const-ification.
+
+commit 206cc83ccdc29e4a73786e9093f9eeec25868441
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:14:05 2006 -0800
+
+    [BNX2]: Update version and copyright year
+    
+    Update version to 1.4.31 and add 2006 copyright.
+    
+    Skip the last digit when reporting the firmware version.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit bc5a0690e917206b423c7b565c997b06675fb572
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:13:22 2006 -0800
+
+    [BNX2]: Add PHY loopback test
+    
+    Enhance the ethtool loopback test with PHY loopback test.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 972ec0d4ba67bf0ec7f00cd93fbac47452f80d25
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:12:43 2006 -0800
+
+    [BNX2]: Use netdev_priv()
+    
+    Replace dev->priv with netdev_priv(dev)
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1122db717ab5443ca9043fc0d23c1e862cfb3a61
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:11:42 2006 -0800
+
+    [BNX2]: Fix nvram sizing
+    
+    Add code to correctly determine nvram size.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1269a8a64a37c8a06af672f4cff4fed16a478734
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:11:03 2006 -0800
+
+    [BNX2]: Workaround hw interrupt bug
+    
+    Add workaround for a hardware interrupt issue. When using INTA,
+    unmasking of the interrupt and the tag update should be done
+    separately to avoid some spurious interrupts,
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit ade2bfe7d1f0ea804d2e63209cc6318ad8bf17ae
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:09:51 2006 -0800
+
+    [BNX2]: Fix UDP checksum verification
+    
+    Fix TCP/UDP checksum verification. Use status bits in the buffer
+    descriptor instead of the checksum value to verify rx checksum.
+    Using the checksum value will be incorrect if the UDP packet has
+    zero in the UDP checksum field.
+    
+    Firmware update required for this fix.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit dda1e390bf9e2889a3abc48590a015b307637753
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:08:14 2006 -0800
+
+    [BNX2]: Misc. fixes
+    
+    Some misc. fixes for WoL, 5708 B1, and a typo '=' instead of '=='.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b090ae2b59f3db57732340c6af3beceec8d6c148
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:07:10 2006 -0800
+
+    [BNX2]: Improve handshake with firmware
+    
+    Improve handshake with bootcode with the following changes:
+    
+    1. Increase timeout to 100msec and use msleep instead of udelay.
+    
+    2. Add more error checking for timeouts and errors. 
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit e29054f92d7d575631691865c1b95bee5bc974cc
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Mon Jan 23 16:06:06 2006 -0800
+
+    [BNX2]: Fix VLAN on ASF
+    
+    Always set up the device to strip incoming VLAN tags when ASF is
+    enabled. ASF firmware will not parse packets correctly if VLAN tags
+    are not stripped.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 1064e944d03eb7a72c0fa11236d5e69cfd877a71
+Author: John W. Linville <linville@tuxdriver.com>
+Date:   Thu Nov 10 12:58:24 2005 -0800
+
+    [BNX2]: simplify parameter checks in bnx2_{get,set}_eeprom
+    
+    Remove the superfluous parameter checking in bnx2_{get,set}_eeprom.
+    The parameters are already validated in ethtool_{get,set}_eeprom.
+    
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b6cbc3b6fe588c0ea1341d10413e12c2a96a6032
+Author: John W. Linville <linville@tuxdriver.com>
+Date:   Thu Nov 10 12:58:00 2005 -0800
+
+    [BNX2]: check return of dev_alloc_skb in bnx2_test_loopback
+    
+    Check return of dev_alloc_skb in bnx2_test_loopback, and handle
+    appropriately.
+    
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 2f23c523f32324e5b5f39565cbcb0a8ff8923019
+Author: John W. Linville <linville@tuxdriver.com>
+Date:   Thu Nov 10 12:57:33 2005 -0800
+
+    [BNX2]: output driver name as prefix in error message
+    
+    Output driver name as prefix to "Unknown flash/EEPROM type." message.
+    
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 05d0f1cf69fd589634b38b6f6e4b8cfdaace9ca0
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Nov 4 08:53:48 2005 -0800
+
+    [PATCH] bnx2: update version and minor fixes
+    
+    Some book keeping and a style fix.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+
+commit f4e418f7f3286f854883f9f7e3bbf7005340d2de
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Nov 4 08:53:48 2005 -0800
+
+    [PATCH] bnx2: refine bnx2_poll
+    
+    Refine bnx2_poll() logic to write back the most up-to-date status tag
+    when all work has been processed. This eliminates some occasional
+    extra interrupts when a older status tag is written even though all
+    work has been processed.
+    
+    The idea is to read the status tag just before exiting bnx2_poll() and
+    then check again for any new work. If no new work is pending, the
+    status tag written back will not generate any extra interrupt. This
+    logic is similar to the changes David Miller did to tg3_poll().
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+
+commit e3648b3d8de3b37fae7acbb57db1e001a19cd3b7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Nov 4 08:51:21 2005 -0800
+
+    [PATCH] bnx2: update firmware handshake for 5708
+    
+    Dynamically determine the shared memory location where eeprom
+    parameters are stored instead of using a fixed location.
+    
+    Add speed reporting to management firmware. This allows management
+    firmware to know the current speed without contending for MII
+    registers.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+
+commit 371377091dff14090cbe995d0a9291364f8583cb
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Nov 4 08:49:17 2005 -0800
+
+    [PATCH] bnx2: update nvram code for 5708
+    
+    Update bnx2 nvram code with support for 5708.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+
+commit 5b0c76ad94faf95ca50fa0de9ab07460bea19568
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Fri Nov 4 08:45:49 2005 -0800
+
+    [PATCH] bnx2: add 5708 support
+    
+    Add 5708 copper and serdes basic support, including 2.5 Gbps support
+    on 5708 serdes. SPEED_2500 is also added to ethtool.h
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+
+commit b4558ea93d66a43f7990d26f145fd4c54a01c9bf
+Author: Jesper Juhl <jesper.juhl@gmail.com>
+Date:   Fri Oct 28 16:53:13 2005 -0400
+
+    drivers/net: Remove pointless checks for NULL prior to calling kfree()
+
+commit 24b8e05dc1b03c1f80828e642838511c16e17250
+Author: John W. Linville <linville@tuxdriver.com>
+Date:   Mon Sep 12 14:45:08 2005 -0700
+
+    [BNX2]: Add support for ETHTOOL_GPERMADDR.
+    
+    Signed-off-by: John W. Linville <linville@tuxdriver.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c921e4c4dbb043f9435414c4e661e7f0a783053d
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Sep 8 13:15:32 2005 -0700
+
+    [BNX2]: Fix bug in irq handler and add prefetch
+    
+    Fix bug in bnx2_interrupt() that caused an unnecessary register read.
+    The BNX2_PCICFG_MISC_STATUS should only be read when the status tag
+    has not changed.
+    
+    Add prefetch of the status block in bnx2_msi() similar to tg3_msi().
+    The status block is not touched in bnx2_msi() and prefetching it will
+    speed up bnx2_poll() that will run on the same CPU that received the
+    MSI.
+    
+    Update version.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 829ca9a30a2ddb727981d80fabdbff2ea86bc9ea
+Author: Pavel Machek <pavel@ucw.cz>
+Date:   Sat Sep 3 15:56:56 2005 -0700
+
+    [PATCH] swsusp: fix remaining u32 vs. pm_message_t confusion
+    
+    Fix remaining bits of u32 vs.  pm_message confusion.  Should not break
+    anything.
+    
+    Signed-off-by: Pavel Machek <pavel@suse.cz>
+    Signed-off-by: Rafael J. Wysocki <rjw@sisk.pl>
+    Signed-off-by: Andrew Morton <akpm@osdl.org>
+    Signed-off-by: Linus Torvalds <torvalds@osdl.org>
+
+commit 73eef4cddb2738c4e8c5ef157ebb1b19d6c9272f
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 25 15:39:15 2005 -0700
+
+    [BNX2]: update version and minor fixes
+    
+    Update version and add 4 minor fixes, the last 2 were suggested by
+    Jeff Garzik:
+    
+    1. check for a valid ethernet address before setting it
+    2. zero out bp->regview if init_one encounters an error and unmaps
+       the IO address. This prevents remove_one from unmapping again.
+    3. use netif_rx_schedule() instead of hand coding the same.
+    4. use IRQ_HANDLED and IRQ_NONE.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit c770a65cee7cc250d7bccd99fa55e742988ae4e0
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 25 15:38:39 2005 -0700
+
+    [BNX2]: change irq locks to bh locks
+    
+    Change all locks from spin_lock_irqsave() to spin_lock_bh(). All
+    places that require spinlocks are in BH context.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit e89bbf1049aac3625fdafe3657ed8d7d5373d351
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 25 15:36:58 2005 -0700
+
+    [BNX2]: remove atomics in tx
+    
+    Remove atomic operations in the fast tx path. Expensive atomic
+    operations were used to keep track of the number of available tx
+    descriptors. The new code uses the difference between the consumer
+    and producer index to determine the number of free tx descriptors.
+    
+    As suggested by Jeff Garzik, the name of the inline function is
+    changed to all lower case.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit cd339a0ed61097d92ce03b6d1042b1e4d58535e7
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 25 15:35:24 2005 -0700
+
+    [BNX2]: speedup serdes linkup
+    
+    This speeds up link-up time on 5706 SerDes if the link partner does
+    not autoneg, a rather common scenario in blade servers. Some blade
+    servers use IPMI for keyboard input and it's important to minimize
+    link disruptions.
+    
+    The speedup is achieved by shortening the timer to (HZ / 3) during
+    the transient period right after initiating a SerDes autoneg. If
+    autoneg does not complete, parallel detect can be done sooner. After
+    the transient period is over, the timer goes back to its normal HZ
+    interval.
+    
+    As suggested by Jeff Garzik, the timer initialization is moved to
+    bnx2_init_board() from bnx2_open().
+    
+    An eeprom bit is also added to allow default forced SerDes speed for
+    even faster link-up time.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit afdc08b9f9a7174d7912a160f657f39d46379b5e
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu Aug 25 15:34:29 2005 -0700
+
+    [BNX2]: Fix rtnl deadlock in bnx2_close
+    
+    This fixes an rtnl deadlock problem when flush_scheduled_work() is
+    called from bnx2_close(). In rare cases, linkwatch_event() may be on
+    the workqueue from a previous close of a different device and it will
+    try to get the rtnl lock which is already held by dev_close().
+    
+    The fix is to set a flag if we are in the reset task which is run
+    from the workqueue. bnx2_close() will loop until the flag is cleared.
+    As suggested by Jeff Garzik, the loop is changed to call msleep(1)
+    instead of yield() in the original patch.
+    
+    flush_scheduled_work() is also moved to bnx2_remove_one() before the
+    netdev is freed.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit 14ab9b867aa6c107b4886bdc5b23f277ab10792e
+Author: Peter Hagervall <hager@cs.umu.se>
+Date:   Wed Aug 10 14:18:16 2005 -0700
+
+    [BNX2]: Possible sparse fixes, take two
+    
+    This patch contains the following possible cleanups/fixes:
+    
+    - use C99 struct initializers
+    - make a few arrays and structs static
+    - remove a few uses of literal 0 as NULL pointer
+    - use convenience function instead of cast+dereference in bnx2_ioctl()
+    - remove superfluous casts to u8 * in calls to readl/writel
+    
+    Signed-off-by: Peter Hagervall <hager@cs.umu.se>
+    Acked-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
+commit b6016b767397258b58163494a869f8f1199e6897
+Author: Michael Chan <mchan@broadcom.com>
+Date:   Thu May 26 13:03:09 2005 -0700
+
+    [BNX2]: New Broadcom gigabit network driver.
+    
+    A new driver bnx2 for Broadcom bcm5706 is available.
+    
+    The patch also includes new 1000BASE-X advertisement bit definitions in
+    mii.h
+    
+    Thanks to David Miller and Jeff Garzik for reviewing and their valuable
+    feedback.
+    
+    Signed-off-by: Michael Chan <mchan@broadcom.com>
+    Signed-off-by: David S. Miller <davem@davemloft.net>
+
