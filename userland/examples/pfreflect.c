@@ -137,15 +137,15 @@ void add_rule(u_int add_rule) {
   memset(&rule, 0, sizeof(hash_filtering_rule));
   /* 09:40:01.158112 IP 192.168.1.233.2736 > 192.168.99.1.25: Flags [P.], seq 1070303040:1070303070, ack 3485710921, win 65461, length 30 */
   rule.proto = 6, rule.rule_id = 10; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-  rule.host_peer_a = ntohl(inet_addr("192.168.1.233"));
-  rule.host_peer_b = ntohl(inet_addr("192.168.99.1"));
+  rule.host4_peer_a = ntohl(inet_addr("192.168.1.233"));
+  rule.host4_peer_b = ntohl(inet_addr("192.168.99.1"));
 
   if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
     printf("pfring_add_hash_filtering_rule(1) failed\n");
 
   rule.proto = 6, rule.rule_id = 11; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-  rule.host_peer_a = ntohl(inet_addr("192.168.1.233"));
-  rule.host_peer_b = ntohl(inet_addr("192.168.99.1"));
+  rule.host4_peer_a = ntohl(inet_addr("192.168.1.233"));
+  rule.host4_peer_b = ntohl(inet_addr("192.168.99.1"));
 
   if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
     printf("pfring_add_hash_filtering_rule(2) failed\n");
@@ -589,7 +589,7 @@ int main(int argc, char* argv[]) {
 	rule.rule_id = 5;
 	rule.rule_action = forward_packet_and_stop_rule_evaluation;
 	rule.core_fields.port_low = 80, rule.core_fields.port_high = 520;
-	rule.core_fields.host_low = rule.core_fields.host_high = ntohl(inet_addr("192.168.0.160"));
+	rule.core_fields.host4_low = rule.core_fields.host4_high = ntohl(inet_addr("192.168.0.160"));
 	// snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
 #endif
 	if(pfring_add_filtering_rule(pd, &rule) < 0)

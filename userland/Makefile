@@ -7,7 +7,7 @@ libpfring:
 	cd lib; make
 
 pcap:
-	cd libpcap-1.0.0-ring; ./configure;make
+	cd libpcap-1.0.0-ring; ./configure --enable-ipv6; make
 
 ring_examples:
 	cd examples; make

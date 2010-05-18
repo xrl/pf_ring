@@ -9,6 +9,10 @@
 #ifndef __RING_H
 #define __RING_H
 
+#ifdef __KERNEL__
+#include <linux/in6.h>
+#endif /* __KERNEL__ */
+
 #define INCLUDE_MAC_INFO
 
 #ifdef INCLUDE_MAC_INFO
@@ -28,8 +32,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.2.0"
-#define RING_VERSION_NUM           0x040200
+#define RING_VERSION                "4.3.0"
+#define RING_VERSION_NUM           0x040300
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -90,13 +94,34 @@ struct pkt_offset {
 
 #define REFLECT_PACKET_DEVICE_NONE     0
 
+typedef union {
+  struct in6_addr v6;  /* IPv6 src/dst IP addresses (Network byte order) */
+  u_int32_t v4;        /* IPv4 src/dst IP addresses */
+} ip_addr;
+
+#define ipv4_tos ip_tos
+#define ipv6_tos ip_tos
+#define ipv4_src ip_src.v4
+#define ipv4_dst     ip_dst.v4
+#define ipv6_src     ip_src.v6
+#define ipv6_dst     ip_dst.v6
+#define host4_low    host_low.v4
+#define host4_high   host_high.v4
+#define host6_low    host_low.v6
+#define host6_high   host_high.v6
+#define host4_peer_a host_peer_a.v4
+#define host4_peer_b host_peer_b.v4
+#define host6_peer_a host_peer_a.v6
+#define host6_peer_b host_peer_b.v6
+
 struct pkt_parsing_info {
   /* Core fields (also used by NetFlow) */
   u_int8_t dmac[ETH_ALEN], smac[ETH_ALEN];  /* MAC src/dst addresses */
   u_int16_t eth_type;   /* Ethernet type */
   u_int16_t vlan_id;    /* VLAN Id or NO_VLAN */
-  u_int8_t  l3_proto, ipv4_tos;   /* Layer 3 protocol/TOS */
-  u_int32_t ipv4_src, ipv4_dst;   /* IPv4 src/dst IP addresses */
+  u_int8_t  ip_version;
+  u_int8_t  l3_proto, ip_tos;   /* Layer 3 protocol/TOS */
+  ip_addr   ip_src, ip_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
   u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
 
@@ -126,12 +151,11 @@ struct pfring_pkthdr {
 /* ************************************************* */
 
 typedef struct {
-  u_int8_t dmac[ETH_ALEN],
-    smac[ETH_ALEN];            /* Use '0' (zero-ed MAC address) for any MAC address.
+  u_int8_t dmac[ETH_ALEN], smac[ETH_ALEN]; /* Use '0' (zero-ed MAC address) for any MAC address.
 				  This is applied to both source and destination. */
   u_int16_t vlan_id;                 /* Use '0' for any vlan */
   u_int8_t  proto;                   /* Use 0 for 'any' protocol */
-  u_int32_t host_low, host_high;     /* User '0' for any host. This is applied to both source
+  ip_addr   host_low, host_high;     /* User '0' for any host. This is applied to both source
 					and destination. */
   u_int16_t port_low, port_high;     /* All ports between port_low...port_high
 					0 means 'any' port. This is applied to both source
@@ -257,7 +281,7 @@ typedef struct {
   u_int16_t rule_id; /* Future use */
   u_int16_t vlan_id;
   u_int8_t  proto;
-  u_int32_t host_peer_a, host_peer_b;
+  ip_addr host_peer_a, host_peer_b;
   u_int16_t port_peer_a, port_peer_b;
 
   rule_action_behaviour rule_action; /* What to do in case of match */

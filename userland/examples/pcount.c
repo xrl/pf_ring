@@ -29,6 +29,7 @@ struct pcap_stat pcapStats;
 #include <netinet/in_systm.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <net/ethernet.h>     /* the L2 protocols */
 
 static struct timeval startTime;
@@ -199,6 +200,22 @@ char* intoa(unsigned int addr) {
   return(_intoa(addr, buf, sizeof(buf)));
 }
 
+/* ************************************ */
+
+inline char* in6toa(struct in6_addr addr6) {
+  static char buf[sizeof "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"];
+
+  snprintf(buf, sizeof(buf), 
+	   "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+	   addr6.s6_addr[0], addr6.s6_addr[1], addr6.s6_addr[2], 
+	   addr6.s6_addr[3], addr6.s6_addr[4], addr6.s6_addr[5], addr6.s6_addr[6], 
+	   addr6.s6_addr[7], addr6.s6_addr[8], addr6.s6_addr[9], addr6.s6_addr[10], 
+	   addr6.s6_addr[11], addr6.s6_addr[12], addr6.s6_addr[13], addr6.s6_addr[14], 
+	   addr6.s6_addr[15]);
+
+  return(buf);
+}
+
 /* ****************************************************** */
 
 char* proto2str(u_short proto) {
@@ -226,6 +243,8 @@ void dummyProcesssPacket(u_char *_deviceId,
     u_short eth_type, vlan_id;
     char buf1[32], buf2[32];
     struct ip ip;
+    struct ip6_hdr ip6;
+
     int s = (h->ts.tv_sec + thiszone) % 86400;
 
     printf("%02d:%02d:%02d.%06u ",
@@ -248,6 +267,10 @@ void dummyProcesssPacket(u_char *_deviceId,
       memcpy(&ip, p+sizeof(ehdr), sizeof(struct ip));
       printf("[%s ", intoa(ntohl(ip.ip_src.s_addr)));
       printf("-> %s] ", intoa(ntohl(ip.ip_dst.s_addr)));
+    } else if(eth_type == 0x86DD) {
+      memcpy(&ip6, p+sizeof(ehdr), sizeof(struct ip6_hdr));
+      printf("[%s ", in6toa(ip6.ip6_src));
+      printf("-> %s] ", in6toa(ip6.ip6_dst));
     } else if(eth_type == 0x0806)
       printf("[ARP]");
     else

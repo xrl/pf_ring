@@ -615,8 +615,8 @@ int pfring_add_filtering_rule(pfring *ring, filtering_rule* rule_to_add) {
   /* Sanitize entry */
   if(rule_to_add->core_fields.port_low > rule_to_add->core_fields.port_high)
     rule_to_add->core_fields.port_low = rule_to_add->core_fields.port_high;
-  if(rule_to_add->core_fields.host_low > rule_to_add->core_fields.host_high)
-    rule_to_add->core_fields.host_low = rule_to_add->core_fields.host_high;
+  if(rule_to_add->core_fields.host4_low > rule_to_add->core_fields.host4_high)
+    rule_to_add->core_fields.host4_low = rule_to_add->core_fields.host4_high;
 
   if(rule_to_add->balance_id > rule_to_add->balance_pool)
     rule_to_add->balance_id = 0;

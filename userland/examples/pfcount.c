@@ -35,6 +35,7 @@
 #include <netinet/in_systm.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <net/ethernet.h>     /* the L2 protocols */
 #include <sys/time.h>
 #include <time.h>
@@ -140,15 +141,15 @@ void add_rule(u_int add_rule) {
   memset(&rule, 0, sizeof(hash_filtering_rule));
   /* 09:40:01.158112 IP 192.168.1.233.2736 > 192.168.99.1.25: Flags [P.], seq 1070303040:1070303070, ack 3485710921, win 65461, length 30 */
   rule.proto = 6, rule.rule_id = 10; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-  rule.host_peer_a = ntohl(inet_addr("192.168.1.233"));
-  rule.host_peer_b = ntohl(inet_addr("192.168.99.1"));
+  rule.host4_peer_a = ntohl(inet_addr("192.168.1.233"));
+  rule.host4_peer_b = ntohl(inet_addr("192.168.99.1"));
 
   if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
     printf("pfring_add_hash_filtering_rule(1) failed\n");
 
   rule.proto = 6, rule.rule_id = 11; rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-  rule.host_peer_a = ntohl(inet_addr("192.168.1.233"));
-  rule.host_peer_b = ntohl(inet_addr("192.168.99.1"));
+  rule.host4_peer_a = ntohl(inet_addr("192.168.1.233"));
+  rule.host4_peer_b = ntohl(inet_addr("192.168.99.1"));
 
   if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
     printf("pfring_add_hash_filtering_rule(2) failed\n");
@@ -255,6 +256,22 @@ char* intoa(unsigned int addr) {
   return(_intoa(addr, buf, sizeof(buf)));
 }
 
+/* ************************************ */
+
+inline char* in6toa(struct in6_addr addr6) {
+  static char buf[sizeof "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"];
+
+  snprintf(buf, sizeof(buf), 
+	   "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+	   addr6.s6_addr[0], addr6.s6_addr[1], addr6.s6_addr[2], 
+	   addr6.s6_addr[3], addr6.s6_addr[4], addr6.s6_addr[5], addr6.s6_addr[6], 
+	   addr6.s6_addr[7], addr6.s6_addr[8], addr6.s6_addr[9], addr6.s6_addr[10], 
+	   addr6.s6_addr[11], addr6.s6_addr[12], addr6.s6_addr[13], addr6.s6_addr[14], 
+	   addr6.s6_addr[15]);
+
+  return(buf);
+}
+
 /* ****************************************************** */
 
 char* proto2str(u_short proto) {
@@ -287,8 +304,14 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
 	   (unsigned)h->ts.tv_usec);
     printf("[eth_type=0x%04X]", h->parsed_pkt.eth_type);
     printf("[l3_proto=%u]", (unsigned int)h->parsed_pkt.l3_proto);
-    printf("[%s:%d -> ", intoa(h->parsed_pkt.ipv4_src), h->parsed_pkt.l4_src_port);
-    printf("%s:%d] ", intoa(h->parsed_pkt.ipv4_dst), h->parsed_pkt.l4_dst_port);
+
+    printf("[%s:%d -> ", (h->parsed_pkt.eth_type == 0x86DD) ? 
+	   in6toa(h->parsed_pkt.ipv6_src) : intoa(h->parsed_pkt.ipv4_src), 
+	   h->parsed_pkt.l4_src_port);
+    printf("%s:%d] ", (h->parsed_pkt.eth_type == 0x86DD) ? 
+	   in6toa(h->parsed_pkt.ipv6_dst) : intoa(h->parsed_pkt.ipv4_dst), 
+	   h->parsed_pkt.l4_dst_port);
+
     memcpy(&ehdr, p+h->parsed_header_len, sizeof(struct ether_header));
     eth_type = ntohs(ehdr.ether_type);
     printf("[%s -> %s] ",
@@ -596,7 +619,7 @@ int main(int argc, char* argv[]) {
 	rule.rule_id = 5;
 	rule.rule_action = forward_packet_and_stop_rule_evaluation;
 	rule.core_fields.port_low = 80, rule.core_fields.port_high = 520;
-	rule.core_fields.host_low = rule.core_fields.host_high = ntohl(inet_addr("192.168.0.160"));
+	rule.core_fields.host4_low = rule.core_fields.host4_high = ntohl(inet_addr("192.168.0.160"));
 	// snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
 #endif
 	if(pfring_add_filtering_rule(pd, &rule) < 0)
