@@ -30,6 +30,7 @@
  * - Nicola Bonelli <bonelli@antifork.org>
  * - Jan Alsenz
  * - valxdater@seznam.cz
+ * - Vito Piserchia <vpiserchia@metatype.it>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1112,15 +1113,12 @@ static int parse_pkt(struct sk_buff *skb,
 
     hdr->parsed_pkt.pkt_detail.offset.l3_offset = hdr->parsed_pkt.pkt_detail.offset.eth_offset + displ + sizeof(struct ethhdr);
 
-    ip = (struct iphdr *)(skb->data +
-			  hdr->parsed_pkt.pkt_detail.offset.
-			  l3_offset);
+    ip = (struct iphdr *)(skb->data + hdr->parsed_pkt.pkt_detail.offset.l3_offset);
 
-    hdr->parsed_pkt.ipv4_src =
-      ntohl(ip->saddr), hdr->parsed_pkt.ipv4_dst =
-      ntohl(ip->daddr), hdr->parsed_pkt.l3_proto = ip->protocol;
+    hdr->parsed_pkt.ipv4_src = ntohl(ip->saddr);
+    hdr->parsed_pkt.ipv4_dst = ntohl(ip->daddr);
+    hdr->parsed_pkt.l3_proto = ip->protocol;
     hdr->parsed_pkt.ipv4_tos = ip->tos;
-
     hdr->parsed_pkt.ip_version = 4;
     ip_len  = ip->ihl*4;
   } else if (hdr->parsed_pkt.eth_type == 0x86DD /* IPv6 */) {
@@ -1137,7 +1135,7 @@ static int parse_pkt(struct sk_buff *skb,
     hdr->parsed_pkt.ipv6_dst = ipv6->daddr;
 
     hdr->parsed_pkt.l3_proto = ipv6->nexthdr;
-    hdr->parsed_pkt.ipv6_tos = (u_int8_t)((ntohl((u_int32_t *)ipv6) && 0x0ff00000) >> 20);
+    hdr->parsed_pkt.ipv6_tos = ipv6->priority; /* IPv6 class of service */
 
     /*
       RFC2460 4.1  Extension Header Order
@@ -1384,7 +1382,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 				u_int * last_matched_plugin,
 				rule_action_behaviour * behaviour)
 {
-  int debug = 1;
+  int debug = 0;
   u_int8_t empty_mac[ETH_ALEN] = { 0 }; /* NULL MAC address */
 
   if(debug) printk("[PF_RING] match_filtering_rule()\n");
@@ -2037,9 +2035,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	    fwd_pkt = 1;
 
 	    hash_bucket =
-	      (filtering_hash_bucket *) kcalloc(1,
-						sizeof(filtering_hash_bucket),
-						GFP_ATOMIC);
+	      (filtering_hash_bucket *) kcalloc(1, sizeof(filtering_hash_bucket),
+						GFP_KERNEL);
 
 	    if(hash_bucket) {
 	      int rc = 0;
@@ -2054,14 +2051,22 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	      hash_bucket->rule.reflector_device_name[0] = '\0';
 	      hash_bucket->rule.internals.jiffies_last_match = jiffies;	/* Avoid immediate rule purging */
 	      hash_bucket->rule.internals.reflector_dev = NULL;
+	      hash_bucket->rule.plugin_action.plugin_id = 0;
 
+	      write_lock(&pfr->ring_rules_lock);
 	      rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
 	      pfr->num_filtering_rules++;
 
-	      if(rc != 0) {
+	      if((rc != 0) && (rc != -EEXIST)) {
+		write_unlock(&pfr->ring_rules_lock);
 		kfree(hash_bucket);
 		return(-1);
 	      } else {
+		if(rc != -EEXIST) /* Rule already existing */
+		  pfr->num_filtering_rules++;		
+		
+		write_unlock(&pfr->ring_rules_lock);
+		
 		if(debug)
 		  printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
 			 ((hash_bucket->rule.host4_peer_a >> 24) & 0xff), ((hash_bucket->rule.host4_peer_a >> 16) & 0xff),
@@ -2717,14 +2722,12 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     return(-EFAULT);
   }
 
-  if(pfr->filtering_hash[hash_value] == NULL) {
+  if((pfr->num_filtering_rules > 0) && (pfr->filtering_hash[hash_value] == NULL)) {
     if(add_rule)
-      pfr->filtering_hash[hash_value] = rule, rule->next =
-	NULL, rc = 0;
+      pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
     else {
       if(debug)
-	printk("[PF_RING] handle_filtering_hash_bucket() returned %d [1]\n",
-	       -1);
+	printk("[PF_RING] handle_filtering_hash_bucket() returned %d [1]\n", -1);
       return(-1);	/* Unable to find the specified rule */
     }
   } else {
@@ -2736,10 +2739,9 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 	  (&bucket->rule, &rule->rule)) {
 	if(add_rule) {
 	  if(debug)
-	    printk("[PF_RING] Duplicate found "
-		   "while adding rule: discarded\n");
+	    printk("[PF_RING] Duplicate found while adding rule: discarded\n");
 	  /* kfree(rule); */
-	  return(-EFAULT);
+	  return(-EEXIST);
 	} else {
 	  /* We've found the bucket to delete */
 
@@ -4152,12 +4154,15 @@ static int ring_setsockopt(struct socket *sock,
 
       write_lock(&pfr->ring_rules_lock);
       rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */ );
-      pfr->num_filtering_rules++;
-      write_unlock(&pfr->ring_rules_lock);
 
-      if(rc != 0) {
+      if((rc != 0) && (rc != -EEXIST)) {
+	write_unlock(&pfr->ring_rules_lock);
 	kfree(rule);
 	return(rc);
+      } else {
+	if(rc != -EEXIST)
+	  pfr->num_filtering_rules++;
+	write_unlock(&pfr->ring_rules_lock);
       }
     } else {
       printk("[PF_RING] Bad rule length (%d): discarded\n",
@@ -4218,12 +4223,15 @@ static int ring_setsockopt(struct socket *sock,
 	return -EFAULT;
 
       write_lock(&pfr->ring_rules_lock);
-      rc = handle_filtering_hash_bucket(pfr, &rule,
-					0 /* delete */ );
-      pfr->num_filtering_rules--;
-      write_unlock(&pfr->ring_rules_lock);
-      if(rc != 0)
+      rc = handle_filtering_hash_bucket(pfr, &rule, 0 /* delete */ );
+
+      if(rc != 0) {
+	write_unlock(&pfr->ring_rules_lock);
 	return(rc);
+      } else {
+	pfr->num_filtering_rules--;
+	write_unlock(&pfr->ring_rules_lock);
+      }
     } else
       return -EFAULT;
     break;
