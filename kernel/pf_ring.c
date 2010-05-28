@@ -2055,25 +2055,24 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
 	      write_lock(&pfr->ring_rules_lock);
 	      rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
-	      pfr->num_filtering_rules++;
 
 	      if((rc != 0) && (rc != -EEXIST)) {
-		write_unlock(&pfr->ring_rules_lock);
-		kfree(hash_bucket);
-		return(-1);
+	    	  write_unlock(&pfr->ring_rules_lock);
+	    	  kfree(hash_bucket);
+	    	  return(-1);
 	      } else {
-		if(rc != -EEXIST) /* Rule already existing */
-		  pfr->num_filtering_rules++;		
+	    	  if(rc != -EEXIST) /* Rule already existing */
+	    		  pfr->num_filtering_rules++;
 		
-		write_unlock(&pfr->ring_rules_lock);
-		
-		if(debug)
-		  printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
-			 ((hash_bucket->rule.host4_peer_a >> 24) & 0xff), ((hash_bucket->rule.host4_peer_a >> 16) & 0xff),
-			 ((hash_bucket->rule.host4_peer_a >> 8) & 0xff), ((hash_bucket->rule.host4_peer_a >> 0) & 0xff),
-			 hash_bucket->rule.port_peer_a, ((hash_bucket->rule.host4_peer_b >> 24) & 0xff),
-			 ((hash_bucket->rule.host4_peer_b >> 16) & 0xff), ((hash_bucket->rule.host4_peer_b >> 8) & 0xff),
-			 ((hash_bucket->rule.host4_peer_b >> 0) & 0xff), hash_bucket->rule.port_peer_b, pfr->num_filtering_rules);
+	    	  write_unlock(&pfr->ring_rules_lock);
+
+	    	  if(debug)
+	    		  printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
+	    				  ((hash_bucket->rule.host4_peer_a >> 24) & 0xff), ((hash_bucket->rule.host4_peer_a >> 16) & 0xff),
+	    				  ((hash_bucket->rule.host4_peer_a >> 8) & 0xff), ((hash_bucket->rule.host4_peer_a >> 0) & 0xff),
+	    				  hash_bucket->rule.port_peer_a, ((hash_bucket->rule.host4_peer_b >> 24) & 0xff),
+	    				  ((hash_bucket->rule.host4_peer_b >> 16) & 0xff), ((hash_bucket->rule.host4_peer_b >> 8) & 0xff),
+	    				  ((hash_bucket->rule.host4_peer_b >> 0) & 0xff), hash_bucket->rule.port_peer_b, pfr->num_filtering_rules);
 	      }
 	    }
 	    break;
@@ -2722,7 +2721,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
     return(-EFAULT);
   }
 
-  if((pfr->num_filtering_rules > 0) && (pfr->filtering_hash[hash_value] == NULL)) {
+  if(pfr->filtering_hash[hash_value] == NULL) {
     if(add_rule)
       pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
     else {
