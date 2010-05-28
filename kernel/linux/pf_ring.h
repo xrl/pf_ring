@@ -145,6 +145,7 @@ struct pfring_pkthdr {
 
 /* *********************************** */
 
+#define NO_PLUGIN_ID        0
 #define MAX_PLUGIN_ID      64
 #define MAX_PLUGIN_FIELDS  32
 
