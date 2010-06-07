@@ -2034,25 +2034,33 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
 	  fwd_pkt = 1;
 
-	  hash_bucket =
-	    (filtering_hash_bucket *) kcalloc(1, sizeof(filtering_hash_bucket),
-					      GFP_KERNEL);
-
+	  hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket),
+							  GFP_KERNEL);
+	  
 	  if(hash_bucket) {
 	    int rc = 0;
-
-	    hash_bucket->rule.vlan_id = hdr->parsed_pkt.vlan_id;
-	    hash_bucket->rule.proto = hdr->parsed_pkt.l3_proto;
-	    hash_bucket->rule.host4_peer_a = hdr->parsed_pkt.ipv4_src;
-	    hash_bucket->rule.host4_peer_b = hdr->parsed_pkt.ipv4_dst;
-	    hash_bucket->rule.port_peer_a = hdr->parsed_pkt.l4_src_port;
-	    hash_bucket->rule.port_peer_b = hdr->parsed_pkt.l4_dst_port;
-	    hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	    hash_bucket->rule.reflector_device_name[0] = '\0';
-	    hash_bucket->rule.internals.jiffies_last_match = jiffies;	/* Avoid immediate rule purging */
-	    hash_bucket->rule.internals.reflector_dev = NULL;
-	    hash_bucket->rule.plugin_action.plugin_id = NO_PLUGIN_ID;
-
+	    
+	    if(last_matched_plugin
+	       && plugin_registration[last_matched_plugin] != NULL
+	       && plugin_registration[last_matched_plugin]->pfring_plugin_add_rule != NULL
+	       && (plugin_registration[last_matched_plugin]->pfring_plugin_add_rule(entry, hdr, hash_bucket) == 0) ) {
+	      if(debug) {
+		printk("pfring_plugin_add_rule(entry, hdr, hash_bucket) done!\n");
+	      }
+	    } else {
+	      hash_bucket->rule.vlan_id = hdr->parsed_pkt.vlan_id;
+	      hash_bucket->rule.proto = hdr->parsed_pkt.l3_proto;
+	      hash_bucket->rule.host4_peer_a = hdr->parsed_pkt.ipv4_src;
+	      hash_bucket->rule.host4_peer_b = hdr->parsed_pkt.ipv4_dst;
+	      hash_bucket->rule.port_peer_a = hdr->parsed_pkt.l4_src_port;
+	      hash_bucket->rule.port_peer_b = hdr->parsed_pkt.l4_dst_port;
+	      hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
+	      hash_bucket->rule.reflector_device_name[0] = '\0';
+	      hash_bucket->rule.internals.jiffies_last_match = jiffies;/* Avoid immediate rule purging */
+	      hash_bucket->rule.internals.reflector_dev = NULL;
+	      hash_bucket->rule.plugin_action.plugin_id = NO_PLUGIN_ID;
+	    }
+	    
 	    write_lock(&pfr->ring_rules_lock);
 	    rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
 
@@ -2093,15 +2101,13 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	  /* The action has already been performed inside match_filtering_rule()
 	     hence instead of stopping rule evaluation, the next rule
 	     will be evaluated */
-	} else if(entry->rule.rule_action ==
-		  reflect_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 0;
-	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ);
-	} else if(entry->rule.rule_action ==
-		  reflect_packet_and_continue_rule_evaluation) {
+	} else if(entry->rule.rule_action == reflect_packet_and_stop_rule_evaluation) {
 	  fwd_pkt = 0;
 	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ);
 	  break;
+	} else if(entry->rule.rule_action == reflect_packet_and_continue_rule_evaluation) {
+	  fwd_pkt = 0;
+	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ);
 	}
       }
     }  /* for */

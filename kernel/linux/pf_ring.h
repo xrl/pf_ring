@@ -610,6 +610,12 @@ typedef int (*plugin_get_stats)(struct ring_opt *pfr,
 				filtering_hash_bucket  *hash_bucket,
 				u_char* stats_buffer, u_int stats_buffer_len);
 
+/* Build a new rule when forward_packet_add_rule_and_stop_rule_evaluation is specified
+   return 0 in case of success , an error code (< 0) otherwise */
+typedef int (*plugin_add_rule)(filtering_rule_element *rule,
+			       struct pfring_pkthdr *hdr,
+			       filtering_hash_bucket *hash_bucket);
+
 /* Called when a ring is disposed */
 typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
 
@@ -621,6 +627,7 @@ struct pfring_plugin_registration {
   plugin_handle_skb    pfring_plugin_handle_skb;
   plugin_get_stats     pfring_plugin_get_stats;
   plugin_free_ring_mem pfring_plugin_free_ring_mem;
+  plugin_add_rule      pfring_plugin_add_rule;
 };
 
 typedef int   (*register_pfring_plugin)(struct pfring_plugin_registration
