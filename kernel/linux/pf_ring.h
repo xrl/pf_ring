@@ -11,6 +11,8 @@
 
 #ifdef __KERNEL__
 #include <linux/in6.h>
+#else
+#include <netinet/in.h>
 #endif /* __KERNEL__ */
 
 #define INCLUDE_MAC_INFO
