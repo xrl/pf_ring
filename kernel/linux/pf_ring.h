@@ -70,6 +70,10 @@
 
 #define REFLECTOR_NAME_LEN                 8
 
+#ifndef IN6ADDR_ANY_INIT
+#define IN6ADDR_ANY_INIT { { { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } } }
+#endif
+
 /* *********************************** */
 
 struct pkt_aggregation_info {

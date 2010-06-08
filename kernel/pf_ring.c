@@ -251,7 +251,28 @@ MODULE_PARM_DESC(enable_ip_defrag,
 
 /* ***************** Legacy code ************************ */
 
-#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24))
+static inline void skb_reset_network_header(struct sk_buff *skb) {
+  /* skb->network_header = skb->data - skb->head; */
+}
+
+static inline void skb_reset_transport_header(struct sk_buff *skb) {
+  /* skb->transport_header = skb->data - skb->head; */
+}
+
+static inline void skb_set_network_header(struct sk_buff *skb, const int offset) {
+  skb_reset_network_header(skb);
+  /* skb->network_header += offset; */
+}
+
+static inline void skb_copy_to_linear_data(struct sk_buff *skb,
+                                           const void *from,
+                                           const unsigned int len) {
+  memcpy(skb->data, from, len);
+}
+#endif
+
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
   return(struct iphdr *)skb->nh.iph;
@@ -2337,8 +2358,12 @@ static int skb_ring_handler(struct sk_buff *skb,
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
 #endif
 
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
+  channel_id = skb_get_rx_queue(skb);
+#endif
+  
 #if defined(RING_DEBUG)
-  // printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n", channel_id, num_rx_channels);
+  printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n", channel_id, num_rx_channels);
 #endif
 
   if((!skb) /* Invalid skb */
@@ -4829,6 +4854,7 @@ int add_device_to_ring_list(struct net_device *dev) {
 
 /* ************************************ */
 
+
 static int ring_notifier(struct notifier_block *this, unsigned long msg, void *data)
 {
   struct net_device *dev = data;
@@ -4838,9 +4864,9 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   case NETDEV_UP:           break;
   case NETDEV_DOWN:         break;
   case NETDEV_REGISTER:
-#ifdef RING_DEBUG
-    printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p]\n",
-	   dev->name, dev->pfring_ptr);
+#ifndef RING_DEBUG
+    printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
+	   dev->name, dev->pfring_ptr, &ring_hooks);
 #endif
     if(dev->pfring_ptr == NULL) {
       dev->pfring_ptr = &ring_hooks;
@@ -4849,7 +4875,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     break;
 
   case NETDEV_UNREGISTER:
-#ifdef RING_DEBUG
+#ifndef RING_DEBUG
     printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
 	   dev->name, dev->pfring_ptr);
 #endif
