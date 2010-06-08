@@ -736,53 +736,38 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
       if(fsi) {
 	rlen = sprintf(buf, "Bound Device   : %s\n",
 		       pfr->ring_netdev->name);
-	rlen += sprintf(buf + rlen,
-			"Slot Version   : %d [%s]\n",
+	rlen += sprintf(buf + rlen, "Slot Version   : %d [%s]\n",
 			fsi->version, RING_VERSION);
-	rlen += sprintf(buf + rlen,
-			"Active         : %d\n",
+	rlen += sprintf(buf + rlen, "Active         : %d\n",
 			pfr->ring_active);
 	rlen += sprintf(buf + rlen, "Sampling Rate  : %d\n",
 			pfr->sample_rate);
 	rlen += sprintf(buf + rlen, "Appl. Name     : %s\n",
-			pfr->appl_name ? pfr->
-			appl_name : "<unknown>");
+			pfr->appl_name ? pfr->appl_name : "<unknown>");
 	rlen += sprintf(buf + rlen, "IP Defragment  : %s\n",
 			enable_ip_defrag ? "Yes" : "No");
 	rlen += sprintf(buf + rlen, "BPF Filtering  : %s\n",
 			pfr->bpfFilter ? "Enabled" : "Disabled");
-	rlen += sprintf(buf + rlen, "# Filt. Rules  : %d\n",
+	rlen += sprintf(buf + rlen, "# Filt. Rules  : %d\n", 
 			pfr->num_filtering_rules);
-	rlen += sprintf(buf + rlen, "Cluster Id     : %d\n",
-			pfr->cluster_id);
-	rlen += sprintf(buf + rlen, "Channel Id     : %d\n",
-			pfr->channel_id);
-	rlen += sprintf(buf + rlen, "Tot Slots      : %d\n",
-			fsi->tot_slots);
-	rlen += sprintf(buf + rlen, "Bucket Len     : %d\n",
-			fsi->data_len);
-	rlen += sprintf(buf + rlen,
-			"Slot Len       : %d [bucket+header]\n",
+	rlen += sprintf(buf + rlen, "Cluster Id     : %d\n", pfr->cluster_id);
+	rlen += sprintf(buf + rlen, "Channel Id     : %d\n", pfr->channel_id);
+	rlen += sprintf(buf + rlen, "Tot Slots      : %d\n", fsi->tot_slots);
+	rlen += sprintf(buf + rlen, "Bucket Len     : %d\n", fsi->data_len);
+	rlen += sprintf(buf + rlen, "Slot Len       : %d [bucket+header]\n",
 			fsi->slot_len);
-	rlen += sprintf(buf + rlen, "Tot Memory     : %d\n",
-			fsi->tot_mem);
-	rlen += sprintf(buf + rlen,
-			"Tot Packets    : %lu\n",
+	rlen += sprintf(buf + rlen, "Tot Memory     : %d\n", fsi->tot_mem);
+	rlen += sprintf(buf + rlen, "Tot Packets    : %lu\n",
 			(unsigned long)fsi->tot_pkts);
-	rlen += sprintf(buf + rlen,
-			"Tot Pkt Lost   : %lu\n",
+	rlen += sprintf(buf + rlen, "Tot Pkt Lost   : %lu\n",
 			(unsigned long)fsi->tot_lost);
-	rlen += sprintf(buf + rlen,
-			"Tot Insert     : %lu\n",
+	rlen += sprintf(buf + rlen, "Tot Insert     : %lu\n",
 			(unsigned long)fsi->tot_insert);
-	rlen += sprintf(buf + rlen,
-			"Tot Read       : %lu\n",
+	rlen += sprintf(buf + rlen, "Tot Read       : %lu\n",
 			(unsigned long)fsi->tot_read);
-	rlen += sprintf(buf + rlen,
-			"Tot Fwd Ok     : %lu\n",
+	rlen += sprintf(buf + rlen, "Tot Fwd Ok     : %lu\n",
 			(unsigned long)fsi->tot_fwd_ok);
-	rlen += sprintf(buf + rlen,
-			"Tot Fwd Errors : %lu\n",
+	rlen += sprintf(buf + rlen, "Tot Fwd Errors : %lu\n",
 			(unsigned long)fsi->tot_fwd_notok);
 	rlen += sprintf(buf + rlen, "Num Free Slots : %u\n",
 			get_num_ring_free_slots(pfr));
@@ -811,7 +796,7 @@ static int ring_proc_get_plugin_info(char *buf, char **start, off_t offset,
 
   rlen += sprintf(buf + rlen, "ID\tPlugin\n");
 
-  for (i = 0; i < MAX_PLUGIN_ID; i++) {
+  for(i = 0; i < MAX_PLUGIN_ID; i++) {
     tmp = plugin_registration[i];
     if(tmp) {
       rlen += sprintf(buf + rlen, "%d\t%s [%s]\n",
@@ -967,7 +952,7 @@ static int ring_alloc_mem(struct sock *sk)
   {
     int i;
 
-    for (i = 0; i < pfr->slots_info->tot_slots; i++) {
+    for(i = 0; i < pfr->slots_info->tot_slots; i++) {
       unsigned long idx = i * pfr->slots_info->slot_len;
       FlowSlot *slot = (FlowSlot *) & pfr->ring_slots[idx];
       slot->magic = RING_MAGIC_VALUE;
@@ -1025,7 +1010,7 @@ static inline void ring_insert(struct sock *sk)
  *  - check if this is the element we want to delete
  *  - if it is, remove it from the list, and free it.
  *
- * stop when we find the one we're looking for (break),
+ * stop when we find the one we're looking for(break),
  * or when we reach the end of the list.
  */
 static inline void ring_remove(struct sock *sk)
@@ -1478,7 +1463,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 		 hdr->parsed_pkt.pkt_detail.offset.
 		 payload_offset);
 
-	  for (i = 0; i < payload_len; i++)
+	  for(i = 0; i < payload_len; i++)
 	    printk("[%d/%c]", i, payload[i] & 0xFF);
 	  printk("]\n");
 	}
@@ -1488,7 +1473,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 	if(debug)
 	  printk("[PF_RING] Attempt to match [%s]\n", payload);
 
-	for (i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++) {
+	for(i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++) {
 	  if(debug)
 	    printk("[PF_RING] Attempt to match pattern %d\n", i);
 	  rc = (textsearch_find_continuous
@@ -1653,11 +1638,15 @@ static void send_queued_packets(struct ring_opt *_pfr)
 {
   FlowSlot *theSlot;
   struct ring_opt *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
-  int idx = pfr->slots_info->forward_idx;
+  int idx;
+
+  if(pfr->ring_netdev == &none_dev) return;
+  else idx = pfr->slots_info->forward_idx;
   
 #if defined(RING_DEBUG)
   printk("[PF_RING] ==> send_queued_packets(fwd=%d/insert=%d/remove=%d)\n", 
-	 pfr->slots_info->forward_idx, pfr->slots_info->insert_idx, pfr->slots_info->remove_idx);
+	 pfr->slots_info->forward_idx, 
+	 pfr->slots_info->insert_idx, pfr->slots_info->remove_idx);
 #endif
 
   while(idx != pfr->slots_info->remove_idx) {
@@ -1669,7 +1658,8 @@ static void send_queued_packets(struct ring_opt *_pfr)
     if((theSlot = get_slot(pfr, idx)) == NULL) break;
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING] ==> slot_state(id=%d, state=%d)\n", idx, theSlot->slot_state);
+    printk("[PF_RING] ==> slot_state(id=%d, state=%d)\n", 
+	   idx, theSlot->slot_state);
 #endif
       
     if(theSlot->slot_state == 2) {
@@ -1768,6 +1758,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   memcpy(ring_bucket, hdr, sizeof(struct pfring_pkthdr)); /* Copy extended packet header */
 
   idx++;
+
   if(idx == pfr->slots_info->tot_slots)
     pfr->slots_info->insert_idx = 0;
   else
@@ -1803,7 +1794,7 @@ static void free_parse_memory(struct parse_buffer *parse_memory_buffer[])
 {
   int i;
 
-  for (i = 1; i <= max_registered_plugin_id; i++)
+  for(i = 1; i <= max_registered_plugin_id; i++)
     if(parse_memory_buffer[i]) {
       if(parse_memory_buffer[i]->mem != NULL) {
 	kfree(parse_memory_buffer[i]->mem);
@@ -1882,10 +1873,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
   u_int last_matched_plugin = 0, debug = 0;
   u_char hash_found = 0;
   struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
-  /* This is a memory holder
-     for storing parsed packet information
-     that will then be freed when the packet
-     has been handled
+
+  /* This is a memory holder for storing parsed packet information
+     that will then be freed when the packet has been handled
   */
 
 #if defined(RING_DEBUG)
@@ -1916,12 +1906,11 @@ static int add_skb_to_ring(struct sk_buff *skb,
     if(res == 0) {
       /* Filter failed */
 #if defined(RING_DEBUG)
-      printk
-	("[PF_RING] add_skb_to_ring(skb): Filter failed [len=%d][tot=%llu]"
-	 "[insertIdx=%d][pkt_type=%d][cloned=%d]\n",
-	 (int)skb->len, pfr->slots_info->tot_pkts,
-	 pfr->slots_info->insert_idx, skb->pkt_type,
-	 skb->cloned);
+      printk("[PF_RING] add_skb_to_ring(skb): Filter failed [len=%d][tot=%llu]"
+	     "[insertIdx=%d][pkt_type=%d][cloned=%d]\n",
+	     (int)skb->len, pfr->slots_info->tot_pkts,
+	     pfr->slots_info->insert_idx, skb->pkt_type,
+	     skb->cloned);
 #endif
       atomic_set(&pfr->num_ring_users, 0);
       return(-1);
@@ -2017,9 +2006,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	break;
       case reflect_packet_and_continue_rule_evaluation:
 	fwd_pkt = 0;
-	reflect_packet(skb, pfr,
-		       hash_bucket->rule.internals.
-		       reflector_dev, displ);
+	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ);
 	hash_found = 0;	/* This way we also evaluate the list of rules */
 	break;
       }
@@ -2113,12 +2100,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
 	  fwd_pkt = 1;
 	  break;
-	} else if(entry->rule.rule_action ==
-		  dont_forward_packet_and_stop_rule_evaluation) {
+	} else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
 	  fwd_pkt = 0;
 	  break;
-	} else if(entry->rule.rule_action ==
-		  execute_action_and_continue_rule_evaluation) {
+	} else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
 	  /* The action has already been performed inside match_filtering_rule()
 	     hence instead of stopping rule evaluation, the next rule
 	     will be evaluated */
@@ -2307,7 +2292,7 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
     }
     read_unlock_bh(&ring_mgmt_lock);
 
-    for (i = MAX_PLUGIN_ID - 1; i > 0; i--) {
+    for(i = MAX_PLUGIN_ID - 1; i > 0; i--) {
       if(plugin_registration[i] != NULL) {
 	max_registered_plugin_id = i;
 	break;
@@ -2964,10 +2949,16 @@ static int ring_release(struct socket *sock)
   }
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] called ring_release\n");
+  printk("[PF_RING] called ring_release(%s)\n", pfr->ring_netdev->name);
 #endif
 
-  send_queued_packets(pfr);
+  if(pfr->slots_info) {
+    if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx) {
+      write_lock_bh(&pfr->ring_index_lock);
+      send_queued_packets(pfr); /* Flush packets in queue (if any) */
+      write_unlock_bh(&pfr->ring_index_lock);
+    }
+  }
 
   /*
     The calls below must be placed outside the
@@ -3012,7 +3003,7 @@ static int ring_release(struct socket *sock)
 	}
       }
 
-      for (i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++)
+      for(i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++)
 	textsearch_destroy(rule->pattern[i]);
 
       list_del(ptr);
@@ -3024,7 +3015,7 @@ static int ring_release(struct socket *sock)
     if(pfr->filtering_hash) {
       int i;
 
-      for (i = 0; i < DEFAULT_RING_HASH_SIZE; i++) {
+      for(i = 0; i < DEFAULT_RING_HASH_SIZE; i++) {
 	if(pfr->filtering_hash[i] != NULL) {
 	  filtering_hash_bucket *scan =
 	    pfr->filtering_hash[i], *next;
@@ -3387,14 +3378,22 @@ unsigned int ring_poll(struct file *file,
 {
   FlowSlot *slot;
   struct ring_opt *pfr = ring_sk(sock->sk);
-  int rc;
+  int rc, mask = 0;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] -- poll called\n");
 #endif
 
   if(pfr->dna_device == NULL) {
-    /* PF_RING mode */
+    /* PF_RING mode (No DNA) */
+
+    if(pfr->slots_info) {
+      if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx) {
+	write_lock_bh(&pfr->ring_index_lock);
+	send_queued_packets(pfr); /* Flush packets in queue (if any) */
+	write_unlock_bh(&pfr->ring_index_lock);
+      }
+    }
 
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll called (non DNA device)\n");
@@ -3413,9 +3412,9 @@ unsigned int ring_poll(struct file *file,
 #endif
 
     if((slot != NULL) && (slot->slot_state == 1))
-      return(POLLIN | POLLRDNORM);
-    else
-      return(0);
+      mask |= POLLIN | POLLRDNORM;
+
+    return(mask);
   } else {
     /* DNA mode */
 
@@ -3484,13 +3483,13 @@ int remove_from_cluster_list(struct ring_cluster *el, struct sock *sock)
 {
   int i, j;
 
-  for (i = 0; i < CLUSTER_LEN; i++)
+  for(i = 0; i < CLUSTER_LEN; i++)
     if(el->sk[i] == sock) {
       el->num_cluster_elements--;
 
       if(el->num_cluster_elements > 0) {
 	/* The cluster contains other elements */
-	for (j = i; j < CLUSTER_LEN - 1; j++)
+	for(j = i; j < CLUSTER_LEN - 1; j++)
 	  el->sk[j] = el->sk[j + 1];
 
 	el->sk[CLUSTER_LEN - 1] = NULL;
@@ -3543,7 +3542,7 @@ static int set_master_ring(struct sock *sock,
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] set_master_ring(%s=%d)\n",
-	 pfr->ring_netdev->name, pfr->ring_id);
+	 pfr->ring_netdev->name, master_socket_id);
 #endif
 
   /* Avoid the ring to be manipulated while playing with it */
@@ -3686,7 +3685,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr,
 
   /* Free filtering hash rules inactive for more than rule_inactivity seconds */
   if(pfr->filtering_hash != NULL) {
-    for (i = 0; i < DEFAULT_RING_HASH_SIZE; i++) {
+    for(i = 0; i < DEFAULT_RING_HASH_SIZE; i++) {
       if(pfr->filtering_hash[i] != NULL) {
 	filtering_hash_bucket *scan =
 	  pfr->filtering_hash[i], *next, *prev = NULL;
@@ -4093,7 +4092,7 @@ static int ring_setsockopt(struct socket *sock,
 
 	  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
 
-	  for (i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
+	  for(i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
 	    textsearch_destroy(entry->pattern[i]);
 	  memcpy(entry->pattern, rule->pattern,
 		 sizeof(struct ts_config *) * MAX_NUM_PATTERN);
@@ -4214,7 +4213,7 @@ static int ring_setsockopt(struct socket *sock,
 	if(entry->rule.rule_id == rule_id) {
 	  int i;
 
-	  for (i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
+	  for(i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
 	    textsearch_destroy(entry->pattern[i]);
 	  list_del(ptr);
 	  pfr->num_filtering_rules--;
@@ -5014,7 +5013,7 @@ static int __init ring_init(void)
   INIT_LIST_HEAD(&ring_aware_device_list);
   INIT_LIST_HEAD(&ring_dna_devices_list);
 
-  for (i = 0; i < MAX_NUM_DEVICES; i++)
+  for(i = 0; i < MAX_NUM_DEVICES; i++)
     INIT_LIST_HEAD(&device_ring_list[i]);
 
   memset(&any_dev, 0, sizeof(any_dev));
