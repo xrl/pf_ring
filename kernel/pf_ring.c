@@ -1718,9 +1718,9 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   if((theSlot == NULL) || (theSlot->slot_state != 0 /* Full */)) {
     /* No room left */
     pfr->slots_info->tot_lost++;
-    //#if defined(RING_DEBUG)
+#if defined(RING_DEBUG)
     printk("[PF_RING] ==> slot(id=%d, state=%d) is full\n", idx, theSlot->slot_state);
-    //#endif
+#endif
 
     write_unlock_bh(&pfr->ring_index_lock);
     return;
