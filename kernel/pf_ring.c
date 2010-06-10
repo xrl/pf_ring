@@ -251,6 +251,10 @@ MODULE_PARM_DESC(enable_ip_defrag,
 
 /* ***************** Legacy code ************************ */
 
+#if defined(RHEL_MAJOR) && (RHEL_MAJOR == 5) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
+/* Redhat backports these functions to 2.6.18 so do nothing */
+#else
+
 #if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24))
 static inline void skb_reset_network_header(struct sk_buff *skb) {
   /* skb->network_header = skb->data - skb->head; */
@@ -270,7 +274,8 @@ static inline void skb_copy_to_linear_data(struct sk_buff *skb,
                                            const unsigned int len) {
   memcpy(skb->data, from, len);
 }
-#endif
+#endif /* KERNEL_VERSION */
+#endif /* RH_MAJOR */
 
 #if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
