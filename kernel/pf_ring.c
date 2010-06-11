@@ -47,6 +47,7 @@
  * Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  *
  */
+
 #include <linux/version.h>
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
@@ -189,7 +190,7 @@ static int reflect_packet(struct sk_buff *skb,
 /* Forward */
 static struct proto_ops ring_ops;
 
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
 static struct proto ring_proto;
 #endif
 
@@ -218,7 +219,13 @@ static unsigned int enable_ip_defrag = 0;
 static unsigned int transparent_mode = standard_linux_path;
 static u_int32_t ring_id_serial = 0;
 
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
+#if defined(RHEL_RELEASE_CODE)
+#if(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(4,8))
+#define REDHAT_PATCHED_KERNEL
+#endif
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16)) || defined(REDHAT_PATCHED_KERNEL)
 module_param(num_slots, uint, 0644);
 module_param(transparent_mode, uint, 0644);
 module_param(enable_tx_capture, uint, 0644);
@@ -283,6 +290,7 @@ static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
   return(struct iphdr *)skb->nh.iph;
 }
 
+#ifndef REDHAT_PATCHED_KERNEL
 static inline void skb_set_network_header(struct sk_buff *skb, const int offset)
 {
   skb->nh.iph = (struct iphdr *)skb->data + offset;
@@ -297,6 +305,7 @@ static inline void skb_reset_transport_header(struct sk_buff *skb)
 {
   ;
 }
+#endif
 #endif
 
 /* ***** Code taken from other kernel modules ******** */
@@ -1447,6 +1456,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
       return(0);
   }
 
+#ifdef CONFIG_TEXTSEARCH
   if(rule->pattern[0] != NULL) {
     if(debug)
       printk("[PF_RING] pattern\n");
@@ -1499,6 +1509,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     } else
       return(0);	/* No payload data */
   }
+#endif
 
   if((rule->rule.extended_fields.filter_plugin_id > 0)
      && (rule->rule.extended_fields.filter_plugin_id < MAX_PLUGIN_ID)
@@ -2808,7 +2819,11 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 /* ********************************** */
 
 static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
-		      struct packet_type *pt, struct net_device *orig_dev)
+		      struct packet_type *pt
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
+		      , struct net_device *orig_dev
+#endif
+		      )
 {
   int rc;
 
@@ -2988,15 +3003,16 @@ static int ring_release(struct socket *sock)
   if(pfr->ring_netdev != &none_dev) {
     list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
       filtering_rule_element *rule;
+#ifdef CONFIG_TEXTSEARCH
       int i;
+#endif
 
       rule = list_entry(ptr, filtering_rule_element, list);
 
       if(plugin_registration[rule->rule.plugin_action.plugin_id]
 	 && plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_free_ring_mem) {
 	/* Custom free function */
-	plugin_registration[rule->rule.plugin_action.
-			    plugin_id]->pfring_plugin_free_ring_mem(rule);
+	plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_free_ring_mem(rule);
       } else {
 #ifdef DEBUG
 	printk("[PF_RING] --> default_free [rule->rule.plugin_action.plugin_id=%d]\n",
@@ -3008,8 +3024,10 @@ static int ring_release(struct socket *sock)
 	}
       }
 
+#ifdef CONFIG_TEXTSEARCH
       for(i = 0; (i < MAX_NUM_PATTERN) && (rule->pattern[i] != NULL); i++)
 	textsearch_destroy(rule->pattern[i]);
+#endif
 
       list_del(ptr);
       free_filtering_rule(&rule->rule);
@@ -3193,24 +3211,22 @@ static int do_memory_mmap(struct vm_area_struct *vma,
   while(size > 0) {
     int rc;
 
-    if(mode == 0) {
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
-      page = vmalloc_to_pfn(ptr);
-      rc = remap_pfn_range(vma, start, page, PAGE_SIZE,
-			   PAGE_SHARED);
-#else
-      page = vmalloc_to_page(ptr);
-      page = kvirt_to_pa(ptr);
-      rc = remap_page_range(vma, start, page, PAGE_SIZE,
-			    PAGE_SHARED);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11))
+#define remap_pfn_range(a, b, c, d, e) remap_page_range(a, b, c, d, e)
 #endif
+
+    if(mode == 0) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
+      page = vmalloc_to_pfn(ptr);
+#else
+      page = kvirt_to_pa((unsigned long)ptr);
+#endif
+      rc = remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
     } else if(mode == 1) {
-      rc = remap_pfn_range(vma, start,
-			   __pa(ptr) >> PAGE_SHIFT,
+      rc = remap_pfn_range(vma, start, __pa(ptr) >> PAGE_SHIFT,
 			   PAGE_SIZE, PAGE_SHARED);
     } else {
-      rc = remap_pfn_range(vma, start,
-			   ((unsigned long)ptr) >> PAGE_SHIFT,
+      rc = remap_pfn_range(vma, start, ((unsigned long)ptr) >> PAGE_SHIFT,
 			   PAGE_SIZE, PAGE_SHARED);
     }
 
@@ -4061,21 +4077,18 @@ static int ring_setsockopt(struct socket *sock,
 						  | TS_IGNORECASE
 #endif
 						  );
-#else
-	  rule->pattern[idx] = NULL;
-#endif
-
 	  if(rule->pattern[idx])
-	    printk("[PF_RING] Compiled pattern '%s' [idx=%d]\n",
-		   pattern, idx);
-
+	    printk("[PF_RING] Compiled pattern '%s' [idx=%d]\n", pattern, idx);
+#endif
 	  if(pipe)
 	    pattern = &pipe[1], idx++;
 	  else
 	    break;
 	}
       } else {
+#ifdef CONFIG_TEXTSEARCH
 	rule->pattern[0] = NULL;
+#endif
       }
 
       write_lock(&pfr->ring_rules_lock);
@@ -4093,15 +4106,18 @@ static int ring_setsockopt(struct socket *sock,
 		 rule->rule.rule_id);
 
 	if(entry->rule.rule_id == rule->rule.rule_id) {
+#ifdef CONFIG_TEXTSEARCH
 	  int i;
+#endif
 
 	  memcpy(&entry->rule, &rule->rule, sizeof(filtering_rule));
 
+#ifdef CONFIG_TEXTSEARCH
 	  for(i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
 	    textsearch_destroy(entry->pattern[i]);
 	  memcpy(entry->pattern, rule->pattern,
 		 sizeof(struct ts_config *) * MAX_NUM_PATTERN);
-	  
+#endif
 	  kfree(rule);
 	  rule = NULL;
 
@@ -4216,10 +4232,12 @@ static int ring_setsockopt(struct socket *sock,
 	entry =	list_entry(ptr, filtering_rule_element, list);
 
 	if(entry->rule.rule_id == rule_id) {
+#ifdef CONFIG_TEXTSEARCH
 	  int i;
 
 	  for(i = 0; (i < MAX_NUM_PATTERN) && (entry->pattern[i] != NULL); i++)
 	    textsearch_destroy(entry->pattern[i]);
+#endif
 	  list_del(ptr);
 	  pfr->num_filtering_rules--;
 
@@ -4758,7 +4776,7 @@ static struct net_proto_family ring_family_ops = {
 
 // BD: API changed in 2.6.12, ref:
 // http://svn.clkao.org/svnweb/linux/revision/?rev=28201
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
 static struct proto ring_proto = {
   .name = "PF_RING",
   .owner = THIS_MODULE,
@@ -4993,7 +5011,9 @@ static void __exit ring_exit(void)
   }
 
   sock_unregister(PF_RING);
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
   proto_unregister(&ring_proto);
+#endif
   unregister_netdevice_notifier(&ring_netdev_notifier);
   ring_proc_term();
 
@@ -5004,14 +5024,19 @@ static void __exit ring_exit(void)
 
 static int __init ring_init(void)
 {
-  int i, rc;
+  int i;
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+  int rc;
+#endif
 
   printk("[PF_RING] Welcome to PF_RING %s ($Revision: %s$)\n"
 	 "(C) 2004-10 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION, SVN_REV);
 
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
   if((rc = proto_register(&ring_proto, 0)) != 0)
     return(rc);
+#endif
 
   INIT_LIST_HEAD(&ring_table);
   INIT_LIST_HEAD(&ring_cluster_list);
