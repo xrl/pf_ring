@@ -434,6 +434,8 @@ int main(int argc, char* argv[]) {
   u_int clusterId = 0;
   packet_direction direction = rx_and_tx_direction;
 
+  printf("%d\n", sizeof(ip_addr));
+
 #if 0
   struct sched_param schedparam;
 

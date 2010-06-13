@@ -134,9 +134,8 @@ void print_stats() {
 /* ******************************** */
 
 void add_rule(u_int add_rule) {
+#if 0
   hash_filtering_rule rule;
-
-  return;
 
   memset(&rule, 0, sizeof(hash_filtering_rule));
   /* 09:40:01.158112 IP 192.168.1.233.2736 > 192.168.99.1.25: Flags [P.], seq 1070303040:1070303070, ack 3485710921, win 65461, length 30 */
@@ -153,6 +152,20 @@ void add_rule(u_int add_rule) {
 
   if(pfring_handle_hash_filtering_rule(pd, &rule, add_rule) < 0)
     printf("pfring_add_hash_filtering_rule(2) failed\n");
+#else
+  filtering_rule rule;
+  
+  memset(&rule, 0, sizeof(rule));
+
+  rule.rule_id = 5;
+  rule.rule_action = forward_packet_and_stop_rule_evaluation;
+  rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
+
+  if(pfring_add_filtering_rule(pd, &rule) < 0)
+    printf("pfring_add_hash_filtering_rule(2) failed\n");
+  else
+    printf("Rule added successfully...\n");
+#endif
 }
 
 /* ******************************** */
@@ -618,8 +631,8 @@ int main(int argc, char* argv[]) {
 #else
 	rule.rule_id = 5;
 	rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	rule.core_fields.port_low = 80, rule.core_fields.port_high = 520;
-	rule.core_fields.host4_low = rule.core_fields.host4_high = ntohl(inet_addr("192.168.0.160"));
+	rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
+	//rule.core_fields.host4_low = rule.core_fields.host4_high = ntohl(inet_addr("192.168.0.160"));
 	// snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
 #endif
 	if(pfring_add_filtering_rule(pd, &rule) < 0)

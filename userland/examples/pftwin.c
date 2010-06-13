@@ -453,7 +453,7 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  if((a_device == NULL) || (b_device == NULL)) help();
+  // if((a_device == NULL) || (b_device == NULL)) help();
 
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;

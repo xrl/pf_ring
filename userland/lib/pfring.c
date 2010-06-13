@@ -82,7 +82,12 @@ int pfring_set_master_id(pfring *ring, u_int32_t master_id) {
 /* ******************************* */
 
 int pfring_set_master(pfring *ring, pfring *master) {
-  return(pfring_set_master_id(ring, pfring_get_ring_id(master)));
+  int id = pfring_get_ring_id(master);
+
+  if(id != -1)
+    return(pfring_set_master_id(ring, id));
+  else
+    return(id);
 }
 
 /* ******************************* */
@@ -539,12 +544,13 @@ u_int16_t pfring_get_ring_id(pfring *ring) {
   if(ring == NULL)
     return(1);
   else {
-    u_int8_t id;
+    u_int32_t id;
     socklen_t len = sizeof(id);
+    int ret, rc = getsockopt(ring->fd, 0, SO_GET_RING_ID, &id, &len);
 
-    int rc = getsockopt(ring->fd, 0, SO_GET_RING_ID, &id, &len);
-
-    return((rc == 0) ? id : 1);
+    ret = (rc == 0) ? id : -1;
+    
+    return(ret);
   }
 #endif
 }

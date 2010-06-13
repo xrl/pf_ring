@@ -426,7 +426,7 @@ static void ring_sock_destruct(struct sock *sk)
 
 static void ring_proc_add(struct ring_opt *pfr)
 {
-  int debug = 1;
+  int debug = 0;
 
   if(ring_proc_dir != NULL) {
     char name[64];
@@ -445,7 +445,7 @@ static void ring_proc_add(struct ring_opt *pfr)
 
 static void ring_proc_remove(struct ring_opt *pfr)
 {
-  int debug = 1;
+  int debug = 0;
 
   if(ring_proc_dir != NULL) {
     char name[64];
@@ -1017,6 +1017,8 @@ static inline void ring_insert(struct sock *sk)
 
 /* ********************************** */
 
+// #define RING_DEBUG 1
+
 /*
  * ring_remove()
  *
@@ -1064,6 +1066,8 @@ static inline void ring_remove(struct sock *sk)
   printk("[PF_RING] leaving ring_remove()\n");
 #endif
 }
+
+// #undef RING_DEBUG
 
 /* ********************************** */
 
@@ -1656,7 +1660,7 @@ static void send_queued_packets(struct ring_opt *_pfr)
   struct ring_opt *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
   int idx;
 
-  if(pfr->ring_netdev == &none_dev) return;
+  if((pfr->ring_netdev == NULL) || (pfr->ring_netdev == &none_dev)) return;
   else idx = pfr->slots_info->forward_idx;
   
 #if defined(RING_DEBUG)
@@ -2972,11 +2976,15 @@ static int ring_release(struct socket *sock)
   printk("[PF_RING] called ring_release(%s)\n", pfr->ring_netdev->name);
 #endif
 
-  if(pfr->slots_info) {
-    if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx) {
-      write_lock_bh(&pfr->ring_index_lock);
-      send_queued_packets(pfr); /* Flush packets in queue (if any) */
-      write_unlock_bh(&pfr->ring_index_lock);
+  if((pfr->ring_netdev == NULL) || (pfr->ring_netdev == &none_dev))
+    ; 
+  else {
+    if(pfr->slots_info) {
+      if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx) {
+	write_lock_bh(&pfr->ring_index_lock);
+	send_queued_packets(pfr); /* Flush packets in queue (if any) */
+	write_unlock_bh(&pfr->ring_index_lock);
+      }
     }
   }
 
@@ -2997,6 +3005,7 @@ static int ring_release(struct socket *sock)
   }
 
   ring_remove(sk);
+
   sock->sk = NULL;
 
   /* Free rules */
@@ -3554,6 +3563,8 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr)
 
 /* ************************************* */
 
+// #define RING_DEBUG 1
+
 static int set_master_ring(struct sock *sock,
 			   struct ring_opt *pfr,
 			   u_int32_t master_socket_id)
@@ -3563,7 +3574,8 @@ static int set_master_ring(struct sock *sock,
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] set_master_ring(%s=%d)\n",
-	 pfr->ring_netdev->name, master_socket_id);
+	 pfr->ring_netdev ? pfr->ring_netdev->name : "none",
+	 master_socket_id);
 #endif
 
   /* Avoid the ring to be manipulated while playing with it */
@@ -3584,24 +3596,33 @@ static int set_master_ring(struct sock *sock,
 
 #if defined(RING_DEBUG)
       printk("[PF_RING] Found set_master_ring(%s) -> %s\n",
-	     sk_pfr->ring_netdev->name,
+	     sk_pfr->ring_netdev ? sk_pfr->ring_netdev->name : "none",
 	     pfr->master_ring->ring_netdev->name);
 #endif
 
       rc = 0;
       break;
+    } else {
+#if defined(RING_DEBUG)
+      printk("[PF_RING] Skipping socket(%s)=%d\n",
+	     sk_pfr->ring_netdev ? sk_pfr->ring_netdev->name : "none",
+	     sk_pfr->ring_id);
+#endif
     }
   }
-
+  
   read_unlock_bh(&ring_mgmt_lock);
-
+  
 #if defined(RING_DEBUG)
   printk("[PF_RING] set_master_ring(%s, socket_id=%d) = %d\n",
-	 pfr->ring_netdev->name, master_socket_id, rc);
+	 pfr->ring_netdev ? pfr->ring_netdev->name : "none",
+	 master_socket_id, rc);
 #endif
 
   return(rc);
 }
+
+// #undef RING_DEBUG
 
 /* ************************************* */
 
@@ -3975,8 +3996,7 @@ static int ring_setsockopt(struct socket *sock,
 
   case SO_ADD_FILTERING_RULE:
     if(debug)
-      printk("[PF_RING] +++ SO_ADD_FILTERING_RULE(len=%d)\n",
-	     optlen);
+      printk("[PF_RING] +++ SO_ADD_FILTERING_RULE(len=%d)(len=%d)\n", optlen, sizeof(ip_addr));
 
     if(pfr->ring_netdev == &none_dev) return -EFAULT;
 
@@ -4209,8 +4229,7 @@ static int ring_setsockopt(struct socket *sock,
 	write_unlock(&pfr->ring_rules_lock);
       }
     } else {
-      printk("[PF_RING] Bad rule length (%d): discarded\n",
-	     optlen);
+      printk("[PF_RING] Bad rule length (%d): discarded\n", optlen);
       return -EFAULT;
     }
     break;
@@ -4353,7 +4372,6 @@ static int ring_setsockopt(struct socket *sock,
 
   case SO_SET_MASTER_RING:
     /* Avoid using master sockets with bound rings */
-
     if(pfr->ring_netdev == &none_dev) return -EFAULT;
 
     if(optlen != sizeof(ring_id))
@@ -4407,6 +4425,10 @@ static int ring_getsockopt(struct socket *sock,
 
   if(len < 0)
     return -EINVAL;
+
+#ifdef RING_DEBUG
+  printk("[PF_RING] --> getsockopt(%d)\n", optname);
+#endif
 
   switch (optname) {
   case SO_GET_RING_VERSION:
@@ -4608,7 +4630,12 @@ static int ring_getsockopt(struct socket *sock,
   case SO_GET_RING_ID:
     if(len < sizeof(pfr->ring_id))
       return -EINVAL;
-    else if(copy_to_user(optval, &pfr->ring_id, sizeof(pfr->ring_id)))
+    
+#ifdef RING_DEBUG
+    printk("[PF_RING] --> SO_GET_RING_ID=%d\n", pfr->ring_id);
+#endif
+      
+    if(copy_to_user(optval, &pfr->ring_id, sizeof(pfr->ring_id)))
       return -EFAULT;
     break;
 
