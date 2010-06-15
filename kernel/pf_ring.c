@@ -3996,7 +3996,8 @@ static int ring_setsockopt(struct socket *sock,
 
   case SO_ADD_FILTERING_RULE:
     if(debug)
-      printk("[PF_RING] +++ SO_ADD_FILTERING_RULE(len=%d)(len=%d)\n", optlen, sizeof(ip_addr));
+      printk("[PF_RING] +++ SO_ADD_FILTERING_RULE(len=%d)(len=%u)\n", 
+	     optlen, (unsigned int)sizeof(ip_addr));
 
     if(pfr->ring_netdev == &none_dev) return -EFAULT;
 
@@ -4909,6 +4910,13 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   struct net_device *dev = data;
   struct pfring_hooks *hook;
 
+  /* Skip non ethernet interfaces */
+  if((dev->name[0] != 'e') && (dev->name[1] != 't') && (dev->name[2] != 'h')) {
+    printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n",
+	   dev->name);
+    return NOTIFY_DONE;
+  }
+
   switch(msg) {
   case NETDEV_UP:           break;
   case NETDEV_DOWN:         break;
@@ -4917,6 +4925,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
 	   dev->name, dev->pfring_ptr, &ring_hooks);
 #endif
+
     if(dev->pfring_ptr == NULL) {
       dev->pfring_ptr = &ring_hooks;
       add_device_to_ring_list(dev);
