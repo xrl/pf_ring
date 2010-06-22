@@ -4918,8 +4918,10 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   }
 
   switch(msg) {
-  case NETDEV_UP:           break;
-  case NETDEV_DOWN:         break;
+  case NETDEV_PRE_UP:
+  case NETDEV_UP:
+  case NETDEV_DOWN:         
+    break;
   case NETDEV_REGISTER:
 #ifndef RING_DEBUG
     printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
