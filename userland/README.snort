@@ -5,6 +5,9 @@ Prerequisites
 # cd PF_RING/kernel
 # make
 # sudo make install
+# cd ../userland/lib
+# make
+# sudo make install
 
 Snort
 # download snort source (e.g. into  ~/Downloads/snort-2.8.5.1.tar.gz)
