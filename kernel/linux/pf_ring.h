@@ -25,7 +25,7 @@
 
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
-#define RING_FLOWSLOT_VERSION          10
+#define RING_FLOWSLOT_VERSION          11
 
 #define DEFAULT_BUCKET_LEN            128
 #define MAX_NUM_DEVICES               256
@@ -133,8 +133,10 @@ struct pkt_parsing_info {
   u_int8_t  l3_proto, ip_tos;   /* Layer 3 protocol/TOS */
   ip_addr   ip_src, ip_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
-  u_int8_t tcp_flags;   /* TCP flags (0 if not available) */
-
+  struct {
+    u_int8_t flags;   /* TCP flags (0 if not available) */
+    u_int32_t seq_num; /* TCP sequence number */
+  } tcp;
   u_int16_t last_matched_plugin_id; /* If > 0 identifies a plugin to that matched the packet */
   u_int16_t last_matched_rule_id; /* If > 0 identifies a rule that matched the packet */
 

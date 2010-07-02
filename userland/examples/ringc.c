@@ -102,14 +102,17 @@ static void statistics (void)
   pfring_stat pstat;
 
   /* Print statistics information from PF_RING only they differ from those currently maintained by the application */
-  if (pfring_stats (ring, & pstat) >= 0 && partial != pstat . recv)
+  if (pfring_stats (ring, & pstat) >= 0 && partial != pstat.recv)
     {
-      if (pstat . drop)
+      if (pstat.drop)
 	printf ("Warning: received by PF_RING #%llu received by the application #%llu [dropped #%llu (diff #%llu) (%%%.1f)]\n",
-		pstat . recv, partial, pstat . drop, pstat . recv - pstat . drop,
-		! pstat . recv ? 0 : (double) (pstat . drop * 100 / pstat . recv));
+		(long long unsigned int)pstat.recv, partial, 
+		(long long unsigned int)pstat.drop, 
+		(long long unsigned int)(pstat.recv - pstat.drop),
+		(!pstat.recv) ? 0 : (double) (pstat.drop * 100 / pstat.recv));
       else
-	printf ("Warning: counted by PF_RING #%llu differ from those received by the application #%llu\n", pstat . recv, partial);
+	printf ("Warning: counted by PF_RING #%llu differ from those received by the application #%llu\n", 
+		(long long unsigned int)pstat.recv, partial);
     }
 
   /* Calculate the time interval from the start of the capture */
@@ -256,7 +259,7 @@ int main (int argc, char * argv [])
     /* Please give me just a packet at once from the ring */
     if (pfring_recv (ring, packet, sizeof (packet), & header, 1) > 0)
       partial ++,
-	bytes += header . caplen,
+	bytes += header.caplen,
 	printf ("\r");
 
   /* Set time the application was interrupted */

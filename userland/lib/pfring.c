@@ -848,7 +848,8 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 	    struct tcphdr *tcp = (struct tcphdr*)(pkt+hdr->parsed_pkt.pkt_detail.offset.l4_offset);
 	    hdr->parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->parsed_pkt.l4_dst_port = ntohs(tcp->dest);
 	    hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset+(tcp->doff * 4);
-	    hdr->parsed_pkt.tcp_flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
+	    hdr->parsed_pkt.tcp.seq_num = ntohl(tcp->seq);
+	    hdr->parsed_pkt.tcp.flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
 	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
 	  } else if(ip->protocol == IPPROTO_UDP)
 	    {

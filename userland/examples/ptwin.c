@@ -115,7 +115,7 @@ void print_stats() {
       diff = pcapStat.ps_recv-lastPkts;
       fprintf(stderr, "=========================\n"
 	      "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
-	      diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
+	      (long long unsigned int)diff, deltaSec*1000, ((double)diff/(double)(deltaSec)));
       lastPkts = pcapStat.ps_recv;
     }
 

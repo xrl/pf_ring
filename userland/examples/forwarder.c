@@ -181,7 +181,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
 
     printf("[tos=%d][tcp_flags=%d][caplen=%d][len=%d][parsed_header_len=%d]"
 	   "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
-	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp_flags,
+	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp.flags,
 	   h->caplen, h->len, h->parsed_header_len,
 	   h->parsed_pkt.pkt_detail.offset.eth_offset,
 	   h->parsed_pkt.pkt_detail.offset.l3_offset,

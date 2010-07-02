@@ -120,7 +120,8 @@ void print_stats() {
       diff = pfringStat.recv-lastPkts;
       fprintf(stderr, "=========================\n"
 	      "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
-	      diff, deltaMillisec, ((double)diff/(double)(deltaMillisec/1000)));
+	      (long long unsigned int)diff,
+	      deltaMillisec, ((double)diff/(double)(deltaMillisec/1000)));
     }
 
     lastPkts = pfringStat.recv;
@@ -346,9 +347,10 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
     else
       printf("[eth_type=0x%04X]", eth_type);
 
-    printf("[tos=%d][tcp_flags=%d][caplen=%d][len=%d][parsed_header_len=%d]"
+    printf("[tos=%d][tcp_flags=%d][tcp_seq_num=%u][caplen=%d][len=%d][parsed_header_len=%d]"
 	   "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
-	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp_flags,
+	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp.flags,
+	   h->parsed_pkt.tcp.seq_num,
 	   h->caplen, h->len, h->parsed_header_len,
 	   h->parsed_pkt.pkt_detail.offset.eth_offset,
 	   h->parsed_pkt.pkt_detail.offset.l3_offset,
@@ -414,17 +416,18 @@ void printHelp(void) {
 
 void* packet_consumer_thread(void* _id) {
   int s;
-  u_int thread_id = (u_int)_id; 
+  long thread_id = (long)_id; 
   u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
-  u_int core_id = thread_id % numCPU;
+  u_long core_id = thread_id % numCPU;
   cpu_set_t cpuset;
 
   /* Bind this thread to a specific core */
   CPU_SET(core_id, &cpuset);
   if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
-    printf("Error while binding thread %d to core %d: errno=%i\n", thread_id, core_id, s);
+    printf("Error while binding thread %ld to core %ld: errno=%i\n", 
+	   thread_id, core_id, s);
   else {
-    printf("Set thread %u on core %u/%u\n", thread_id, core_id, numCPU);
+    printf("Set thread %lu on core %lu/%u\n", thread_id, core_id, numCPU);
   }
 
   while(1) {
@@ -668,7 +671,7 @@ int main(int argc, char* argv[]) {
 
   if(num_threads > 1) {
     pthread_t my_thread;
-    int i;
+    long i;
 
     for(i=1; i<num_threads; i++)
       pthread_create(&my_thread, NULL, packet_consumer_thread, (void*)i);
