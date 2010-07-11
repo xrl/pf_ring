@@ -46,15 +46,17 @@
 
 #define ENABLE_DNA_SUPPORT
 
-#define ALARM_SLEEP       1
-#define DEFAULT_SNAPLEN 128
+#define ALARM_SLEEP             1
+#define DEFAULT_SNAPLEN       128
+#define MAX_NUM_THREADS        64
+
 pfring  *pd;
 int verbose = 0, num_threads = 1;
 pfring_stat pfringStats;
 pthread_rwlock_t statsLock;
 
 static struct timeval startTime;
-unsigned long long numPkts = 0, numBytes = 0;
+unsigned long long numPkts[MAX_NUM_THREADS] = { 0 }, numBytes[MAX_NUM_THREADS] = { 0 };
 u_int8_t wait_for_packet = 1, dna_mode = 0, do_shutdown = 0;
 
 #define DEFAULT_DEVICE     "eth0"
@@ -102,7 +104,16 @@ void print_stats() {
   deltaMillisec = delta_time(&endTime, &startTime);
   
   if(pfring_stats(pd, &pfringStat) >= 0) {
-    double thpt = ((double)8*numBytes)/(deltaMillisec*1000);
+    double thpt;
+    int i;
+    unsigned long long nBytes = 0, nPkts = 0;
+
+    for(i=0; i < num_threads; i++) {
+      nBytes += numBytes[i];
+      nPkts += numPkts[i];
+    }
+
+    thpt = ((double)8*nBytes)/(deltaMillisec*1000);
 
     fprintf(stderr, "=========================\n"
 	    "Absolute Stats: [%u pkts rcvd][%u pkts dropped]\n"
@@ -111,9 +122,9 @@ void print_stats() {
 	    (unsigned int)(pfringStat.recv+pfringStat.drop),
 	    pfringStat.recv == 0 ? 0 : 
 	    (double)(pfringStat.drop*100)/(double)(pfringStat.recv+pfringStat.drop));
-    fprintf(stderr, "%llu pkts - %llu bytes", numPkts, numBytes);
+    fprintf(stderr, "%llu pkts - %llu bytes", nPkts, nBytes);
     fprintf(stderr, " [%.1f pkt/sec - %.2f Mbit/sec]\n",
-	    (double)(numPkts*1000)/deltaMillisec, thpt);
+	    (double)(nPkts*1000)/deltaMillisec, thpt);
 
     if(lastTime.tv_sec > 0) {
       deltaMillisec = delta_time(&endTime, &lastTime);
@@ -305,7 +316,7 @@ char* proto2str(u_short proto) {
 
 static int32_t thiszone;
 
-void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
+void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long threadId) {
   if(verbose) {
     struct ether_header ehdr;
     u_short eth_type, vlan_id;
@@ -358,9 +369,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p) {
 	   h->parsed_pkt.pkt_detail.offset.payload_offset);
   }
 
-  if(num_threads > 0) pthread_rwlock_wrlock(&statsLock);
-  numPkts++, numBytes += h->len;
-  if(num_threads > 0) pthread_rwlock_unlock(&statsLock);
+  numPkts[threadId]++, numBytes[threadId] += h->len;
 }
 
 /* *************************************** */
@@ -421,13 +430,15 @@ void* packet_consumer_thread(void* _id) {
   u_long core_id = thread_id % numCPU;
   cpu_set_t cpuset;
 
-  /* Bind this thread to a specific core */
-  CPU_SET(core_id, &cpuset);
-  if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
-    printf("Error while binding thread %ld to core %ld: errno=%i\n", 
-	   thread_id, core_id, s);
-  else {
-    printf("Set thread %lu on core %lu/%u\n", thread_id, core_id, numCPU);
+  if(numCPU > 1) {
+    /* Bind this thread to a specific core */
+    CPU_SET(core_id, &cpuset);
+    if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
+      printf("Error while binding thread %ld to core %ld: errno=%i\n", 
+	     thread_id, core_id, s);
+    else {
+      printf("Set thread %lu on core %lu/%u\n", thread_id, core_id, numCPU);
+    }
   }
 
   while(1) {
@@ -445,7 +456,7 @@ void* packet_consumer_thread(void* _id) {
 
     if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0) {
       if(do_shutdown) break;
-      dummyProcesssPacket(&hdr, buffer);
+      dummyProcesssPacket(&hdr, buffer, thread_id);
     }
 
     if(0) {
