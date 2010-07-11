@@ -407,7 +407,7 @@ PPCODE:
 	  PUSHs (sv_2mortal (newSViv (header . parsed_pkt . vlan_id)));
 	  PUSHs (sv_2mortal (newSVpv (proto2a (header . parsed_pkt . l3_proto), FALSE)));
 	  PUSHs (sv_2mortal (newSViv (header . parsed_pkt . ipv4_tos)));
-	  PUSHs (sv_2mortal (newSViv (header . parsed_pkt . tcp_flags)));
+	  PUSHs (sv_2mortal (newSViv (header . parsed_pkt . tcp. flags)));
 
 	  addr . s_addr = header . parsed_pkt . ipv4_src;
 	  PUSHs (sv_2mortal (newSVpv (inet_ntoa (addr), FALSE)));
@@ -492,7 +492,7 @@ void xs_pfring_header (pfref, h)
 
 	  hv_store (info, "k-l4_src_port", strlen ("k-l4_src_port"), newSViv (header . parsed_pkt . l4_src_port), 0);
 	  hv_store (info, "l-l4_dst_port", strlen ("l-l4_dst_port"), newSViv (header . parsed_pkt . l4_dst_port), 0);
-	  hv_store (info, "m-tcp_flags", strlen ("m-tcp_flags"), newSViv (header . parsed_pkt . tcp_flags), 0);
+	  hv_store (info, "m-tcp_flags", strlen ("m-tcp_flags"), newSViv (header . parsed_pkt . tcp.flags), 0);
 	  hv_store (info, "n-eth_offset", strlen ("n-eth_offset"), newSViv (header . parsed_pkt . pkt_detail . offset . eth_offset), 0);
 	  hv_store (info, "o-vlan_offset", strlen ("o-vlan_offset"), newSViv (header . parsed_pkt . pkt_detail . offset . vlan_offset), 0);
 	  hv_store (info, "p-l3_offset", strlen ("p-l3_offset"), newSViv (header . parsed_pkt . pkt_detail . offset . l3_offset), 0);
