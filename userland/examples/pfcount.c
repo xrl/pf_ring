@@ -49,7 +49,7 @@
 #define ALARM_SLEEP             1
 #define DEFAULT_SNAPLEN       128
 #define MAX_NUM_THREADS        64
-
+#define DEFAULT_DEVICE     "eth0"
 pfring  *pd;
 int verbose = 0, num_threads = 1;
 pfring_stat pfringStats;
@@ -58,9 +58,6 @@ pthread_rwlock_t statsLock;
 static struct timeval startTime;
 unsigned long long numPkts[MAX_NUM_THREADS] = { 0 }, numBytes[MAX_NUM_THREADS] = { 0 };
 u_int8_t wait_for_packet = 1, dna_mode = 0, do_shutdown = 0;
-
-#define DEFAULT_DEVICE     "eth0"
-#define MAX_NUM_THREADS        64
 
 /* *************************************** */
 /*
@@ -358,10 +355,9 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
     else
       printf("[eth_type=0x%04X]", eth_type);
 
-    printf("[tos=%d][tcp_flags=%d][tcp_seq_num=%u][caplen=%d][len=%d][parsed_header_len=%d]"
+    printf("[tos=%d][tcp_seq_num=%u][caplen=%d][len=%d][parsed_header_len=%d]"
 	   "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
-	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp.flags,
-	   h->parsed_pkt.tcp.seq_num,
+	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp.seq_num,
 	   h->caplen, h->len, h->parsed_header_len,
 	   h->parsed_pkt.pkt_detail.offset.eth_offset,
 	   h->parsed_pkt.pkt_detail.offset.l3_offset,
