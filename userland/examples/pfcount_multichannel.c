@@ -55,6 +55,7 @@ static struct timeval startTime;
 pfring  *ring[MAX_NUM_THREADS] = { NULL };
 unsigned long long numPkts[MAX_NUM_THREADS] = { 0 }, numBytes[MAX_NUM_THREADS] = { 0 };
 u_int8_t wait_for_packet = 1,  do_shutdown = 0;
+pthread_t pd_thread[MAX_NUM_THREADS];
 
 #define DEFAULT_DEVICE     "eth0"
 
@@ -87,11 +88,12 @@ void print_stats() {
   pfring_stat pfringStat;
   struct timeval endTime;
   double deltaMillisec;
-  static u_int64_t lastPkts = 0;
+  static u_int64_t lastPkts[MAX_NUM_THREADS] = { 0 };
   u_int64_t diff;
   static struct timeval lastTime;
   int i;
-  unsigned long long nBytes = 0, nPkts = 0;
+  unsigned long long nBytes = 0, nPkts = 0, pkt_dropped = 0;
+  double pkt_thpt = 0;
 
   if(startTime.tv_sec == 0) {
     gettimeofday(&startTime, NULL);
@@ -119,22 +121,29 @@ void print_stats() {
       fprintf(stderr, "%llu pkts - %llu bytes", nPkts, nBytes);
       fprintf(stderr, " [%.1f pkt/sec - %.2f Mbit/sec]\n",
 	      (double)(nPkts*1000)/deltaMillisec, thpt);
+      pkt_dropped += pfringStat.drop;
 
       if(lastTime.tv_sec > 0) {
+	double pps;
+
 	deltaMillisec = delta_time(&endTime, &lastTime);
-	diff = pfringStat.recv-lastPkts;
+	diff = pfringStat.recv-lastPkts[i];
+	pps = ((double)diff/(double)(deltaMillisec/1000));
 	fprintf(stderr, "=========================\n"
 		"Actual Stats: [channel=%d][%llu pkts][%.1f ms][%.1f pkt/sec]\n",
-		i, (long long unsigned int)diff,
-		deltaMillisec, ((double)diff/(double)(deltaMillisec/1000)));
+		i, (long long unsigned int)diff, deltaMillisec, pps);
+	pkt_thpt += pps;
       }
 
-      lastPkts = pfringStat.recv;
+      lastPkts[i] = pfringStat.recv;
     }
   }
 
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
+  fprintf(stderr, "=========================\n");
+  fprintf(stderr, "Aggregate stats (all channels): [%.1f pkt/sec][%llu pkts dropped]\n", 
+	  pkt_thpt, pkt_dropped);
   fprintf(stderr, "=========================\n\n");
 }
 
@@ -142,15 +151,21 @@ void print_stats() {
 
 void sigproc(int sig) {
   static int called = 0;
+#if 0
   int i;
+#endif
 
   fprintf(stderr, "Leaving...\n");
   if(called) return; else called = 1;
   do_shutdown = 1;
   print_stats();
 
-  for(i=0; i<num_channels; i++)
+#if 0
+  for(i=0; i<num_channels; i++) {
+    pthread_join(pd_thread[i], NULL);
     pfring_close(ring[i]);
+  }
+#endif
 
   exit(0);
 }
@@ -222,7 +237,6 @@ int main(int argc, char* argv[]) {
   int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   packet_direction direction = rx_and_tx_direction;
   pfring  *pd;
-  pthread_t pd_thread[MAX_NUM_THREADS];
   int i;
 
   startTime.tv_sec = 0;
@@ -297,8 +311,13 @@ int main(int argc, char* argv[]) {
 
   wait_for_packet = 1;
 
+  printf("Spawning %d threads, one per channel, each bound to a different core\n", num_channels);
+
   for(i=0; i<num_channels; i++) {
-    ring[i] = pfring_open(device, promisc,  snaplen, 0);
+    char devname[64];
+    
+    snprintf(devname, sizeof(devname), "%s@%d", device, i);
+    ring[i] = pfring_open(devname, promisc,  snaplen, 0);
 
     if(ring[i] == NULL) {
       printf("pfring_open error\n");
@@ -318,8 +337,6 @@ int main(int argc, char* argv[]) {
   
   for(i=0; i<num_channels; i++)
     pthread_join(pd_thread[i], NULL);
-  
-  pfring_close(pd);
 
   return(0);
 }
