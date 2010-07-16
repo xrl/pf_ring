@@ -890,6 +890,7 @@ int pfring_notify(pfring *ring, u_int8_t reflect_packet) {
 #endif
 
     ring->last_slot_to_update = NULL;
+    if(reflect_packet) ring->slots_info->do_forward = 1;
   }
   
   return(0);

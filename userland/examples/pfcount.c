@@ -610,6 +610,7 @@ int main(int argc, char* argv[]) {
   if((rc = pfring_set_direction(pd, direction)) != 0)
     printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
 
+#if 0
   if(0) {
     if(1) {
       pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
@@ -657,6 +658,7 @@ int main(int argc, char* argv[]) {
       }
     }
   }
+#endif
 
   signal(SIGINT, sigproc);
   signal(SIGTERM, sigproc);
@@ -675,6 +677,21 @@ int main(int argc, char* argv[]) {
   }
 
   if(!wait_for_packet) pfring_enable_ring(pd);
+
+  if(0) {
+    filtering_rule rule;
+    
+    memset(&rule, 0, sizeof(rule));
+    
+    rule.rule_id = 5;
+    rule.rule_action = forward_packet_and_stop_rule_evaluation;
+    rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
+    
+    if(pfring_add_filtering_rule(pd, &rule) < 0)
+      printf("pfring_add_hash_filtering_rule(2) failed\n");
+    else
+      printf("Rule added successfully...\n");
+  }
 
   if(num_threads > 1) {
     pthread_t my_thread;

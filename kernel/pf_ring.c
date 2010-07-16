@@ -1616,7 +1616,6 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
 /* ********************************** */
 
-#ifdef PF_RING_TRANSMISSION
 static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
   struct pfring_pkthdr *hdr = (struct pfring_pkthdr*)bucket;
   u_int payload_len = hdr->caplen;
@@ -1652,11 +1651,9 @@ static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
   skb->protocol = eth_type_trans(skb, forward_dev);
   return(reflect_packet(skb, pfr, forward_dev, 14));
 }
-#endif
 
 /* ********************************** */
 
-#ifdef PF_RING_TRANSMISSION
 /* Flush packets waiting to be reflected */
 static void send_queued_packets(struct ring_opt *_pfr)
 {
@@ -1664,45 +1661,53 @@ static void send_queued_packets(struct ring_opt *_pfr)
   struct ring_opt *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
   int idx;
 
-  if((pfr->ring_netdev == NULL) || (pfr->ring_netdev == &none_dev)) return;
+  if((pfr->ring_netdev == NULL) 
+     || (pfr->ring_netdev == &none_dev)
+     || (!pfr->slots_info->do_forward)) return;
   else idx = pfr->slots_info->forward_idx;
   
+  //#if defined(RING_DEBUG)
+  {
+    static int i = 0;
+    
+    if(i < 100) {
+      printk("[PF_RING] ==> send_queued_packets(fwd=%d/insert=%d/remove=%d)\n", 
+	     pfr->slots_info->forward_idx, 
+	     pfr->slots_info->insert_idx, pfr->slots_info->remove_idx);
+      i++;
+    }
+  }
+  //#endif
+
+    while(idx != pfr->slots_info->remove_idx) {
+      int diff = pfr->slots_info->remove_idx-idx;
+
+      if(diff < 0) diff += pfr->slots_info->tot_slots;
+      if(diff <= 1) break; /* Leave at least one slot to process as the
+			      receiver might not yet have consumed the packet */
+      if((theSlot = get_slot(pfr, idx)) == NULL) break;
+
 #if defined(RING_DEBUG)
-  printk("[PF_RING] ==> send_queued_packets(fwd=%d/insert=%d/remove=%d)\n", 
-	 pfr->slots_info->forward_idx, 
-	 pfr->slots_info->insert_idx, pfr->slots_info->remove_idx);
-#endif
-
-  while(idx != pfr->slots_info->remove_idx) {
-    int diff = pfr->slots_info->remove_idx-idx;
-
-    if(diff < 0) diff += pfr->slots_info->tot_slots;
-    if(diff <= 1) break; /* Leave at least one slot to process as the
-			    receiver might not yet have consumed the packet */
-    if((theSlot = get_slot(pfr, idx)) == NULL) break;
-
-#if defined(RING_DEBUG)
-    printk("[PF_RING] ==> slot_state(id=%d, state=%d)\n", 
-	   idx, theSlot->slot_state);
+      printk("[PF_RING] ==> slot_state(id=%d, state=%d)\n", 
+	     idx, theSlot->slot_state);
 #endif
       
-    if(theSlot->slot_state == 2) {
-      if(pfr->reflector_dev != NULL) {
-	/* We have to forward the packet prior to overwrite it */
-	char *ring_bucket = &theSlot->bucket;
+      if(theSlot->slot_state == 2) {
+	if(pfr->reflector_dev != NULL) {
+	  /* We have to forward the packet prior to overwrite it */
+	  char *ring_bucket = &theSlot->bucket;
 
-	forward_slot_packet(pfr, ring_bucket);
+	  forward_slot_packet(pfr, ring_bucket);
+	}
       }
+
+      theSlot->slot_state = 0; /* We've done our job */
+      idx++;
+      if(idx == pfr->slots_info->tot_slots) idx = 0;
     }
 
-    theSlot->slot_state = 0; /* We've done our job */
-    idx++;
-    if(idx == pfr->slots_info->tot_slots) idx = 0;
-  }
-
-  pfr->slots_info->forward_idx = idx;
+    pfr->slots_info->forward_idx = idx, pfr->slots_info->do_forward = 0;
 }
-#endif
 
 /* ********************************** */
 
@@ -1733,10 +1738,8 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
   write_lock_bh(&pfr->ring_index_lock);
 
-#ifdef PF_RING_TRANSMISSION
-  if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx)
+  if(pfr->slots_info->do_forward)
     send_queued_packets(pfr);
-#endif
 
   idx = pfr->slots_info->insert_idx;
   theSlot = get_slot(pfr, idx);
@@ -2983,19 +2986,15 @@ static int ring_release(struct socket *sock)
   printk("[PF_RING] called ring_release(%s)\n", pfr->ring_netdev->name);
 #endif
 
-#ifdef PF_RING_TRANSMISSION
   if((pfr->ring_netdev == NULL) || (pfr->ring_netdev == &none_dev))
     ; 
   else {
-    if(pfr->slots_info) {
-      if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx) {
-	write_lock_bh(&pfr->ring_index_lock);
-	send_queued_packets(pfr); /* Flush packets in queue (if any) */
-	write_unlock_bh(&pfr->ring_index_lock);
-      }
-    }
+    if(pfr->slots_info && pfr->slots_info->do_forward) {
+      // write_lock_bh(&pfr->ring_index_lock);
+      send_queued_packets(pfr); /* Flush packets in queue (if any) */
+      // write_unlock_bh(&pfr->ring_index_lock);
+    }  
   }
-#endif
 
   /*
     The calls below must be placed outside the
@@ -3426,15 +3425,11 @@ unsigned int ring_poll(struct file *file,
   if(pfr->dna_device == NULL) {
     /* PF_RING mode (No DNA) */
 
-#ifdef PF_RING_TRANSMISSION
-    if(pfr->slots_info) {
-      if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx) {
-	write_lock_bh(&pfr->ring_index_lock);
-	send_queued_packets(pfr); /* Flush packets in queue (if any) */
-	write_unlock_bh(&pfr->ring_index_lock);
-      }
-    }
-#endif
+    if(pfr->slots_info && pfr->slots_info->do_forward) {
+      // write_lock_bh(&pfr->ring_index_lock);
+      send_queued_packets(pfr); /* Flush packets in queue (if any) */
+      // write_unlock_bh(&pfr->ring_index_lock);
+    }  
 
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll called (non DNA device)\n");

@@ -48,10 +48,10 @@ CC = gcc
 CCOPT = -O2 -fPIC
 PF_RING_INCLUDES=-I ../../kernel -I ../lib
 PF_RING_LIBS=../lib/libpfring.a
-INCLS = -I.  $(PF_RING_INCLUDES)
+INCLS = -I.  -I/usr/local/include $(PF_RING_INCLUDES)
 DEFS = -DHAVE_CONFIG_H  -D_U_="__attribute__((unused))"
-LIBS =  $(PF_RING_LIBS)
-DAGLIBS = 
+LIBS =  ./libdag_la-dagapi.o ./libdag_la-dagopts.o ./libdag_la-dagreg.o $(PF_RING_LIBS)
+DAGLIBS = -ldag
 DEPLIBS = 
 DYEXT = so
 PROG=libpcap
@@ -81,7 +81,7 @@ YACC = bison -y -p pcap_
 
 PSRC =	pcap-linux.c pcap-usb-linux.c 
 FSRC =  fad-getad.c
-SSRC =  
+SSRC =  pcap-dag.c
 CSRC =	pcap.c inet.c gencode.c optimize.c nametoaddr.c \
 	etherent.c savefile.c bpf_filter.c bpf_image.c bpf_dump.c
 GENSRC = scanner.c grammar.c version.c

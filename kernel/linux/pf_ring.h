@@ -34,8 +34,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.3.1"
-#define RING_VERSION_NUM           0x040301
+#define RING_VERSION                "4.3.2"
+#define RING_VERSION_NUM           0x040302
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -335,7 +335,7 @@ typedef struct _filtering_hash_bucket {
 /* False sharing reference: http://en.wikipedia.org/wiki/False_sharing */
 
 typedef struct flowSlotInfo {
-  u_int16_t version, sample_rate;
+  u_int16_t version, sample_rate, do_forward;
   u_int32_t tot_slots, slot_len, data_len, tot_mem;
   u_int64_t tot_pkts, tot_lost, tot_insert, tot_read;
   u_int64_t tot_fwd_ok, tot_fwd_notok;
