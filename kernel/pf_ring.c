@@ -1616,6 +1616,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
 /* ********************************** */
 
+#ifdef PF_RING_TRANSMISSION
 static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
   struct pfring_pkthdr *hdr = (struct pfring_pkthdr*)bucket;
   u_int payload_len = hdr->caplen;
@@ -1651,9 +1652,11 @@ static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
   skb->protocol = eth_type_trans(skb, forward_dev);
   return(reflect_packet(skb, pfr, forward_dev, 14));
 }
+#endif
 
 /* ********************************** */
 
+#ifdef PF_RING_TRANSMISSION
 /* Flush packets waiting to be reflected */
 static void send_queued_packets(struct ring_opt *_pfr)
 {
@@ -1699,6 +1702,7 @@ static void send_queued_packets(struct ring_opt *_pfr)
 
   pfr->slots_info->forward_idx = idx;
 }
+#endif
 
 /* ********************************** */
 
@@ -1729,8 +1733,10 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
   write_lock_bh(&pfr->ring_index_lock);
 
+#ifdef PF_RING_TRANSMISSION
   if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx)
     send_queued_packets(pfr);
+#endif
 
   idx = pfr->slots_info->insert_idx;
   theSlot = get_slot(pfr, idx);
@@ -2977,6 +2983,7 @@ static int ring_release(struct socket *sock)
   printk("[PF_RING] called ring_release(%s)\n", pfr->ring_netdev->name);
 #endif
 
+#ifdef PF_RING_TRANSMISSION
   if((pfr->ring_netdev == NULL) || (pfr->ring_netdev == &none_dev))
     ; 
   else {
@@ -2988,6 +2995,7 @@ static int ring_release(struct socket *sock)
       }
     }
   }
+#endif
 
   /*
     The calls below must be placed outside the
@@ -3418,6 +3426,7 @@ unsigned int ring_poll(struct file *file,
   if(pfr->dna_device == NULL) {
     /* PF_RING mode (No DNA) */
 
+#ifdef PF_RING_TRANSMISSION
     if(pfr->slots_info) {
       if(pfr->slots_info->remove_idx != pfr->slots_info->forward_idx) {
 	write_lock_bh(&pfr->ring_index_lock);
@@ -3425,6 +3434,7 @@ unsigned int ring_poll(struct file *file,
 	write_unlock_bh(&pfr->ring_index_lock);
       }
     }
+#endif
 
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll called (non DNA device)\n");
