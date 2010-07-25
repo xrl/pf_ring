@@ -99,6 +99,7 @@ extern "C" {
 
     /* All devices */
     char *buffer, *slots, *device_name;
+    u_int8_t kernel_packet_consumer;
     int  fd;
     FlowSlotInfo *slots_info;
     FlowSlot *last_slot_to_update;
@@ -131,6 +132,10 @@ extern "C" {
   int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec);  
   pfring* pfring_open(char *device_name, u_int8_t promisc, 
 		      u_int32_t caplen, u_int8_t reentrant);
+  pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
+			       u_int32_t caplen, u_int8_t _reentrant,
+			       u_int8_t consumer_plugin_id,
+			       char* consumer_data, u_int consumer_data_len);
   int pfring_bind(pfring *ring, char *device_name);
   u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
 				    u_int32_t caplen, u_int8_t _reentrant,
@@ -149,6 +154,9 @@ extern "C" {
 				      char* stats, u_int *stats_len);
   u_int8_t pfring_get_num_rx_channels(pfring *ring);
   u_int16_t pfring_get_ring_id(pfring *ring);
+  u_int8_t pfring_get_packet_consumer_mode(pfring *ring);
+  int pfring_set_packet_consumer_mode(pfring *ring, u_int8_t plugin_id,
+				      char *plugin_data, u_int plugin_data_len);
   int pfring_get_hash_filtering_rule_stats(pfring *ring,
 					   hash_filtering_rule* rule,
 					   char* stats, u_int *stats_len);

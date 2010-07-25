@@ -88,14 +88,16 @@ void print_stats() {
   pfring_stat pfringStat;
   struct timeval endTime;
   double deltaMillisec;
+  static u_int8_t print_all;
   static u_int64_t lastPkts = 0;
   u_int64_t diff;
   static struct timeval lastTime;
 
   if(startTime.tv_sec == 0) {
     gettimeofday(&startTime, NULL);
-    return;
-  }
+    print_all = 0;
+  } else
+    print_all = 1;
 
   gettimeofday(&endTime, NULL);
   deltaMillisec = delta_time(&endTime, &startTime);
@@ -120,10 +122,14 @@ void print_stats() {
 	    pfringStat.recv == 0 ? 0 : 
 	    (double)(pfringStat.drop*100)/(double)(pfringStat.recv+pfringStat.drop));
     fprintf(stderr, "%llu pkts - %llu bytes", nPkts, nBytes);
-    fprintf(stderr, " [%.1f pkt/sec - %.2f Mbit/sec]\n",
-	    (double)(nPkts*1000)/deltaMillisec, thpt);
 
-    if(lastTime.tv_sec > 0) {
+    if(print_all)
+      fprintf(stderr, " [%.1f pkt/sec - %.2f Mbit/sec]\n",
+	      (double)(nPkts*1000)/deltaMillisec, thpt);
+    else
+      fprintf(stderr, "\n");
+
+    if(print_all && (lastTime.tv_sec > 0)) {
       deltaMillisec = delta_time(&endTime, &lastTime);
       diff = pfringStat.recv-lastPkts;
       fprintf(stderr, "=========================\n"

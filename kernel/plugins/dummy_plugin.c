@@ -157,6 +157,8 @@ static int __init dummy_plugin_init(void)
 {
   printk("Welcome to dummy plugin for PF_RING\n");
 
+  memset(&reg, 0, sizeof(reg));
+
   reg.plugin_id                = plugin_id;
   reg.pfring_plugin_filter_skb = dummy_plugin_plugin_filter_skb;
   reg.pfring_plugin_handle_skb = dummy_plugin_plugin_handle_skb;

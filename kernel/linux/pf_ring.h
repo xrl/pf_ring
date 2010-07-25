@@ -25,7 +25,7 @@
 
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
-#define RING_FLOWSLOT_VERSION          11
+#define RING_FLOWSLOT_VERSION          12
 
 #define DEFAULT_BUCKET_LEN            128
 #define MAX_NUM_DEVICES               256
@@ -34,8 +34,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.3.2"
-#define RING_VERSION_NUM           0x040302
+#define RING_VERSION                "4.4.0"
+#define RING_VERSION_NUM           0x040400
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -55,6 +55,7 @@
 #define SO_SET_MASTER_RING               113
 #define SO_ADD_HW_FILTERING_RULE         114
 #define SO_DEL_HW_FILTERING_RULE         115
+#define SO_SET_PACKET_CONSUMER_MODE      116
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -63,6 +64,7 @@
 #define SO_GET_MAPPED_DNA_DEVICE         123
 #define SO_GET_NUM_RX_CHANNELS           124
 #define SO_GET_RING_ID                   125
+#define SO_GET_PACKET_CONSUMER_MODE      126
 
 /* Map */
 #define SO_MAP_DNA_DEVICE                130
@@ -147,9 +149,11 @@ struct pkt_parsing_info {
 };
 
 struct pfring_pkthdr {
+  /* pcap header */
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
+  /* PF_RING extended header */
   int if_index;         /* index of the interface on which the packet has been received */
   struct pkt_parsing_info parsed_pkt; /* packet parsing info */
   u_int16_t parsed_header_len; /* Extra parsing data before packet */
@@ -158,7 +162,7 @@ struct pfring_pkthdr {
 /* *********************************** */
 
 #define NO_PLUGIN_ID        0
-#define MAX_PLUGIN_ID      64
+#define MAX_PLUGIN_ID      99
 #define MAX_PLUGIN_FIELDS  32
 
 /* ************************************************* */
@@ -537,6 +541,7 @@ struct ring_opt {
 
   /* Ring Slots */
   void * ring_memory;
+  u_int16_t slot_header_len;
   u_int32_t bucket_len;
   FlowSlotInfo *slots_info; /* Points to ring_memory */
   char *ring_slots;         /* Points to ring_memory+sizeof(FlowSlotInfo) */
@@ -555,7 +560,7 @@ struct ring_opt {
 
   /* Locks */
   atomic_t num_ring_users;
-  wait_queue_head_t ring_slots_waitqueue;
+  wait_queue_head_t ring_slots_waitqueue, kernel_poller_waitqueue;
   rwlock_t ring_index_lock, ring_rules_lock;
 
   /* Indexes (Internal) */
@@ -563,6 +568,11 @@ struct ring_opt {
 
   /* Function pointer */
   do_handle_filtering_hash_bucket handle_hash_rule;
+
+  /* Kernel consumer */
+  u_int8_t kernel_consumer_plugin_id; /* If != 0 it identifies a plugin responsible for consuming packets */
+  struct task_struct *kernel_consumer_thread;
+  char* kernel_consumer_options;
 };
 
 /* **************************************** */
@@ -629,10 +639,15 @@ typedef int (*plugin_add_rule)(filtering_rule_element *rule,
 /* Called when a ring is disposed */
 typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
 
+/* Kernel packet poller */
+typedef int (*kernel_packet_poller)(void *data);
+
 struct pfring_plugin_registration {
   u_int16_t plugin_id;
   char name[16];          /* Unique plugin name (e.g. sip, udp) */
   char description[64];   /* Short plugin description */
+
+  kernel_packet_poller pfring_packet_poller;
   plugin_filter_skb    pfring_plugin_filter_skb; /* Filter skb: 1=match, 0=no match */
   plugin_handle_skb    pfring_plugin_handle_skb;
   plugin_get_stats     pfring_plugin_get_stats;
@@ -709,7 +724,7 @@ typedef int (*handle_add_hdr_to_ring)(struct ring_opt *pfr,
 struct pfring_hooks {
   u_int32_t magic; /*
 		      It should be set to PF_RING
-		      and be the first one on this struct
+		      and is MUST be the first one on this struct
 		   */
   unsigned int *transparent_mode;
   handle_ring_skb ring_handler;
@@ -824,6 +839,24 @@ static void unregister_plugin(int pfring_plugin_id) {
 }
 
 #endif /* PF_RING_PLUGIN */
+
+/* *********************************** */
+
+/* pcap header */
+struct pcaplike_file_header {
+  int32_t magic;
+  u_int16_t version_major, version_minor;
+  int32_t thiszone;     /* gmt to local correction */
+  u_int32_t sigfigs;    /* accuracy of timestamps */
+  u_int32_t snaplen;    /* max length saved portion of each pkt */
+  u_int32_t linktype;   /* data link type (LINKTYPE_*) */
+};
+
+struct pcaplike_pkthdr {
+  struct timeval ts;      /* time stamp */
+  u_int32_t caplen;       /* length of portion present */
+  u_int32_t len;          /* length this packet (off wire) */
+};
 
 #endif /* __KERNEL__  */
 

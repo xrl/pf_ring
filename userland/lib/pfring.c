@@ -285,8 +285,10 @@ int pfring_bind(pfring *ring, char *device_name) {
 
 /* **************************************************** */
 
-pfring* pfring_open(char *device_name, u_int8_t promisc,
-		    u_int32_t caplen, u_int8_t _reentrant) {
+pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
+			     u_int32_t caplen, u_int8_t _reentrant,
+			     u_int8_t consumer_plugin_id,
+			     char* consumer_data, u_int consumer_data_len) {
 #ifdef USE_PCAP
   char ebuf[256];
 
@@ -329,6 +331,13 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
       rc = pfring_bind(ring, device_name);
 
     if(rc == 0) {
+      if(consumer_plugin_id > 0) {
+	ring->kernel_packet_consumer = consumer_plugin_id;
+	rc = pfring_set_packet_consumer_mode(ring, consumer_plugin_id, 
+					     consumer_data, consumer_data_len);
+      } else
+	ring->kernel_packet_consumer = 0;
+
       ring->buffer = (char *)mmap(NULL, PAGE_SIZE, PROT_READ|PROT_WRITE,
 				  MAP_SHARED, ring->fd, 0);
 
@@ -350,8 +359,8 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
       munmap(ring->buffer, PAGE_SIZE);
 
       ring->buffer = (char *)mmap(NULL, memSlotsLen,
-				 PROT_READ|PROT_WRITE,
-				 MAP_SHARED, ring->fd, 0);
+				  PROT_READ|PROT_WRITE,
+				  MAP_SHARED, ring->fd, 0);
 
       if(ring->buffer == MAP_FAILED) {
 	printf("mmap() failed");
@@ -388,7 +397,6 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
 	if(set_if_promisc(device_name, 1) == 0)
 	  ring->clear_promisc = 1;
       }
-
     } else {
       close(ring->fd);
       err = -1;
@@ -406,6 +414,15 @@ pfring* pfring_open(char *device_name, u_int8_t promisc,
   } else
     return(NULL);
 #endif
+}
+
+/* **************************************************** */
+
+pfring* pfring_open(char *device_name, u_int8_t promisc,
+		    u_int32_t caplen, u_int8_t _reentrant) {
+  return(pfring_open_consumer(device_name, promisc,
+			      caplen, _reentrant,
+			      0, NULL, 0));
 }
 
 /* **************************************************** */
@@ -982,103 +999,106 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       pfring_notify(ring, REFLECT_PACKET_DEVICE_NONE);
 
   do_pfring_recv:
-    if(ring->reentrant)
-      pthread_spin_lock(&ring->spinlock);
+    if(!ring->kernel_packet_consumer) {
+      if(ring->reentrant)
+	pthread_spin_lock(&ring->spinlock);
 
-    slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
+      slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
 
-    if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
-      queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
-    else
-      queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
+      if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
+	queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
+      else
+	queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
 
-    if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
-      char *bucket = (char*)&slot->bucket;
-      struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
-      int bktLen = _hdr->caplen+_hdr->parsed_header_len;
+      if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
+	char *bucket = (char*)&slot->bucket;
+	struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
+	int bktLen = _hdr->caplen+_hdr->parsed_header_len;
 
-      if(bktLen > buffer_len) bktLen = buffer_len-1;
+	if(bktLen > buffer_len) bktLen = buffer_len-1;
 
-      if(buffer && (bktLen > 0)) {
-	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
-	bucket[bktLen] = '\0';
-      }
-
-      if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
-	ring->slots_info->remove_idx = 0;
-	ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
-      } else {
-	ring->slots_info->remove_idx++;
-	ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
-      }
-
-      if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
-
-      ring->slots_info->tot_read++;
-
-      if(consume_packet_immediately) {
-	ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
-      } else {
-	/* We do not notify pf_ring that the packet has been read
-	   hence this slot will not be available for storing a new packet
-	   until we notify pf_ring
-	*/
-	ring->last_slot_to_update = slot;
-      }      
-
-      wmb();
-      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
-      return(1);
-    } else {
-      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
-
-      if(wait_for_incoming_packet) {
-	struct pollfd pfd;
-	int rc;
-
-#ifdef USE_ADAPTIVE_WAIT
-	/*
-	  Spin in userland for a while and if no packet arrives then
-	  it's time to poll the kernel. I have to do this as a call to
-	  poll() is too costly hence I do call poll() if and only if
-	  I have no chance to avoid it.
-	*/
-	if(num_loops < MAX_NUM_LOOPS) {
-	  num_loops++;
-	  if(num_loops % YIELD_MULTIPLIER) {
-	    sched_yield();
-	  }
+	if(buffer && (bktLen > 0)) {
+	  memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
+	  bucket[bktLen] = '\0';
 	}
-#endif
 
-	/* Sleep when nothing is happening */
-	pfd.fd      = ring->fd;
-	pfd.events  = POLLIN|POLLERR;
-	pfd.revents = 0;
+	if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
 
-#ifdef RING_DEBUG
-	printf("==>> poll [remove_idx=%u][insert_idx=%u][loss=%d][queuedPkts=%u]"
-	       "[slot_state=%d][tot_insert=%u][tot_read=%u]\n",
-	       ring->slots_info->remove_idx,
-	       ring->slots_info->insert_idx,
-	       ring->slots_info->tot_lost,
-	       queuedPkts, slot->slot_state,
-	       ring->slots_info->tot_insert,
-	       ring->slots_info->tot_read);
-#endif
+	if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
+	  ring->slots_info->remove_idx = 0;
+	  ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
+	} else {
+	  ring->slots_info->remove_idx++;
+	  ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
+	}
 
-	errno = 0;
+	ring->slots_info->tot_read++;
 
-	rc = poll(&pfd, 1, -1);
+	if(consume_packet_immediately) {
+	  ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
+	} else {
+	  /* We do not notify pf_ring that the packet has been read
+	     hence this slot will not be available for storing a new packet
+	     until we notify pf_ring
+	  */
+	  ring->last_slot_to_update = slot;
+	}      
 
-	ring->num_poll_calls++;
-
-	if(rc == -1)
-	  return(-1);
-	else
-	  goto do_pfring_recv;
+	wmb();
+	if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+	return(1);
       }
     }
+ 
+    /* Nothing to do: we need to wait */
+    if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+
+    if(wait_for_incoming_packet) {
+      struct pollfd pfd;
+      int rc;
+
+#ifdef USE_ADAPTIVE_WAIT
+      /*
+	Spin in userland for a while and if no packet arrives then
+	it's time to poll the kernel. I have to do this as a call to
+	poll() is too costly hence I do call poll() if and only if
+	I have no chance to avoid it.
+      */
+      if(num_loops < MAX_NUM_LOOPS) {
+	num_loops++;
+	if(num_loops % YIELD_MULTIPLIER) {
+	  sched_yield();
+	}
+      }
+#endif
+
+      /* Sleep when nothing is happening */
+      pfd.fd      = ring->fd;
+      pfd.events  = POLLIN|POLLERR;
+      pfd.revents = 0;
+
+#ifdef RING_DEBUG
+      printf("==>> poll [remove_idx=%u][insert_idx=%u][loss=%d][queuedPkts=%u]"
+	     "[slot_state=%d][tot_insert=%u][tot_read=%u]\n",
+	     ring->slots_info->remove_idx,
+	     ring->slots_info->insert_idx,
+	     ring->slots_info->tot_lost,
+	     queuedPkts, slot->slot_state,
+	     ring->slots_info->tot_insert,
+	     ring->slots_info->tot_read);
+#endif
+
+      errno = 0;
+
+      rc = poll(&pfd, 1, -1);
+
+      ring->num_poll_calls++;
+
+      if(rc == -1)
+	return(-1);
+      else
+	goto do_pfring_recv;
+    }    
      
     return(-1); /* Not reached */
   }
@@ -1140,6 +1160,49 @@ static int pfring_get_mapped_dna_device(pfring *ring, dna_device *dev) {
     return(-1);
   else
     return(getsockopt(ring->fd, 0, SO_GET_MAPPED_DNA_DEVICE, dev, &len));
+#endif
+}
+
+/* ******************************* */
+
+u_int8_t pfring_get_packet_consumer_mode(pfring *ring) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+  if(ring == NULL)
+    return(1);
+  else {
+    u_int8_t id;
+    socklen_t len = sizeof(id);
+    int ret, rc = getsockopt(ring->fd, 0, SO_GET_PACKET_CONSUMER_MODE, &id, &len);
+
+    ret = (rc == 0) ? id : -1;
+    
+    return(ret);
+  }
+#endif
+}
+
+/* **************************************************** */
+
+int pfring_set_packet_consumer_mode(pfring *ring, u_int8_t plugin_id, 
+				    char *plugin_data, u_int plugin_data_len) {
+  char buffer[4096];
+
+#ifdef USE_PCAP
+  return(-1);
+#else
+  if((ring == NULL) || ring->dna_mapped_device) return(-1);
+  
+  if(plugin_data_len > (sizeof(buffer)-1)) return(-2);
+
+  memcpy(buffer, &plugin_id, 1);
+
+  if(plugin_data_len > 0)
+    memcpy(&buffer[1], plugin_data, plugin_data_len);
+  
+  return(setsockopt(ring->fd, 0, SO_SET_PACKET_CONSUMER_MODE, 
+		    buffer, plugin_data_len+1));
 #endif
 }
 
