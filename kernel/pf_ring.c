@@ -952,7 +952,7 @@ static int ring_alloc_mem(struct sock *sk)
    *
    * ********************************************** */
 
-  printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d\n", pfr->kernel_consumer_plugin_id);
+  /* printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d\n", pfr->kernel_consumer_plugin_id); */
 
   pfr->slot_header_len = pfr->kernel_consumer_plugin_id ? sizeof(struct pcaplike_pkthdr) : sizeof(struct pfring_pkthdr);
   the_slot_len = sizeof(u_char)	/* flowSlot.slot_state */
@@ -4470,21 +4470,22 @@ static int ring_setsockopt(struct socket *sock,
       if(copy_from_user(&pfr->kernel_consumer_plugin_id, optval, sizeof(pfr->kernel_consumer_plugin_id)))
 	return -EFAULT;
 
-      //printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d\n", pfr->kernel_consumer_plugin_id);
+      printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d [diff=%d]\n", 
+	     pfr->kernel_consumer_plugin_id, diff);
       
       if(diff > 0) {
-      pfr->kernel_consumer_options = kmalloc(diff, GFP_KERNEL);
-
-      if(pfr->kernel_consumer_options != NULL) {      
-	if(copy_from_user(pfr->kernel_consumer_options, 
-			  &optval[sizeof(pfr->kernel_consumer_plugin_id)], diff))
-	  return -EFAULT;      
-      } else
-	return -EFAULT;
+	pfr->kernel_consumer_options = kmalloc(diff, GFP_KERNEL);
+	
+	if(pfr->kernel_consumer_options != NULL) {      
+	  if(copy_from_user(pfr->kernel_consumer_options, 
+			    &optval[sizeof(pfr->kernel_consumer_plugin_id)], diff))
+	    return -EFAULT;      
+	} else
+	  return -EFAULT;
       }
     }
     break;
-
+    
   default:
     found = 0;
     break;
