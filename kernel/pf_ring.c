@@ -1265,8 +1265,8 @@ static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
 			     u_char mask_src, u_char mask_dst)
 {
   /*
-     When protocol of host_peer is IPv4, s6_addr32[0] contains IPv4
-     address and the value of other elements of s6_addr32 are 0.
+    When protocol of host_peer is IPv4, s6_addr32[0] contains IPv4
+    address and the value of other elements of s6_addr32 are 0.
   */
   if((hash_bucket->rule.proto == hdr->parsed_pkt.l3_proto)
      && (hash_bucket->rule.vlan_id == hdr->parsed_pkt.vlan_id)
@@ -1280,28 +1280,30 @@ static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
 	  && (hash_bucket->rule.port_peer_a == (mask_dst ? 0 : hdr->parsed_pkt.l4_dst_port))
 	  && (hash_bucket->rule.port_peer_b == (mask_src ? 0 : hdr->parsed_pkt.l4_src_port)))))
     {
-      /* comparison for ipv6 addresses */
-      if((hdr->parsed_pkt.ip_version == 6)
-	 && (((memcmp(&hash_bucket->rule.host6_peer_a,
-		      (mask_src ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_src),
-		      sizeof(ip_addr) == 0))
-	      && (memcmp(&hash_bucket->rule.host6_peer_b,
-			 (mask_dst ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_dst),
-			 sizeof(ip_addr) == 0)))
-	     ||
-	     ((memcmp(&hash_bucket->rule.host6_peer_a,
-		      (mask_src ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_dst),
-		      sizeof(ip_addr) == 0))
-	      && (memcmp(&hash_bucket->rule.host6_peer_b,
-			 (mask_dst ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_src),
-			 sizeof(ip_addr) == 0))))) {
-	return(1);
+      if (hdr->parsed_pkt.ip_version == 6) {
+	if (((memcmp(&hash_bucket->rule.host6_peer_a,
+		     (mask_src ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_src),
+		     sizeof(ip_addr) == 0))
+	     && (memcmp(&hash_bucket->rule.host6_peer_b,
+			(mask_dst ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_dst),
+			sizeof(ip_addr) == 0)))
+	    ||
+	    ((memcmp(&hash_bucket->rule.host6_peer_a,
+		     (mask_src ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_dst),
+		     sizeof(ip_addr) == 0))
+	     && (memcmp(&hash_bucket->rule.host6_peer_b,
+			(mask_dst ? &ip_zero.v6 : &hdr->parsed_pkt.ipv6_src),
+			sizeof(ip_addr) == 0)))) {
+	  return(1);
+	} else {
+	  return(0);
+	}
       } else {
-	return(0);
+	return(1); 
       }
-      return(1);
-    } else
+    } else {
     return(0);
+  }
 }
 
 /* ********************************** */
