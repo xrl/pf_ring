@@ -767,7 +767,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen += sprintf(buf + rlen, "IP Defragment       : %s\n",
 		    enable_ip_defrag ? "Yes" : "No");
     rlen += sprintf(buf + rlen, "Transparent mode    : %s\n",
-		    transparent_mode ? "Yes" : "No");
+		    (transparent_mode != driver2pf_ring_non_transparent) ? "Yes" : "No");
     rlen += sprintf(buf + rlen, "Total rings         : %d\n",
 		    ring_table_size);
     rlen += sprintf(buf + rlen, "Total plugins       : %d\n",
