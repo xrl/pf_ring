@@ -3763,7 +3763,7 @@ static bool e1000_clean_jumbo_rx_irq(struct e1000_adapter *adapter,
                                      netdev->name, skb->len);
                 
                             if(*hook->transparent_mode != standard_linux_path) {
-                              rc = hook->ring_handler(skb, 1, 1, -1);
+                              rc = hook->ring_handler(skb, 1, 1, -1, 1);
                               
                               if(rc == 1 /* Packet handled by PF_RING */) {
                                 if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
