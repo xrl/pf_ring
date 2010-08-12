@@ -76,8 +76,6 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/proc_fs.h>
-#include <linux/kthread.h>
-#include <linux/sched.h>
 #include <net/xfrm.h>
 #include <net/sock.h>
 #include <asm/io.h>		/* needed for virt_to_phys() */
@@ -1299,7 +1297,7 @@ static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
 	  return(0);
 	}
       } else {
-	return(1); 
+	return(1);
       }
     } else {
     return(0);
@@ -1543,7 +1541,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 			     filter_plugin_id]->pfring_plugin_filter_skb
       (the_ring, rule, hdr, skb,
        &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
-    
+
     if(parse_memory_buffer
        [rule->rule.extended_fields.filter_plugin_id])
       *free_parse_mem = 1;
@@ -1733,13 +1731,24 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 	 hdr->len, pfr->channel_id, channel_id);
 #endif
 
-  if(!pfr->ring_active)
+  if((!pfr->ring_active) || (!skb))
     return;
 
   if((pfr->channel_id != RING_ANY_CHANNEL)
      && (channel_id != RING_ANY_CHANNEL)
      && ((pfr->channel_id & the_bit) != the_bit))
     return; /* Wrong channel */
+
+  hdr->caplen = min(pfr->bucket_len - offset, hdr->caplen);
+  
+  if(pfr->kernel_consumer_plugin_id
+     && plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_reader) {
+    write_lock_bh(&pfr->ring_index_lock); /* Serialize */
+    plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_reader(pfr, skb, channel_id, hdr, displ);
+    pfr->slots_info->tot_pkts++;
+    write_unlock_bh(&pfr->ring_index_lock);
+    return;
+  }
 
   write_lock_bh(&pfr->ring_index_lock);
 
@@ -1763,34 +1772,28 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
   ring_bucket = &theSlot->bucket;
 
-  if((plugin_mem != NULL) && (offset > 0)) {
+  if((plugin_mem != NULL) && (offset > 0))
     memcpy(&ring_bucket[pfr->slot_header_len], plugin_mem, offset);
-  }
-
-  if(skb != NULL) {
-    hdr->caplen = min(pfr->bucket_len - offset, hdr->caplen);
-
-    if(hdr->caplen > 0) {
+ 
+  if(hdr->caplen > 0) {
 #if defined(RING_DEBUG)
-      printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d][bucket_len=%d][sizeof=%d]\n",
-	     hdr->caplen, hdr->len, displ, hdr->parsed_header_len, pfr->bucket_len,
-	     pfr->slot_header_len);
+    printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d][bucket_len=%d][sizeof=%d]\n",
+	   hdr->caplen, hdr->len, displ, hdr->parsed_header_len, pfr->bucket_len,
+	   pfr->slot_header_len);
 #endif
-      skb_copy_bits(skb, -displ,
-		    &ring_bucket[pfr->slot_header_len + offset], hdr->caplen);
-    } else {
-      if(hdr->parsed_header_len >= pfr->bucket_len) {
-	static u_char print_once = 0;
-
-	if(!print_once) {
-	  printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
-		 pfr->bucket_len, hdr->parsed_header_len);
-	  print_once = 1;
-	}
+    skb_copy_bits(skb, -displ, &ring_bucket[pfr->slot_header_len + offset], hdr->caplen);
+  } else {
+    if(hdr->parsed_header_len >= pfr->bucket_len) {
+      static u_char print_once = 0;
+      
+      if(!print_once) {
+	printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
+	       pfr->bucket_len, hdr->parsed_header_len);
+	print_once = 1;
       }
     }
   }
-
+  
   memcpy(ring_bucket, hdr, pfr->slot_header_len); /* Copy extended packet header */
 
   idx++;
@@ -1808,13 +1811,8 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   theSlot->slot_state = 1;
   write_unlock_bh(&pfr->ring_index_lock);
 
-  if(pfr->kernel_consumer_plugin_id) {
-    wake_up_interruptible(&pfr->kernel_poller_waitqueue);
-  } else {
-    /* wakeup in case of poll() */
-    if(waitqueue_active(&pfr->ring_slots_waitqueue))
-      wake_up_interruptible(&pfr->ring_slots_waitqueue);
-  }
+  if(waitqueue_active(&pfr->ring_slots_waitqueue))
+    wake_up_interruptible(&pfr->ring_slots_waitqueue);
 }
 
 /* ********************************** */
@@ -2946,7 +2944,6 @@ static int ring_create(
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
   pfr->handle_hash_rule = handle_filtering_hash_bucket;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
-  init_waitqueue_head(&pfr->kernel_poller_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
   rwlock_init(&pfr->ring_rules_lock);
   atomic_set(&pfr->num_ring_users, 0);
@@ -2988,14 +2985,9 @@ static int ring_release(struct socket *sock)
     pfr->ring_active = 0;
 
   /* Notify the consumer that we're shutting down */
-  if(pfr->kernel_consumer_plugin_id) {
-    /* Tell the consumer that's time to leave... */
-    wake_up_interruptible(&pfr->kernel_poller_waitqueue);
-    
-    /* Wait until the consumer is active.... */
-    while(pfr->kernel_consumer_thread != NULL) {
-      schedule();
-    }
+  if(pfr->kernel_consumer_plugin_id
+     && plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_term) {
+    plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_term(pfr);
   }
 
   /* Wait until the ring is being used... */
@@ -3171,6 +3163,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->num_rx_channels = 1;
 #endif
 
+
   return(0);
 }
 
@@ -3291,41 +3284,6 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
 /* ************************************* */
 
-static void enable_kernel_consumer(struct ring_opt *pfr) {
-  u_int8_t plugin_id;
-
-  if((pfr->kernel_consumer_thread != NULL)
-     || pfr->ring_active
-     || (pfr->kernel_consumer_plugin_id == 0)
-     ) return;
-
-  plugin_id = pfr->kernel_consumer_plugin_id;
-  if(plugin_id >= MAX_PLUGIN_ID) {
-    printk("[PF_RING] The specified plugin_id %d can't be used as packet poller [plugin_id out of range]\n",
-           plugin_id);
-
-    return; /* Bad value */
-  }
-
-  if(plugin_registration[plugin_id]
-     && plugin_registration[plugin_id]->pfring_packet_poller) {
-    pfr->kernel_consumer_thread = kthread_create(plugin_registration[plugin_id]->pfring_packet_poller, 
-						 pfr, "PF_RING(%s)", pfr->ring_netdev->name);
-    
-    if(pfr->kernel_consumer_thread == NULL)
-      printk("[PF_RING] Warning can't spawn kernel consumer thread\n");
-    else
-      wake_up_process(pfr->kernel_consumer_thread);
-    
-    pfr->ring_active = 1;
-  } else {
-    printk("[PF_RING] The specified plugin_id %d can't be used as packet poller [pfring_packet_poller is NULL]\n", 
-	   plugin_id);
-  }
-}
-
-/* ************************************* */
-
 static int ring_mmap(struct file *file,
 		     struct socket *sock, struct vm_area_struct *vma)
 {
@@ -3382,8 +3340,6 @@ static int ring_mmap(struct file *file,
 
     if((rc = do_memory_mmap(vma, size, pfr->ring_memory, VM_LOCKED, 0)) < 0)
       return(rc);
-
-    enable_kernel_consumer(pfr);
   } else {
     /* DNA Device */
     if(pfr->dna_device == NULL)
@@ -4469,25 +4425,35 @@ static int ring_setsockopt(struct socket *sock,
       u_int diff = optlen-sizeof(pfr->kernel_consumer_plugin_id);
 
       /* Copy the pluginId */
-      if(copy_from_user(&pfr->kernel_consumer_plugin_id, optval, sizeof(pfr->kernel_consumer_plugin_id)))
+      if(copy_from_user(&pfr->kernel_consumer_plugin_id, optval, 
+			sizeof(pfr->kernel_consumer_plugin_id)))
 	return -EFAULT;
 
-      printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d [diff=%d]\n", 
+#if 0
+      printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d [diff=%d]\n",
 	     pfr->kernel_consumer_plugin_id, diff);
-      
+#endif
+
       if(diff > 0) {
 	pfr->kernel_consumer_options = kmalloc(diff, GFP_KERNEL);
-	
-	if(pfr->kernel_consumer_options != NULL) {      
-	  if(copy_from_user(pfr->kernel_consumer_options, 
+
+	if(pfr->kernel_consumer_options != NULL) {
+	  if(copy_from_user(pfr->kernel_consumer_options,
 			    &optval[sizeof(pfr->kernel_consumer_plugin_id)], diff))
-	    return -EFAULT;      
+	    return -EFAULT;
 	} else
 	  return -EFAULT;
       }
+
+      /* Notify the consumer that we're start */
+      if(pfr->kernel_consumer_plugin_id
+	 && plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_start
+	 && (!pfr->ring_active)) {
+	plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_start(pfr);
+      }      
     }
     break;
-    
+
   default:
     found = 0;
     break;
@@ -4739,7 +4705,7 @@ static int ring_getsockopt(struct socket *sock,
 	   pfr->kernel_consumer_plugin_id);
 #endif
 
-    if(copy_to_user(optval, &pfr->kernel_consumer_plugin_id, 
+    if(copy_to_user(optval, &pfr->kernel_consumer_plugin_id,
 		    sizeof(pfr->kernel_consumer_plugin_id)))
       return -EFAULT;
     break;

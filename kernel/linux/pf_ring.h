@@ -560,7 +560,7 @@ struct ring_opt {
 
   /* Locks */
   atomic_t num_ring_users;
-  wait_queue_head_t ring_slots_waitqueue, kernel_poller_waitqueue;
+  wait_queue_head_t ring_slots_waitqueue;
   rwlock_t ring_index_lock, ring_rules_lock;
 
   /* Indexes (Internal) */
@@ -571,8 +571,7 @@ struct ring_opt {
 
   /* Kernel consumer */
   u_int8_t kernel_consumer_plugin_id; /* If != 0 it identifies a plugin responsible for consuming packets */
-  struct task_struct *kernel_consumer_thread;
-  char* kernel_consumer_options;
+  char *kernel_consumer_options, *kernel_consumer_private;
 };
 
 /* **************************************** */
@@ -640,19 +639,28 @@ typedef int (*plugin_add_rule)(filtering_rule_element *rule,
 typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
 
 /* Kernel packet poller */
-typedef int (*kernel_packet_poller)(void *data);
+typedef void (*kernel_packet_start)(struct ring_opt *pfr);
+typedef void (*kernel_packet_term)(struct ring_opt *pfr);
+typedef void (*kernel_packet_reader)(struct ring_opt *pfr, struct sk_buff *skb, 
+				     u_int8_t channel_id, struct pfring_pkthdr *hdr,
+				     int displ);
 
 struct pfring_plugin_registration {
   u_int16_t plugin_id;
   char name[16];          /* Unique plugin name (e.g. sip, udp) */
   char description[64];   /* Short plugin description */
 
-  kernel_packet_poller pfring_packet_poller;
   plugin_filter_skb    pfring_plugin_filter_skb; /* Filter skb: 1=match, 0=no match */
   plugin_handle_skb    pfring_plugin_handle_skb;
   plugin_get_stats     pfring_plugin_get_stats;
   plugin_free_ring_mem pfring_plugin_free_ring_mem;
   plugin_add_rule      pfring_plugin_add_rule;
+
+  /* ************** */
+
+  kernel_packet_start pfring_packet_start;
+  kernel_packet_reader pfring_packet_reader;
+  kernel_packet_start pfring_packet_term;
 };
 
 typedef int   (*register_pfring_plugin)(struct pfring_plugin_registration
