@@ -148,15 +148,18 @@ struct pkt_parsing_info {
   } pkt_detail;
 };
 
+struct pfring_extended_pkthdr {
+  int if_index;         /* index of the interface on which the packet has been received */
+  struct pkt_parsing_info parsed_pkt; /* packet parsing info */
+  u_int16_t parsed_header_len; /* Extra parsing data before packet */
+};
+
 struct pfring_pkthdr {
   /* pcap header */
   struct timeval ts;    /* time stamp */
   u_int32_t caplen;     /* length of portion present */
   u_int32_t len;        /* length this packet (off wire) */
-  /* PF_RING extended header */
-  int if_index;         /* index of the interface on which the packet has been received */
-  struct pkt_parsing_info parsed_pkt; /* packet parsing info */
-  u_int16_t parsed_header_len; /* Extra parsing data before packet */
+  struct pfring_extended_pkthdr extended_hdr; /* PF_RING extended header */
 };
 
 /* *********************************** */

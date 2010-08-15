@@ -330,21 +330,21 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
     printf("%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
-    printf("[eth_type=0x%04X]", h->parsed_pkt.eth_type);
-    printf("[l3_proto=%u]", (unsigned int)h->parsed_pkt.l3_proto);
+    printf("[eth_type=0x%04X]", h->extended_hdr.parsed_pkt.eth_type);
+    printf("[l3_proto=%u]", (unsigned int)h->extended_hdr.parsed_pkt.l3_proto);
 
-    printf("[%s:%d -> ", (h->parsed_pkt.eth_type == 0x86DD) ? 
-	   in6toa(h->parsed_pkt.ipv6_src) : intoa(h->parsed_pkt.ipv4_src), 
-	   h->parsed_pkt.l4_src_port);
-    printf("%s:%d] ", (h->parsed_pkt.eth_type == 0x86DD) ? 
-	   in6toa(h->parsed_pkt.ipv6_dst) : intoa(h->parsed_pkt.ipv4_dst), 
-	   h->parsed_pkt.l4_dst_port);
+    printf("[%s:%d -> ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
+	   in6toa(h->extended_hdr.parsed_pkt.ipv6_src) : intoa(h->extended_hdr.parsed_pkt.ipv4_src), 
+	   h->extended_hdr.parsed_pkt.l4_src_port);
+    printf("%s:%d] ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
+	   in6toa(h->extended_hdr.parsed_pkt.ipv6_dst) : intoa(h->extended_hdr.parsed_pkt.ipv4_dst), 
+	   h->extended_hdr.parsed_pkt.l4_dst_port);
 
-    memcpy(&ehdr, p+h->parsed_header_len, sizeof(struct ether_header));
+    memcpy(&ehdr, p+h->extended_hdr.parsed_header_len, sizeof(struct ether_header));
     eth_type = ntohs(ehdr.ether_type);
     printf("[%s -> %s] ",
-	   etheraddr_string(h->parsed_pkt.smac, buf1),
-	   etheraddr_string(h->parsed_pkt.dmac, buf2));
+	   etheraddr_string(h->extended_hdr.parsed_pkt.smac, buf1),
+	   etheraddr_string(h->extended_hdr.parsed_pkt.dmac, buf2));
 
     if(eth_type == 0x8100) {
       vlan_id = (p[14] & 15)*256 + p[15];
@@ -353,9 +353,9 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
       p+=4;
     }
     if(eth_type == 0x0800) {
-      memcpy(&ip, p+h->parsed_header_len+sizeof(ehdr), sizeof(struct ip));
-      printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->parsed_pkt.l4_src_port);
-      printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->parsed_pkt.l4_dst_port);
+      memcpy(&ip, p+h->extended_hdr.parsed_header_len+sizeof(ehdr), sizeof(struct ip));
+      printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->extended_hdr.parsed_pkt.l4_src_port);
+      printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->extended_hdr.parsed_pkt.l4_dst_port);
     } else if(eth_type == 0x0806)
       printf("[ARP]");
     else
@@ -363,12 +363,12 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
 
     printf("[tos=%d][tcp_seq_num=%u][caplen=%d][len=%d][parsed_header_len=%d]"
 	   "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
-	   h->parsed_pkt.ipv4_tos, h->parsed_pkt.tcp.seq_num,
-	   h->caplen, h->len, h->parsed_header_len,
-	   h->parsed_pkt.pkt_detail.offset.eth_offset,
-	   h->parsed_pkt.pkt_detail.offset.l3_offset,
-	   h->parsed_pkt.pkt_detail.offset.l4_offset,
-	   h->parsed_pkt.pkt_detail.offset.payload_offset);
+	   h->extended_hdr.parsed_pkt.ipv4_tos, h->extended_hdr.parsed_pkt.tcp.seq_num,
+	   h->caplen, h->len, h->extended_hdr.parsed_header_len,
+	   h->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset,
+	   h->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset,
+	   h->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset,
+	   h->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset);
   }
 
   numPkts[threadId]++, numBytes[threadId] += h->len;
