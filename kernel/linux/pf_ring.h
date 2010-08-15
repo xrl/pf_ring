@@ -638,12 +638,15 @@ typedef int (*plugin_add_rule)(filtering_rule_element *rule,
 /* Called when a ring is disposed */
 typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
 
+typedef void (*copy_raw_data_2ring)(struct ring_opt *pfr,
+				    struct pfring_pkthdr *dummy_hdr,
+				    void *raw_data, uint raw_data_len);
+
 /* Kernel packet poller */
-typedef void (*kernel_packet_start)(struct ring_opt *pfr);
+typedef void (*kernel_packet_start)(struct ring_opt *pfr, copy_raw_data_2ring raw_copier);
 typedef void (*kernel_packet_term)(struct ring_opt *pfr);
 typedef void (*kernel_packet_reader)(struct ring_opt *pfr, struct sk_buff *skb, 
-				     u_int8_t channel_id, struct pfring_pkthdr *hdr,
-				     int displ);
+				     u_int8_t channel_id, struct pfring_pkthdr *hdr, int displ);
 
 struct pfring_plugin_registration {
   u_int16_t plugin_id;
@@ -658,9 +661,9 @@ struct pfring_plugin_registration {
 
   /* ************** */
 
-  kernel_packet_start pfring_packet_start;
+  kernel_packet_start  pfring_packet_start;
   kernel_packet_reader pfring_packet_reader;
-  kernel_packet_start pfring_packet_term;
+  kernel_packet_term   pfring_packet_term;
 };
 
 typedef int   (*register_pfring_plugin)(struct pfring_plugin_registration

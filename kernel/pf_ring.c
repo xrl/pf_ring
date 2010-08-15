@@ -952,7 +952,7 @@ static int ring_alloc_mem(struct sock *sk)
 
   /* printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d\n", pfr->kernel_consumer_plugin_id); */
 
-  pfr->slot_header_len = pfr->kernel_consumer_plugin_id ? sizeof(struct pcaplike_pkthdr) : sizeof(struct pfring_pkthdr);
+  pfr->slot_header_len = sizeof(struct pfring_pkthdr);
   the_slot_len = sizeof(u_char)	/* flowSlot.slot_state */
 #ifdef RING_MAGIC
     + sizeof(u_char)
@@ -1714,17 +1714,113 @@ static void send_queued_packets(struct ring_opt *_pfr)
 
 /* ********************************** */
 
+/*
+  Generic function for copying either a skb or a raw
+  memory block to the ring buffer
+*/
+inline void copy_data_to_ring(struct sk_buff *skb,
+			      struct ring_opt *pfr,
+			      struct pfring_pkthdr *hdr,
+			      int displ, int offset, void *plugin_mem,
+			      void *raw_data, uint raw_data_len) {
+  char *ring_bucket;
+  int idx;
+  FlowSlot *theSlot;
+
+  write_lock_bh(&pfr->ring_index_lock);
+
+  if(pfr->slots_info->do_forward)
+    send_queued_packets(pfr);
+
+  idx = pfr->slots_info->insert_idx;
+  theSlot = get_slot(pfr, idx);
+  pfr->slots_info->tot_pkts++;
+
+  if((theSlot == NULL) || (theSlot->slot_state != 0 /* Full */)) {
+    /* No room left */
+    pfr->slots_info->tot_lost++;
+#if defined(RING_DEBUG)
+    printk("[PF_RING] ==> slot(id=%d, state=%d) is full\n", idx, theSlot->slot_state);
+#endif
+
+    write_unlock_bh(&pfr->ring_index_lock);
+    return;
+  }
+
+  ring_bucket = &theSlot->bucket;
+
+  if(skb != NULL) {
+    /* skb copy mode */
+
+    if((plugin_mem != NULL) && (offset > 0))
+      memcpy(&ring_bucket[pfr->slot_header_len], plugin_mem, offset);
+ 
+    if(hdr->caplen > 0) {
+#if defined(RING_DEBUG)
+      printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d][bucket_len=%d][sizeof=%d]\n",
+	     hdr->caplen, hdr->len, displ, hdr->parsed_header_len, pfr->bucket_len,
+	     pfr->slot_header_len);
+#endif
+      skb_copy_bits(skb, -displ, &ring_bucket[pfr->slot_header_len + offset], hdr->caplen);
+    } else {
+      if(hdr->parsed_header_len >= pfr->bucket_len) {
+	static u_char print_once = 0;
+      
+	if(!print_once) {
+	  printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
+		 pfr->bucket_len, hdr->parsed_header_len);
+	  print_once = 1;
+	}
+      }
+    }
+  } else {
+    /* Raw data copy mode */
+    raw_data_len = min(raw_data_len, pfr->bucket_len); /* Avoid overruns */
+    memcpy(&ring_bucket[pfr->slot_header_len], raw_data, raw_data_len); /* Copy raw data if present */
+   
+    hdr->len = hdr->caplen = raw_data_len;
+    /* printk("[PF_RING] Copied raw data at index %d [len=%d]\n", idx, raw_data_len); */
+  }
+
+  memcpy(ring_bucket, hdr, pfr->slot_header_len); /* Copy extended packet header */
+
+  idx++;
+
+  if(idx == pfr->slots_info->tot_slots)
+    pfr->slots_info->insert_idx = 0;
+  else
+    pfr->slots_info->insert_idx = idx;
+
+#if defined(RING_DEBUG)
+  printk("[PF_RING] ==> insert_idx=%d\n", pfr->slots_info->insert_idx);
+#endif
+
+  pfr->slots_info->tot_insert++;
+  theSlot->slot_state = 1;
+  write_unlock_bh(&pfr->ring_index_lock);
+
+  if(waitqueue_active(&pfr->ring_slots_waitqueue))
+    wake_up_interruptible(&pfr->ring_slots_waitqueue);
+}
+
+/* ********************************** */
+
+static void copy_raw_data_to_ring(struct ring_opt *pfr,
+				  struct pfring_pkthdr *dummy_hdr,
+				  void *raw_data, uint raw_data_len) {
+  copy_data_to_ring(NULL, pfr, dummy_hdr, 0, 0, NULL, raw_data, raw_data_len);
+}
+
+/* ********************************** */
+
 static void add_pkt_to_ring(struct sk_buff *skb,
 			    struct ring_opt *_pfr,
 			    struct pfring_pkthdr *hdr,
 			    int displ, u_int8_t channel_id,
 			    int offset, void *plugin_mem)
 {
-  char *ring_bucket;
-  int idx;
-  FlowSlot *theSlot;
-  int32_t the_bit = 1 << channel_id;
   struct ring_opt *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
+  int32_t the_bit = 1 << channel_id;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] --> add_pkt_to_ring(len=%d) [pfr->channel_id=%d][channel_id=%d]\n",
@@ -1750,69 +1846,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
     return;
   }
 
-  write_lock_bh(&pfr->ring_index_lock);
-
-  if(pfr->slots_info->do_forward)
-    send_queued_packets(pfr);
-
-  idx = pfr->slots_info->insert_idx;
-  theSlot = get_slot(pfr, idx);
-  pfr->slots_info->tot_pkts++;
-
-  if((theSlot == NULL) || (theSlot->slot_state != 0 /* Full */)) {
-    /* No room left */
-    pfr->slots_info->tot_lost++;
-#if defined(RING_DEBUG)
-    printk("[PF_RING] ==> slot(id=%d, state=%d) is full\n", idx, theSlot->slot_state);
-#endif
-
-    write_unlock_bh(&pfr->ring_index_lock);
-    return;
-  }
-
-  ring_bucket = &theSlot->bucket;
-
-  if((plugin_mem != NULL) && (offset > 0))
-    memcpy(&ring_bucket[pfr->slot_header_len], plugin_mem, offset);
- 
-  if(hdr->caplen > 0) {
-#if defined(RING_DEBUG)
-    printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][parsed_header_len=%d][bucket_len=%d][sizeof=%d]\n",
-	   hdr->caplen, hdr->len, displ, hdr->parsed_header_len, pfr->bucket_len,
-	   pfr->slot_header_len);
-#endif
-    skb_copy_bits(skb, -displ, &ring_bucket[pfr->slot_header_len + offset], hdr->caplen);
-  } else {
-    if(hdr->parsed_header_len >= pfr->bucket_len) {
-      static u_char print_once = 0;
-      
-      if(!print_once) {
-	printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
-	       pfr->bucket_len, hdr->parsed_header_len);
-	print_once = 1;
-      }
-    }
-  }
-  
-  memcpy(ring_bucket, hdr, pfr->slot_header_len); /* Copy extended packet header */
-
-  idx++;
-
-  if(idx == pfr->slots_info->tot_slots)
-    pfr->slots_info->insert_idx = 0;
-  else
-    pfr->slots_info->insert_idx = idx;
-
-#if defined(RING_DEBUG)
-  printk("[PF_RING] ==> insert_idx=%d\n", pfr->slots_info->insert_idx);
-#endif
-
-  pfr->slots_info->tot_insert++;
-  theSlot->slot_state = 1;
-  write_unlock_bh(&pfr->ring_index_lock);
-
-  if(waitqueue_active(&pfr->ring_slots_waitqueue))
-    wake_up_interruptible(&pfr->ring_slots_waitqueue);
+  copy_data_to_ring(skb, pfr, hdr, displ, offset, plugin_mem, NULL, 0);
 }
 
 /* ********************************** */
@@ -4445,12 +4479,25 @@ static int ring_setsockopt(struct socket *sock,
 	  return -EFAULT;
       }
 
-      /* Notify the consumer that we're start */
-      if(pfr->kernel_consumer_plugin_id
-	 && plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_start
-	 && (!pfr->ring_active)) {
-	plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_start(pfr);
-      }      
+      /* Notify the consumer that we're ready to start */
+      if(pfr->kernel_consumer_plugin_id 
+	 && (plugin_registration[pfr->kernel_consumer_plugin_id] == NULL)) {
+#ifdef RING_DEBUG
+	printk("[PF_RING] Plugin %d is unknown\n", pfr->kernel_consumer_plugin_id);
+#endif
+
+	pfr->kernel_consumer_plugin_id = 0;
+	if(pfr->kernel_consumer_options != NULL) {
+	  kfree(pfr->kernel_consumer_options);
+	  pfr->kernel_consumer_options = NULL;
+	}
+
+	return -EFAULT;
+      } else {
+	if(plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_start && (!pfr->ring_active)) {
+	  plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_start(pfr, copy_raw_data_to_ring);
+	}
+      }
     }
     break;
 
@@ -4982,8 +5029,9 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 
   /* Skip non ethernet interfaces */
   if((dev->name[0] != 'e') && (dev->name[1] != 't') && (dev->name[2] != 'h')) {
-    printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n",
-	   dev->name);
+#ifndef RING_DEBUG
+    printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n", dev->name);
+#endif
     return NOTIFY_DONE;
   }
 

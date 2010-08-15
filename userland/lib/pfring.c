@@ -42,7 +42,7 @@ int pfring_set_direction(pfring *ring, packet_direction direction) {
   if(ring->dna_mapped_device) return(-1);
 
   return(ring ? setsockopt(ring->fd, 0, SO_SET_PACKET_DIRECTION,
-			      &direction, sizeof(direction)): -1);
+			   &direction, sizeof(direction)): -1);
 #endif
 }
 
@@ -167,7 +167,7 @@ int pfring_remove_from_cluster(pfring *ring) {
   if(ring->dna_mapped_device) return(-1);
 
   return(ring ? setsockopt(ring->fd, 0, SO_REMOVE_FROM_CLUSTER,
-			      NULL, 0) : -1);
+			   NULL, 0) : -1);
 #endif
 }
 
@@ -335,6 +335,10 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
 	ring->kernel_packet_consumer = consumer_plugin_id;
 	rc = pfring_set_packet_consumer_mode(ring, consumer_plugin_id, 
 					     consumer_data, consumer_data_len);
+	if(rc < 0) {
+	  free(ring);
+	  return(NULL);
+	}
       } else
 	ring->kernel_packet_consumer = 0;
 
@@ -751,66 +755,66 @@ struct eth_hdr {
 #define __LITTLE_ENDIAN_BITFIELD /* FIX */
 struct iphdr {
 #if defined(__LITTLE_ENDIAN_BITFIELD)
-	u_int8_t	ihl:4,
-		version:4;
+  u_int8_t	ihl:4,
+    version:4;
 #elif defined (__BIG_ENDIAN_BITFIELD)
-	u_int8_t	version:4,
-  		ihl:4;
+  u_int8_t	version:4,
+    ihl:4;
 #else
 #error	"Please fix <asm/byteorder.h>"
 #endif
-	u_int8_t	tos;
-	u_int16_t	tot_len;
-	u_int16_t	id;
-	u_int16_t	frag_off;
-	u_int8_t	ttl;
-	u_int8_t	protocol;
-	u_int16_t	check;
-	u_int32_t	saddr;
-	u_int32_t	daddr;
-	/*The options start here. */
+  u_int8_t	tos;
+  u_int16_t	tot_len;
+  u_int16_t	id;
+  u_int16_t	frag_off;
+  u_int8_t	ttl;
+  u_int8_t	protocol;
+  u_int16_t	check;
+  u_int32_t	saddr;
+  u_int32_t	daddr;
+  /*The options start here. */
 };
 
 struct tcphdr {
-	u_int16_t	source;
-	u_int16_t	dest;
-	u_int32_t	seq;
-	u_int32_t	ack_seq;
+  u_int16_t	source;
+  u_int16_t	dest;
+  u_int32_t	seq;
+  u_int32_t	ack_seq;
 #if defined(__LITTLE_ENDIAN_BITFIELD)
-	__u16	res1:4,
-		doff:4,
-		fin:1,
-		syn:1,
-		rst:1,
-		psh:1,
-		ack:1,
-		urg:1,
-		ece:1,
-		cwr:1;
+  __u16	res1:4,
+    doff:4,
+    fin:1,
+    syn:1,
+    rst:1,
+    psh:1,
+    ack:1,
+    urg:1,
+    ece:1,
+    cwr:1;
 #elif defined(__BIG_ENDIAN_BITFIELD)
-	__u16	doff:4,
-		res1:4,
-		cwr:1,
-		ece:1,
-		urg:1,
-		ack:1,
-		psh:1,
-		rst:1,
-		syn:1,
-		fin:1;
+  __u16	doff:4,
+    res1:4,
+    cwr:1,
+    ece:1,
+    urg:1,
+    ack:1,
+    psh:1,
+    rst:1,
+    syn:1,
+    fin:1;
 #else
 #error	"Adjust your <asm/byteorder.h> defines"
 #endif
-	u_int16_t	window;
-	u_int16_t	check;
-	u_int16_t	urg_ptr;
+  u_int16_t	window;
+  u_int16_t	check;
+  u_int16_t	urg_ptr;
 };
 
 struct udphdr {
-	u_int16_t	source;
-	u_int16_t	dest;
-	u_int16_t	len;
-	u_int16_t	check;
+  u_int16_t	source;
+  u_int16_t	dest;
+  u_int16_t	len;
+  u_int16_t	check;
 };
 
 #define TH_FIN_MULTIPLIER	0x01
@@ -869,14 +873,14 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 	    hdr->parsed_pkt.tcp.flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
 	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
 	  } else if(ip->protocol == IPPROTO_UDP)
-	    {
-	      struct udphdr *udp = (struct udphdr*)(pkt+hdr->parsed_pkt.pkt_detail.offset.l4_offset);
-	      hdr->parsed_pkt.l4_src_port = ntohs(udp->source), hdr->parsed_pkt.l4_dst_port = ntohs(udp->dest);
-	      hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset+sizeof(struct udphdr);
-	    } else
-	      hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset;
+	  {
+	    struct udphdr *udp = (struct udphdr*)(pkt+hdr->parsed_pkt.pkt_detail.offset.l4_offset);
+	    hdr->parsed_pkt.l4_src_port = ntohs(udp->source), hdr->parsed_pkt.l4_dst_port = ntohs(udp->dest);
+	    hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset+sizeof(struct udphdr);
+	  } else
+	  hdr->parsed_pkt.pkt_detail.offset.payload_offset = hdr->parsed_pkt.pkt_detail.offset.l4_offset;
       } else
-	hdr->parsed_pkt.l4_src_port = hdr->parsed_pkt.l4_dst_port = 0;
+      hdr->parsed_pkt.l4_src_port = hdr->parsed_pkt.l4_dst_port = 0;
 
     return(1); /* IP */
   } /* TODO: handle IPv6 */
@@ -999,55 +1003,53 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       pfring_notify(ring, REFLECT_PACKET_DEVICE_NONE);
 
   do_pfring_recv:
-    if(!ring->kernel_packet_consumer) {
-      if(ring->reentrant)
-	pthread_spin_lock(&ring->spinlock);
+    if(ring->reentrant)
+      pthread_spin_lock(&ring->spinlock);
 
-      slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
+    slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
 
-      if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
-	queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
-      else
-	queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
+    if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
+      queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
+    else
+      queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
 
-      if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
-	char *bucket = (char*)&slot->bucket;
-	struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
-	int bktLen = _hdr->caplen+_hdr->parsed_header_len;
+    if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
+      char *bucket = (char*)&slot->bucket;
+      struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
+      int bktLen = _hdr->caplen+_hdr->parsed_header_len;
 
-	if(bktLen > buffer_len) bktLen = buffer_len-1;
+      if(bktLen > buffer_len) bktLen = buffer_len-1;
 
-	if(buffer && (bktLen > 0)) {
-	  memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
-	  bucket[bktLen] = '\0';
-	}
-
-	if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
-
-	if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
-	  ring->slots_info->remove_idx = 0;
-	  ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
-	} else {
-	  ring->slots_info->remove_idx++;
-	  ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
-	}
-
-	ring->slots_info->tot_read++;
-
-	if(consume_packet_immediately) {
-	  ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
-	} else {
-	  /* We do not notify pf_ring that the packet has been read
-	     hence this slot will not be available for storing a new packet
-	     until we notify pf_ring
-	  */
-	  ring->last_slot_to_update = slot;
-	}      
-
-	wmb();
-	if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
-	return(1);
+      if(buffer && (bktLen > 0)) {
+	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
+	bucket[bktLen] = '\0';
       }
+
+      if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
+
+      if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
+	ring->slots_info->remove_idx = 0;
+	ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
+      } else {
+	ring->slots_info->remove_idx++;
+	ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
+      }
+
+      ring->slots_info->tot_read++;
+
+      if(consume_packet_immediately) {
+	ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
+      } else {
+	/* We do not notify pf_ring that the packet has been read
+	   hence this slot will not be available for storing a new packet
+	   until we notify pf_ring
+	*/
+	ring->last_slot_to_update = slot;
+      }      
+
+      wmb();
+      if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
+      return(bktLen);
     }
  
     /* Nothing to do: we need to wait */
