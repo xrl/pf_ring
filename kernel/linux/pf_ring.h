@@ -148,8 +148,14 @@ struct pkt_parsing_info {
   } pkt_detail;
 };
 
+#define UNKNOWN_INTERFACE          -1
+#define FAKE_PACKET                -2 /* It indicates that the returned packet
+					 is faked, and that the info is basically
+					 a message from PF_RING 
+				      */
 struct pfring_extended_pkthdr {
-  int if_index;         /* index of the interface on which the packet has been received */
+  int if_index;         /* index of the interface on which the packet has been received. 
+			   It can be also used to report other information */
   struct pkt_parsing_info parsed_pkt; /* packet parsing info */
   u_int16_t parsed_header_len; /* Extra parsing data before packet */
 };
