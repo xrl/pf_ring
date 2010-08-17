@@ -137,7 +137,7 @@ struct pkt_parsing_info {
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
   struct {
     u_int8_t flags;   /* TCP flags (0 if not available) */
-    u_int32_t seq_num; /* TCP sequence number */
+    u_int32_t seq_num, ack_num; /* TCP sequence number */
   } tcp;
   u_int16_t last_matched_plugin_id; /* If > 0 identifies a plugin to that matched the packet */
   u_int16_t last_matched_rule_id; /* If > 0 identifies a rule that matched the packet */

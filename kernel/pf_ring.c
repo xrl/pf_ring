@@ -31,6 +31,7 @@
  * - Jan Alsenz
  * - valxdater@seznam.cz
  * - Vito Piserchia <vpiserchia@metatype.it>
+ * - John <johncg1983@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1210,7 +1211,7 @@ static int parse_pkt(struct sk_buff *skb,
 	(struct tcphdr *)(skb->data+hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset);
       hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(tcp->dest);
       hdr->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset = hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset + (tcp->doff * 4);
-      hdr->extended_hdr.parsed_pkt.tcp.seq_num = ntohl(tcp->dest);
+      hdr->extended_hdr.parsed_pkt.tcp.seq_num = ntohs(tcp->seq), hdr->extended_hdr.parsed_pkt.tcp.ack_num = ntohs(tcp->ack_seq);
       hdr->extended_hdr.parsed_pkt.tcp.flags =
 	(tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) +
 	(tcp->rst * TH_RST_MULTIPLIER) + (tcp->psh * TH_PUSH_MULTIPLIER) +
@@ -1778,7 +1779,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
     raw_data_len = min(raw_data_len, pfr->bucket_len); /* Avoid overruns */
     memcpy(&ring_bucket[pfr->slot_header_len], raw_data, raw_data_len); /* Copy raw data if present */
    
-    hdr->len = hdr->caplen = raw_data_len;
+    hdr->len = hdr->caplen = raw_data_len, hdr->extended_hdr.if_index = FAKE_PACKET;
     /* printk("[PF_RING] Copied raw data at index %d [len=%d]\n", idx, raw_data_len); */
   }
 
