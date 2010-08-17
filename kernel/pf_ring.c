@@ -31,7 +31,7 @@
  * - Jan Alsenz
  * - valxdater@seznam.cz
  * - Vito Piserchia <vpiserchia@metatype.it>
- * - John <johncg1983@gmail.com>
+ * - Guo Chen <johncg1983@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
