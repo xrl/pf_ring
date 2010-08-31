@@ -384,7 +384,7 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
       ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
 
       /* Set defaults */
-      ring->device_name = strdup(device_name);
+      ring->device_name = strdup(device_name ? device_name : "");
 
 #ifdef RING_DEBUG
       printf("RING (%s): tot_slots=%d/slot_len=%d/"

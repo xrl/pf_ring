@@ -31,7 +31,7 @@ OBJS      = pfring.o ${DNA_OBJS}
 #
 CC        = gcc
 CFLAGS    = -g  -Wall -fPIC ${INCLUDE} ${DNA_DEFINE}
-LDFLAGS   = -shared
+LDFLAGS   = -g -shared
 
 SYSLIBS   = -lpthread
 
