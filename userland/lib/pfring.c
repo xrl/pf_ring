@@ -324,7 +324,10 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
 
     /* printf("channel_id=%d\n", channel_id); */
 
-    if((device_name == NULL) || (strcmp(device_name, "none") == 0)) {
+    if(device_name == NULL /* any */) {
+      device_name = "any";
+      rc = pfring_bind(ring, device_name);
+    } else if(!strcmp(device_name, "none")) {
       /* No binding yet */
       rc = 0;
     } else
