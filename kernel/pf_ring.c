@@ -556,7 +556,7 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
 int handle_hw_filtering_rule(struct net_device *dev, hw_filtering_rule *rule,
 			     u_int8_t add_rule) {
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
-  int debug = 1;
+  int debug = 0;
   struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
   hw_filtering_rule_element element;
 
@@ -614,7 +614,7 @@ static void init_five_tuple_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
 					   u_int16_t s_port, u_int16_t d_port,
 					   hw_filtering_rule *rule) {
 
-  printk("init_five_tuple_filter_hw_rule()\n");
+  /* printk("init_five_tuple_filter_hw_rule()\n"); */
 
   memset(rule, 0, sizeof(hw_filtering_rule));
 
@@ -635,7 +635,7 @@ static void init_perfect_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
 					hw_filtering_rule *rule) {
   u_int32_t netmask;
 
-  printk("init_perfect_filter_hw_rule()\n");
+  /* printk("init_perfect_filter_hw_rule()\n"); */
 
   memset(rule, 0, sizeof(hw_filtering_rule));
 
@@ -667,6 +667,7 @@ static int ring_proc_dev_rule_write(struct file *file,
   int d_a, d_b, d_c, d_d, d_mask, d_port;
   hw_filtering_rule rule;
   u_int8_t found = 0;
+  int debug = 0;
 
   if(data == NULL) return(0);
 
@@ -674,7 +675,7 @@ static int ring_proc_dev_rule_write(struct file *file,
   if(copy_from_user(buf, buffer, count))  return(-EFAULT);
   buf[sizeof(buf)-1] = '\0', buf[count] = '\0';
 
-  printk("[PF_RING] ring_proc_dev_rule_write(%s)\n", buf);
+  if(debug) printk("[PF_RING] ring_proc_dev_rule_write(%s)\n", buf);
 
   num = sscanf(buf, "%c(%d,%d,%d,%c%c%c,%d.%d.%d.%d/%d,%d,%d.%d.%d.%d/%d,%d)",
 	       &add, &rule_id, &queue_id, &vlan,
@@ -682,7 +683,8 @@ static int ring_proc_dev_rule_write(struct file *file,
 	       &s_a, &s_b, &s_c, &s_d, &s_mask, &s_port,
 	       &d_a, &d_b, &d_c, &d_d, &d_mask, &d_port);
 
-  printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (1)\n", buf, num);
+  if(debug)
+    printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (1)\n", buf, num);
 
   if(num == 19) {
     if(proto[0] == 't')
@@ -706,7 +708,8 @@ static int ring_proc_dev_rule_write(struct file *file,
 		 &s_a, &s_b, &s_c, &s_d, &s_port,
 		 &d_a, &d_b, &d_c, &d_d, &d_port);
 
-    printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (2)\n", buf, num);
+    if(debug)
+      printk("[PF_RING] ring_proc_dev_rule_write(%s): num=%d (2)\n", buf, num);
 
     if(num == 16) {
       if(proto[0] == 't')
@@ -1755,7 +1758,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 
     if((plugin_mem != NULL) && (offset > 0))
       memcpy(&ring_bucket[pfr->slot_header_len], plugin_mem, offset);
- 
+
     if(hdr->caplen > 0) {
 #if defined(RING_DEBUG)
       printk("[PF_RING] --> [caplen=%d][len=%d][displ=%d][extended_hdr.parsed_header_len=%d][bucket_len=%d][sizeof=%d]\n",
@@ -1766,7 +1769,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
     } else {
       if(hdr->extended_hdr.parsed_header_len >= pfr->bucket_len) {
 	static u_char print_once = 0;
-      
+
 	if(!print_once) {
 	  printk("[PF_RING] WARNING: the bucket len is [%d] shorter than the plugin parsed header [%d]\n",
 		 pfr->bucket_len, hdr->extended_hdr.parsed_header_len);
@@ -1778,7 +1781,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
     /* Raw data copy mode */
     raw_data_len = min(raw_data_len, pfr->bucket_len); /* Avoid overruns */
     memcpy(&ring_bucket[pfr->slot_header_len], raw_data, raw_data_len); /* Copy raw data if present */
-   
+
     hdr->len = hdr->caplen = raw_data_len, hdr->extended_hdr.if_index = FAKE_PACKET;
     /* printk("[PF_RING] Copied raw data at index %d [len=%d]\n", idx, raw_data_len); */
   }
@@ -1837,7 +1840,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
     return; /* Wrong channel */
 
   hdr->caplen = min(pfr->bucket_len - offset, hdr->caplen);
-  
+
   if(pfr->kernel_consumer_plugin_id
      && plugin_registration[pfr->kernel_consumer_plugin_id]->pfring_packet_reader) {
     write_lock_bh(&pfr->ring_index_lock); /* Serialize */
@@ -4460,7 +4463,7 @@ static int ring_setsockopt(struct socket *sock,
       u_int diff = optlen-sizeof(pfr->kernel_consumer_plugin_id);
 
       /* Copy the pluginId */
-      if(copy_from_user(&pfr->kernel_consumer_plugin_id, optval, 
+      if(copy_from_user(&pfr->kernel_consumer_plugin_id, optval,
 			sizeof(pfr->kernel_consumer_plugin_id)))
 	return -EFAULT;
 
@@ -4481,7 +4484,7 @@ static int ring_setsockopt(struct socket *sock,
       }
 
       /* Notify the consumer that we're ready to start */
-      if(pfr->kernel_consumer_plugin_id 
+      if(pfr->kernel_consumer_plugin_id
 	 && (plugin_registration[pfr->kernel_consumer_plugin_id] == NULL)) {
 #ifdef RING_DEBUG
 	printk("[PF_RING] Plugin %d is unknown\n", pfr->kernel_consumer_plugin_id);
