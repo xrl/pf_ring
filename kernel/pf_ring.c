@@ -465,7 +465,8 @@ static void ring_proc_add(struct ring_opt *pfr)
     snprintf(name, sizeof(name), "%d-%s.%d", pfr->ring_pid,
 	     pfr->ring_netdev->name, pfr->ring_id);
 
-    create_proc_read_entry(name, 0, ring_proc_dir,
+    create_proc_read_entry(name, 0 /* read-only */,
+			   ring_proc_dir,
 			   ring_proc_get_info, pfr);
 
     if(debug) printk("[PF_RING] Added /proc/net/pf_ring/%s\n", name);
@@ -873,11 +874,12 @@ static void ring_proc_init(void)
 
     ring_proc_dev_dir = proc_mkdir(PROC_DEV, ring_proc_dir);
 
-    ring_proc = create_proc_read_entry(PROC_INFO, 0,
+    ring_proc = create_proc_read_entry(PROC_INFO, 0 /* read-only */,
 				       ring_proc_dir,
 				       ring_proc_get_info, NULL);
     ring_proc_plugins_info =
-      create_proc_read_entry(PROC_PLUGINS_INFO, 0, ring_proc_dir,
+      create_proc_read_entry(PROC_PLUGINS_INFO, 0 /* read-only */,
+			     ring_proc_dir,
 			     ring_proc_get_plugin_info, NULL);
     if(!ring_proc || !ring_proc_plugins_info)
       printk("[PF_RING] unable to register proc file\n");
@@ -4984,9 +4986,10 @@ int add_device_to_ring_list(struct net_device *dev) {
   dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
   dev_ptr->has_hw_filtering = 0;
 
-  create_proc_read_entry(PROC_INFO, 0,
+  create_proc_read_entry(PROC_INFO, 0 /* read-only */,
 			 dev_ptr->proc_entry,
-			 ring_proc_dev_get_info /* read */, dev_ptr);
+			 ring_proc_dev_get_info /* read */, 
+			 dev_ptr);
 
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   /* Dirty trick to fix at some point; FIXME */
@@ -5004,14 +5007,16 @@ int add_device_to_ring_list(struct net_device *dev) {
       /* This device supports hardware filtering */
       struct proc_dir_entry *entry;
 
-      entry = create_proc_read_entry(PROC_RULES, 0,
+      entry = create_proc_read_entry(PROC_RULES, 0666 /* rw */,
 				     dev_ptr->proc_entry,
-				     ring_proc_dev_rule_read, dev_ptr);
-      if(entry)
+				     ring_proc_dev_rule_read, 
+				     dev_ptr);
+      if(entry) {
 	entry->write_proc = ring_proc_dev_rule_write;
-
-      dev_ptr->has_hw_filtering = 1;
-      printk("[PF_RING] Device %s supports hw filtering\n", dev->name);
+	dev_ptr->has_hw_filtering = 1;
+	printk("[PF_RING] Device %s supports hw filtering\n", dev->name);
+      } else
+	printk("[PF_RING] Error while creating /proc entry 'rules' for device %s\n", dev->name);
     } else
       printk("[PF_RING] Device %s does NOT support hw filtering [1]\n", dev->name);
   } else
@@ -5045,7 +5050,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   case NETDEV_DOWN:
     break;
   case NETDEV_REGISTER:
-#ifndef RING_DEBUG
+#ifdef RING_DEBUG
     printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
 	   dev->name, dev->pfring_ptr, &ring_hooks);
 #endif
@@ -5057,7 +5062,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     break;
 
   case NETDEV_UNREGISTER:
-#ifndef RING_DEBUG
+#ifdef RING_DEBUG
     printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
 	   dev->name, dev->pfring_ptr);
 #endif
@@ -5079,7 +5084,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   case NETDEV_CHANGENAME: /* Rename interface ethX -> ethY */
     {
       struct list_head *ptr, *tmp_ptr;
-#if defined(RING_DEBUG)
+#ifdef RING_DEBUG
       printk("[PF_RING] device change name %s\n", dev->name);
 #endif
 
@@ -5087,7 +5092,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 	ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
 
 	if(dev_ptr->dev == dev) {
-#if defined(RING_DEBUG)
+#ifdef RING_DEBUG
 	  printk("[PF_RING] ==>> FOUND device change name %s\n", dev->name);
 #endif
 	  dev_ptr->proc_entry->name = dev->name;
