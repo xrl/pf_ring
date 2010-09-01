@@ -430,10 +430,12 @@ void* packet_consumer_thread(void* _id) {
   long thread_id = (long)_id; 
   u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
   u_long core_id = thread_id % numCPU;
-  cpu_set_t cpuset;
 
-  if(numCPU > 1) {
+  if((num_threads > 1) && (numCPU > 1)) {
     /* Bind this thread to a specific core */
+    cpu_set_t cpuset;
+
+    CPU_ZERO(&cpuset);
     CPU_SET(core_id, &cpuset);
     if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
       printf("Error while binding thread %ld to core %ld: errno=%i\n", 

@@ -198,10 +198,12 @@ void* packet_consumer_thread(void* _id) {
   long thread_id = (long)_id; 
   u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
   u_long core_id = thread_id % numCPU;
-  cpu_set_t cpuset;
-
+ 
   if(numCPU > 1) {
     /* Bind this thread to a specific core */
+    cpu_set_t cpuset;
+
+    CPU_ZERO(&cpuset);
     CPU_SET(core_id, &cpuset);
     if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
       printf("Error while binding thread %ld to core %ld: errno=%i\n", 
@@ -237,7 +239,7 @@ int main(int argc, char* argv[]) {
   int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   packet_direction direction = rx_and_tx_direction;
   pfring  *pd;
-  int i;
+  long i;
 
   startTime.tv_sec = 0;
 
@@ -316,7 +318,7 @@ int main(int argc, char* argv[]) {
   for(i=0; i<num_channels; i++) {
     char devname[64];
     
-    snprintf(devname, sizeof(devname), "%s@%d", device, i);
+    snprintf(devname, sizeof(devname), "%s@%ld", device, i);
     ring[i] = pfring_open(devname, promisc,  snaplen, 0);
 
     if(ring[i] == NULL) {
@@ -325,7 +327,7 @@ int main(int argc, char* argv[]) {
     } else {
       char buf[32];
 
-      snprintf(buf, sizeof(buf), "pfcount_multichannel-thread %d", i);
+      snprintf(buf, sizeof(buf), "pfcount_multichannel-thread %ld", i);
       pfring_set_application_name(ring[i], buf);
     }
   
