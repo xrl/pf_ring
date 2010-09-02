@@ -5014,13 +5014,13 @@ int add_device_to_ring_list(struct net_device *dev) {
       if(entry) {
 	entry->write_proc = ring_proc_dev_rule_write;
 	dev_ptr->has_hw_filtering = 1;
-	printk("[PF_RING] Device %s supports hw filtering\n", dev->name);
+	printk("[PF_RING] Device %s DOES support hardware packet filtering\n", dev->name);
       } else
 	printk("[PF_RING] Error while creating /proc entry 'rules' for device %s\n", dev->name);
     } else
-      printk("[PF_RING] Device %s does NOT support hw filtering [1]\n", dev->name);
+      printk("[PF_RING] Device %s does NOT support hardware packet filtering [1]\n", dev->name);
   } else
-    printk("[PF_RING] Device %s does NOT support hw filtering [2]\n", dev->name);
+    printk("[PF_RING] Device %s does NOT support hardware packet filtering [2]\n", dev->name);
 #endif
 
   list_add(&dev_ptr->list, &ring_aware_device_list);
@@ -5030,17 +5030,15 @@ int add_device_to_ring_list(struct net_device *dev) {
 
 /* ************************************ */
 
-
 static int ring_notifier(struct notifier_block *this, unsigned long msg, void *data)
 {
   struct net_device *dev = data;
   struct pfring_hooks *hook;
+  int debug = 0;
 
   /* Skip non ethernet interfaces */
   if((dev->name[0] != 'e') && (dev->name[1] != 't') && (dev->name[2] != 'h')) {
-#ifndef RING_DEBUG
-    printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n", dev->name);
-#endif
+    if(debug) printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n", dev->name);
     return NOTIFY_DONE;
   }
 
@@ -5050,10 +5048,8 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   case NETDEV_DOWN:
     break;
   case NETDEV_REGISTER:
-#ifdef RING_DEBUG
-    printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
+    if(debug) printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
 	   dev->name, dev->pfring_ptr, &ring_hooks);
-#endif
 
     if(dev->pfring_ptr == NULL) {
       dev->pfring_ptr = &ring_hooks;
@@ -5062,10 +5058,9 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     break;
 
   case NETDEV_UNREGISTER:
-#ifdef RING_DEBUG
-    printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
+    if(debug) printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
 	   dev->name, dev->pfring_ptr);
-#endif
+
     hook = (struct pfring_hooks*)dev->pfring_ptr;
     if(hook->magic == PF_RING) {
       remove_device_from_ring_list(dev);
@@ -5084,17 +5079,40 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   case NETDEV_CHANGENAME: /* Rename interface ethX -> ethY */
     {
       struct list_head *ptr, *tmp_ptr;
-#ifdef RING_DEBUG
-      printk("[PF_RING] device change name %s\n", dev->name);
-#endif
+
+      if(debug) printk("[PF_RING] Device change name %s\n", dev->name);
 
       list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
 	ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
 
 	if(dev_ptr->dev == dev) {
-#ifdef RING_DEBUG
-	  printk("[PF_RING] ==>> FOUND device change name %s\n", dev->name);
-#endif
+	  if(debug) printk("[PF_RING] ==>> FOUND device change name %s -> %s\n", 
+			   dev_ptr->proc_entry->name, dev->name);
+
+	  /* Remove old entry */
+	  if(dev_ptr->has_hw_filtering)
+	    remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
+	  
+	  remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
+	  remove_proc_entry(dev_ptr->proc_entry->name, ring_proc_dev_dir);
+	  /* Add new entry */
+	  dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
+	  create_proc_read_entry(PROC_INFO, 0 /* read-only */,
+				 dev_ptr->proc_entry,
+				 ring_proc_dev_get_info /* read */, 
+				 dev_ptr);
+
+	  if(dev_ptr->has_hw_filtering) {
+	    struct proc_dir_entry *entry;
+
+	    entry= create_proc_read_entry(PROC_RULES, 0666 /* rw */,
+					  dev_ptr->proc_entry,
+					  ring_proc_dev_rule_read, 
+					  dev_ptr);
+	    if(entry)
+	      entry->write_proc = ring_proc_dev_rule_write;	      
+	  }
+
 	  dev_ptr->proc_entry->name = dev->name;
 	  break;
 	}
@@ -5103,7 +5121,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     break;
 
   default:
-    printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
+    if(debug) printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
 	   dev->name, msg, dev->pfring_ptr);
     break;
   }
