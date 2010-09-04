@@ -56,6 +56,12 @@
 
 #include "ixgbe.h"
 
+#define HAVE_PF_RING
+
+#ifdef HAVE_PF_RING
+#include "../../../../kernel/linux/pf_ring.h"
+#endif
+
 #include "ixgbe_sriov.h"
 
 char ixgbe_driver_name[] = "ixgbe";
@@ -637,6 +643,36 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 {
 	struct ixgbe_adapter *adapter = q_vector->adapter;
 	int ret = NET_RX_SUCCESS;
+
+#ifdef HAVE_PF_RING
+	{
+	  int debug = 0;
+	  struct pfring_hooks *hook = (struct pfring_hooks*)skb->dev->pfring_ptr;
+	  
+	  if(hook && (hook->magic == PF_RING)) {
+	    /* Wow: PF_RING is alive & kickin' ! */
+	    int rc;
+
+	    if(debug) 
+	      printk(KERN_INFO "[PF_RING] alive [%s][len=%d]\n", 
+		     skb->dev->name, skb->len);
+
+	    if(*hook->transparent_mode != standard_linux_path) {
+	      rc = hook->ring_handler(skb, 1, 1, skb->iif, adapter->num_rx_queues);
+	      
+	      if(rc == 1 /* Packet handled by PF_RING */) {
+		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
+		  /* PF_RING has already freed the memory */
+		  return;
+		}
+	      }
+	    } else {
+	      if(debug) printk(KERN_INFO "[PF_RING] not present on %s\n", 
+			       skb->dev->name);
+	    }
+	  }
+	}
+#endif
 
 #ifdef CONFIG_IXGBE_NAPI
 		if (!(adapter->flags & IXGBE_FLAG_IN_NETPOLL)) {
@@ -1422,6 +1458,10 @@ static bool ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		total_rx_packets++;
 
 		skb->protocol = eth_type_trans(skb, rx_ring->netdev);
+
+#ifdef HAVE_PF_RING
+                skb->iif = rx_ring->queue_index; /* Hack for bring the queue Id along */
+#endif
 
 #ifdef IXGBE_FCOE
 		/* if ddp, not passing to ULD unless for FCP_RSP or error */
