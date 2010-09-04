@@ -5102,6 +5102,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 				 ring_proc_dev_get_info /* read */, 
 				 dev_ptr);
 
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
 	  if(dev_ptr->has_hw_filtering) {
 	    struct proc_dir_entry *entry;
 
@@ -5112,6 +5113,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 	    if(entry)
 	      entry->write_proc = ring_proc_dev_rule_write;	      
 	  }
+#endif
 
 	  dev_ptr->proc_entry->name = dev->name;
 	  break;
