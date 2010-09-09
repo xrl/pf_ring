@@ -32,6 +32,7 @@
  * - valxdater@seznam.cz
  * - Vito Piserchia <vpiserchia@metatype.it>
  * - Guo Chen <johncg1983@gmail.com>
+ * - Dan Kruchinin <dkruchinin@acm.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -77,6 +78,7 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/proc_fs.h>
+#include <linux/if_arp.h>
 #include <net/xfrm.h>
 #include <net/sock.h>
 #include <asm/io.h>		/* needed for virt_to_phys() */
@@ -3168,7 +3170,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 {
   struct ring_opt *pfr = ring_sk(sk);
 
-  if(!dev)
+  if((!dev) || (dev->type != ARPHRD_ETHER))
     return(-1);
 
 #if defined(RING_DEBUG)
