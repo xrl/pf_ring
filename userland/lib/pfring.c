@@ -1025,7 +1025,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
       if(buffer && (bktLen > 0)) {
 	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
-	bucket[bktLen] = '\0';
+	buffer[bktLen] = '\0';
       }
 
       if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
