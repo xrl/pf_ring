@@ -1,4 +1,8 @@
 
+Experimential support of snort DAQ for snprt 2.9
+
+####
+
 This short readme explains how to build snort 2.x with PF_RING
 
 Prerequisites
