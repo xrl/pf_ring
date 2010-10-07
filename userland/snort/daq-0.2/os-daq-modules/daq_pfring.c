@@ -73,6 +73,8 @@ static int pfring_daq_open(Pfring_Context_t *context)
   if (context->handle)
     return DAQ_SUCCESS;
 
+  if (!context->device) context->device = strdup("eth0");
+
   if (context->device)
     {
       context->handle = pfring_open(context->device, context->promisc_flag ? 1 : 0,
@@ -388,10 +390,10 @@ static int pfring_daq_get_datalink_type(void *handle)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (!context->handle)
+  if (!context)
     return DAQ_ERROR;
-
-  return DLT_EN10MB;
+  else
+    return DLT_EN10MB;
 }
 
 static const char *pfring_daq_get_errbuf(void *handle)
