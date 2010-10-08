@@ -266,6 +266,10 @@ int pfring_bind(pfring *ring, char *device_name) {
     }
   }
 
+  /* Setup TX */
+  ring->sock_tx.sll_family = PF_PACKET;
+  ring->sock_tx.sll_protocol = htons(ETH_P_ALL);
+
   sa.sa_family = PF_RING;
   snprintf(sa.sa_data, sizeof(sa.sa_data), "%s", device_name);
 
@@ -510,6 +514,17 @@ void pfring_close(pfring *ring) {
     pthread_spin_destroy(&ring->spinlock);
 
   free(ring);
+#endif
+}
+
+/* **************************************************** */
+
+int  pfring_send(pfring *ring, char *pkt, u_int pkt_len) {
+#ifdef USE_PCAP
+  pcap_t *pcapPtr = (pcap_t*)ring;
+  return(pcap_inject(pcapPtr, pkt, pkt_len));
+#else 
+  return(sendto(ring->fd, pkt, pkt_len, 0, (struct sockaddr *)&ring->sock_tx, sizeof(ring->sock_tx)));
 #endif
 }
 

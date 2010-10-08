@@ -3469,6 +3469,105 @@ static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 
 /* ************************************* */
 
+/* This code is mostly coming from af_packet.c */
+static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
+			struct msghdr *msg, size_t len)
+{
+  struct ring_opt *pfr = ring_sk(sock->sk);
+  struct sockaddr_pkt *saddr=(struct sockaddr_pkt *)msg->msg_name;
+  struct sk_buff *skb;
+  __be16 proto=0;
+  int err = 0;
+
+  /*
+   *	Get and verify the address.
+   */
+  if (saddr)
+    {
+      if (msg->msg_namelen < sizeof(struct sockaddr))
+	return(-EINVAL);
+      if (msg->msg_namelen == sizeof(struct sockaddr_pkt))
+	proto = saddr->spkt_protocol;
+    }
+  else
+    return(-ENOTCONN);	/* SOCK_PACKET must be sent giving an address */
+
+  /*
+   *	Find the device first to size check it
+   */
+  if (pfr->ring_netdev == NULL)
+    goto out_unlock;
+
+  err = -ENETDOWN;
+  if (!(pfr->ring_netdev->flags & IFF_UP))
+    goto out_unlock;
+
+  /*
+   *	You may not queue a frame bigger than the mtu. This is the lowest level
+   *	raw protocol and you must do your own fragmentation at this level.
+   */
+  err = -EMSGSIZE;
+  if (len > pfr->ring_netdev->mtu + pfr->ring_netdev->hard_header_len)
+    goto out_unlock;
+
+  err = -ENOBUFS;
+  skb = sock_wmalloc(sock->sk, len + LL_RESERVED_SPACE(pfr->ring_netdev), 0, GFP_KERNEL);
+
+  /*
+   *	If the write buffer is full, then tough. At this level the user gets to
+   *	deal with the problem - do your own algorithmic backoffs. That's far
+   *	more flexible.
+   */
+
+  if (skb == NULL)
+    goto out_unlock;
+
+  /*
+   *	Fill it in
+   */
+
+  /* FIXME: Save some space for broken drivers that write a
+   * hard header at transmission time by themselves. PPP is the
+   * notable one here. This should really be fixed at the driver level.
+   */
+  skb_reserve(skb, LL_RESERVED_SPACE(pfr->ring_netdev));
+  skb_reset_network_header(skb);
+
+  /* Try to align data part correctly */
+  if (pfr->ring_netdev->header_ops) {
+    skb->data -= pfr->ring_netdev->hard_header_len;
+    skb->tail -= pfr->ring_netdev->hard_header_len;
+    if (len < pfr->ring_netdev->hard_header_len)
+      skb_reset_network_header(skb);
+  }
+
+  /* Returns -EFAULT on error */
+  err = memcpy_fromiovec(skb_put(skb,len), msg->msg_iov, len);
+  skb->protocol = proto;
+  skb->dev = pfr->ring_netdev;
+  skb->priority = sock->sk->sk_priority;
+  if (err)
+    goto out_free;
+
+  /*
+   *	Now send it
+   */
+
+  dev_queue_xmit(skb);
+  dev_put(pfr->ring_netdev);
+  return(len);
+
+ out_free:
+  kfree_skb(skb);
+
+ out_unlock:
+  if (pfr->ring_netdev)
+    dev_put(pfr->ring_netdev);
+  return err;
+}
+
+/* ************************************* */
+
 unsigned int ring_poll(struct file *file,
 		       struct socket *sock, poll_table * wait)
 {
@@ -4906,7 +5005,6 @@ static struct proto_ops ring_ops = {
   .listen = sock_no_listen,
   .shutdown = sock_no_shutdown,
   .sendpage = sock_no_sendpage,
-  .sendmsg = sock_no_sendmsg,
 
   /* Now the operations that really occur. */
   .release = ring_release,
@@ -4917,6 +5015,7 @@ static struct proto_ops ring_ops = {
   .getsockopt = ring_getsockopt,
   .ioctl = ring_ioctl,
   .recvmsg = ring_recvmsg,
+  .sendmsg = ring_sendmsg,
 };
 
 /* ************************************ */

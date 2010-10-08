@@ -48,6 +48,7 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <linux/if.h>
+#include <linux/if_packet.h>
 #include <linux/sockios.h>
 #endif
 
@@ -100,7 +101,7 @@ extern "C" {
     /* All devices */
     char *buffer, *slots, *device_name;
     u_int8_t kernel_packet_consumer;
-    int  fd;
+    int fd;
     FlowSlotInfo *slots_info;
     FlowSlot *last_slot_to_update;
     u_int page_id, slot_id, pkts_per_page;
@@ -108,6 +109,8 @@ extern "C" {
     u_int8_t clear_promisc, reentrant;
     u_long num_poll_calls;
     pthread_spinlock_t spinlock;
+
+    struct sockaddr_ll sock_tx;
   } pfring;
 
 #include "pfring_e1000e_dna.h"
@@ -142,6 +145,7 @@ extern "C" {
 				    pfring* ring[MAX_NUM_RX_CHANNELS]);
   pfring* pfring_open_dna(char *device_name, u_int8_t reentrant);
   void pfring_close(pfring *ring);
+  int  pfring_send(pfring *ring, char *pkt, u_int pkt_len);
   int pfring_stats(pfring *ring, pfring_stat *stats);
   int pfring_notify(pfring *ring, u_int8_t reflect_packet);
   int pfring_read(pfring *ring, char* buffer, u_int buffer_len,

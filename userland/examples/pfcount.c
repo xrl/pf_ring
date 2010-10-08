@@ -461,6 +461,13 @@ void* packet_consumer_thread(void* _id) {
     if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0) {
       if(do_shutdown) break;
       dummyProcesssPacket(&hdr, buffer, thread_id);
+      
+#ifdef TEST_SEND
+      buffer[0] = 0x99;
+      buffer[1] = 0x98;
+      buffer[2] = 0x97;
+      pfring_send(pd, buffer, hdr.caplen);
+#endif
     }
 
     if(0) {

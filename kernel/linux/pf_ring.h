@@ -34,8 +34,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.4.0"
-#define RING_VERSION_NUM           0x040400
+#define RING_VERSION                "4.4.1"
+#define RING_VERSION_NUM           0x040401
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -872,10 +872,14 @@ struct pcaplike_file_header {
   u_int32_t linktype;   /* data link type (LINKTYPE_*) */
 };
 
+struct pcaplike_timeval {
+  u_int32_t tv_sec, tv_usec;
+};
+
 struct pcaplike_pkthdr {
-  struct timeval ts;      /* time stamp */
-  u_int32_t caplen;       /* length of portion present */
-  u_int32_t len;          /* length this packet (off wire) */
+  struct pcaplike_timeval ts;  /* time stamp */
+  u_int32_t caplen;            /* length of portion present */
+  u_int32_t len;               /* length this packet (off wire) */
 };
 
 #endif /* __KERNEL__  */
