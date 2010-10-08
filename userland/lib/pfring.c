@@ -1067,7 +1067,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
       wmb();
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
-      return(bktLen);
+      return(1);
     }
  
     /* Nothing to do: we need to wait */
