@@ -48,7 +48,6 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <linux/if.h>
-#include <linux/if_packet.h>
 #include <linux/sockios.h>
 #endif
 
@@ -56,6 +55,7 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #include <pcap.h>
 #endif
 
+#include <linux/if_packet.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
