@@ -11,6 +11,7 @@ See also:
 
 - PF_RING and Snort
 http://synfulpacket.blogspot.com/2006/11/pfring-and-snort.html
+See the new daq library
 
 - Advanced Packet Capturing Howto: PF_RING, NAPI and extended libpcap on Debian Sarge
 http://bjou.homeunix.net/blog/2006/12/advanced-packet-capturing-howto-pf_ring-napi-and-extended-libpcap-on-debian-sarge/
@@ -21,5 +22,4 @@ a patched kernel, please revert the patch otherwise you will capture the same
 packet twice
 
 ------------
-Luca Deri, Rocco Carbone
-April 2004-09
+(C) Luca Deri 2004-10
