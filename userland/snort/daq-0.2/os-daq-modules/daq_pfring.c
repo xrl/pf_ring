@@ -268,15 +268,12 @@ static int pfring_daq_inject(void *handle, const DAQ_PktHdr_t *hdr, const uint8_
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  /* TODO */
-  /*
-    if (pfring_inject(context->handle, packet_data, len) < 0)
+  if (pfring_send(context->handle, packet_data, len) < 0)
     {
-    DPE(context->errbuf, "%s", pfring_geterr(context->handle));
-    return DAQ_ERROR;
+      DPE(context->errbuf, "%s", "pfring_send() error");
+      return DAQ_ERROR;
     }
-  */
-
+  
   context->stats.packets_injected++;
   return DAQ_SUCCESS;
 }
@@ -372,18 +369,8 @@ static int pfring_daq_get_snaplen(void *handle)
 
 static uint32_t pfring_daq_get_capabilities(void *handle)
 {
-  Pfring_Context_t *context = (Pfring_Context_t *) handle;
-  uint32_t capabilities = DAQ_CAPA_BPF;
-
-  if (context->device)
-    capabilities |= DAQ_CAPA_INJECT;
-
-  capabilities |= DAQ_CAPA_BREAKLOOP;
-
-  if (!context->delayed_open)
-    capabilities |= DAQ_CAPA_UNPRIV_START;
-
-  return capabilities;
+  return /* DAQ_CAPA_BLOCK | DAQ_CAPA_REPLACE | */ DAQ_CAPA_INJECT | DAQ_CAPA_INJECT_RAW
+    | DAQ_CAPA_BREAKLOOP | DAQ_CAPA_UNPRIV_START | DAQ_CAPA_BPF;
 }
 
 static int pfring_daq_get_datalink_type(void *handle)
@@ -424,11 +411,10 @@ SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA =
   const DAQ_Module_t pfring_daq_module_data = 
 #endif
   {
-#ifndef WIN32
     .api_version = DAQ_API_VERSION,
     .module_version = DAQ_PFRING_VERSION,
     .name = "pfring",
-    .type = DAQ_TYPE_FILE_CAPABLE | DAQ_TYPE_INTF_CAPABLE | DAQ_TYPE_MULTI_INSTANCE,
+    .type = DAQ_TYPE_INLINE_CAPABLE | DAQ_TYPE_INTF_CAPABLE | DAQ_TYPE_MULTI_INSTANCE,
     .initialize = pfring_daq_initialize,
     .set_filter = pfring_daq_set_filter,
     .start = pfring_daq_start,
@@ -446,27 +432,4 @@ SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA =
     .get_errbuf = pfring_daq_get_errbuf,
     .set_errbuf = pfring_daq_set_errbuf,
     .get_device_index = pfring_daq_get_device_index
-#else
-    DAQ_API_VERSION,
-    DAQ_PFRING_VERSION,
-    "pfring",
-    DAQ_TYPE_FILE_CAPABLE | DAQ_TYPE_INTF_CAPABLE | DAQ_TYPE_MULTI_INSTANCE,
-    pfring_daq_initialize,
-    pfring_daq_set_filter,
-    pfring_daq_start,
-    pfring_daq_acquire,
-    pfring_daq_inject,
-    pfring_daq_breakloop,
-    pfring_daq_stop,
-    pfring_daq_shutdown,
-    pfring_daq_check_status,
-    pfring_daq_get_stats,
-    pfring_daq_reset_stats,
-    pfring_daq_get_snaplen,
-    pfring_daq_get_capabilities,
-    pfring_daq_get_datalink_type,
-    pfring_daq_get_errbuf,
-    pfring_daq_set_errbuf,
-    pfring_daq_get_device_index
-#endif
   };
