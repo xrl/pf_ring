@@ -3534,12 +3534,21 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
   skb_reset_network_header(skb);
 
   /* Try to align data part correctly */
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18))
   if (pfr->ring_netdev->header_ops) {
     skb->data -= pfr->ring_netdev->hard_header_len;
     skb->tail -= pfr->ring_netdev->hard_header_len;
     if (len < pfr->ring_netdev->hard_header_len)
       skb_reset_network_header(skb);
   }
+#else
+  if (pfr->ring_netdev->hard_header) {
+    skb->data -= pfr->ring_netdev->hard_header_len;
+    skb->tail -= pfr->ring_netdev->hard_header_len;
+    if (len < pfr->ring_netdev->hard_header_len)
+      skb->nh.raw = skb->data;
+  }   
+#endif
 
   /* Returns -EFAULT on error */
   err = memcpy_fromiovec(skb_put(skb,len), msg->msg_iov, len);
