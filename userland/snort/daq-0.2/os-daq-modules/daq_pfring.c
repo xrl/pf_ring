@@ -3,7 +3,8 @@
 ** Author: Michael R. Altizer <maltizer@sourcefire.com>
 **
 ** Copyright (C) 2010 ntop.org
-** Author: Luca Deri <deri@ntop.org>
+** Authors: Luca Deri <deri@ntop.org>
+**          Will Metcalf <william.metcalf@gmail.com>
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License Version 2 as
@@ -35,15 +36,15 @@
 
 #include "daq_api.h"
 
-#define DAQ_PFRING_VERSION 1
+#define DAQ_PF_RING_VERSION 1
 
-typedef struct _pcap_context
+typedef struct _pfring_context
 {
   char *device;
   char *filter_string;
   int snaplen;
   pfring *handle;
-  char errbuf[64];
+  char errbuf[1024];
   u_int breakloop;
   int promisc_flag;
   int timeout;
@@ -61,6 +62,8 @@ typedef struct _pcap_context
   uint64_t rollover_drop;
   uint32_t wrap_recv;
   uint32_t wrap_drop;
+  u_int clusterid;
+  u_int bindcpu;
   DAQ_State state;
 } Pfring_Context_t;
 
@@ -69,11 +72,16 @@ static void pfring_daq_reset_stats(void *handle);
 static int pfring_daq_open(Pfring_Context_t *context)
 {
   uint32_t defaultnet = 0xFFFFFF00;
+  int pfring_rc;
 
   if (context->handle)
     return DAQ_SUCCESS;
 
-  if (!context->device) context->device = strdup("eth0");
+  if (!context->device)
+    {
+      DPE(context->errbuf, "%s", "PF_RING a device must be specified");
+      return DAQ_ERROR;
+    }
 
   if (context->device)
     {
@@ -84,8 +92,19 @@ static int pfring_daq_open(Pfring_Context_t *context)
 	return DAQ_ERROR;
     }
 
+  if (context->clusterid > 0)
+    {
+      pfring_rc = pfring_set_cluster(context->handle, context->clusterid, cluster_per_flow);
+
+    if (pfring_rc != 0)
+	{
+          DPE(context->errbuf, "pfring_set_cluster returned %d", pfring_rc);
+          return DAQ_ERROR;
+        }
+    }
+
   context->netmask = htonl(defaultnet);
-    
+
   return DAQ_SUCCESS;
 }
 
@@ -102,11 +121,11 @@ static int update_hw_stats(Pfring_Context_t *context)
 	  return DAQ_ERROR;
         }
 
-      /* PFRING receive counter wrapped */
+      /* PF_RING receive counter wrapped */
       if (ps.recv < context->wrap_recv)
 	context->rollover_recv += UINT32_MAX;
 
-      /* PFRING drop counter wrapped */
+      /* PF_RING drop counter wrapped */
       if (ps.drop < context->wrap_drop)
 	context->rollover_drop += UINT32_MAX;
 
@@ -123,24 +142,90 @@ static int update_hw_stats(Pfring_Context_t *context)
 static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, char *errbuf, size_t len)
 {
   Pfring_Context_t *context;
+  DAQ_Dict* entry;
+  /* taken from pfcount example */
+  u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
 
   context = calloc(1, sizeof(Pfring_Context_t));
   if (!context)
     {
-      snprintf(errbuf, len, "%s: Couldn't allocate memory for the new PFRING context!", __FUNCTION__);
+      snprintf(errbuf, len, "%s: Couldn't allocate memory for the new PF_RING context!", __FUNCTION__);
       return DAQ_ERROR_NOMEM;
     }
 
+  context->clusterid = 0;
   context->snaplen = config->snaplen;
   context->promisc_flag = (config->flags & DAQ_CFG_PROMISC);
   context->timeout = config->timeout;
 
+  context->device = strdup(config->name);
+  if (!context->device)
+    {
+      snprintf(errbuf, len, "%s: Couldn't allocate memory for the device string!", __FUNCTION__);
+      free(context);
+      return DAQ_ERROR_NOMEM;
+    }
+  
   if (config->mode == DAQ_MODE_READ_FILE)
     {
       snprintf(errbuf, len, "%s: function not supported on PF_RING", __FUNCTION__);
       free(context);
 
       return DAQ_ERROR;
+    }
+
+  for ( entry = config->values; entry; entry = entry->next)
+    {
+      if ( !entry->value || !*entry->value )
+	{
+	  snprintf(errbuf, len,
+		   "%s: variable needs value (%s)\n", __FUNCTION__, entry->key);
+	  return DAQ_ERROR;
+	}
+
+      else if ( !strcmp(entry->key, "clusterid") )
+	{
+	  char* end = entry->value;
+	  context->clusterid = (int)strtol(entry->value, &end, 0);
+	  if ( *end || context->clusterid <= 0 ||context->clusterid > 65535 )
+	    {
+	      snprintf(errbuf, len, "%s: bad clusterid (%s)\n",
+		       __FUNCTION__, entry->value);
+	      return DAQ_ERROR;
+	    }
+	}
+      else if ( !strcmp(entry->key, "bindcpu") )
+	{
+	  char* end = entry->value;
+	  context->bindcpu = (int)strtol(entry->value, &end, 0);
+	  if ( *end || context->bindcpu > numCPU )
+	    {
+	      snprintf(errbuf, len, "%s: bad bindcpu (%s)\n",
+		       __FUNCTION__, entry->value);
+	      return DAQ_ERROR;
+	    }
+	  else
+	    {
+	      cpu_set_t mask;
+
+	      CPU_ZERO(&mask);
+	      CPU_SET((int)context->bindcpu, &mask); 
+	      if (sched_setaffinity(0, sizeof(mask), &mask) <0)
+		{
+		  snprintf(errbuf, len, "%s:failed to set bindcpu (%u) on pid %i\n",
+			   __FUNCTION__, context->bindcpu, getpid());
+		  return DAQ_ERROR;
+		}
+            }
+	}
+
+      else
+	{
+	  snprintf(errbuf, len,
+		   "%s: unsupported variable (%s=%s)\n",
+		   __FUNCTION__, entry->key, entry->value);
+	  return DAQ_ERROR;
+	}
     }
 
   if (!context->delayed_open)
@@ -162,7 +247,7 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
 static int pfring_daq_set_filter(void *handle, const char *filter)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
-  struct sfbpf_program fcode; 
+  struct sfbpf_program fcode;
   if (context->filter_string)
     free(context->filter_string);
 
@@ -206,7 +291,7 @@ static int pfring_daq_start(void *handle)
       free(context->filter_string);
       context->filter_string = NULL;
     }
- 
+
   context->state = DAQ_STATE_STARTED;
 
   return DAQ_SUCCESS;
@@ -257,7 +342,7 @@ static int pfring_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callbac
 	  return ret;
         } else
 	context->packets++;
-      
+
       pfring_process_loop((u_char*)context, &hdr, (u_char*)pkt_buffer);
     }
 
@@ -273,7 +358,7 @@ static int pfring_daq_inject(void *handle, const DAQ_PktHdr_t *hdr, const uint8_
       DPE(context->errbuf, "%s", "pfring_send() error");
       return DAQ_ERROR;
     }
-  
+
   context->stats.packets_injected++;
   return DAQ_SUCCESS;
 }
@@ -406,13 +491,13 @@ static int pfring_daq_get_device_index(void *handle, const char *device)
 }
 
 #ifdef BUILDING_SO
-SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA = 
+SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA =
 #else
-  const DAQ_Module_t pfring_daq_module_data = 
+  const DAQ_Module_t pfring_daq_module_data =
 #endif
   {
     .api_version = DAQ_API_VERSION,
-    .module_version = DAQ_PFRING_VERSION,
+    .module_version = DAQ_PF_RING_VERSION,
     .name = "pfring",
     .type = DAQ_TYPE_INLINE_CAPABLE | DAQ_TYPE_INTF_CAPABLE | DAQ_TYPE_MULTI_INSTANCE,
     .initialize = pfring_daq_initialize,
