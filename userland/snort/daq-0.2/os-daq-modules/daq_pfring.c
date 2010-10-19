@@ -198,7 +198,7 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
 	{
 	  char* end = entry->value;
 	  context->bindcpu = (int)strtol(entry->value, &end, 0);
-	  if ( *end || context->bindcpu > numCPU )
+	  if ( *end || context->bindcpu >= numCPU )
 	    {
 	      snprintf(errbuf, len, "%s: bad bindcpu (%s)\n",
 		       __FUNCTION__, entry->value);
