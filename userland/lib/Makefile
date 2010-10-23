@@ -29,7 +29,10 @@ OBJS      = pfring.o ${DNA_OBJS}
 #
 # C compiler and flags
 #
-CC        = gcc
+#
+# CROSS_COMPILE=arm-mv5sft-linux-gnueabi-
+#
+CC        = ${CROSS_COMPILE}gcc
 CFLAGS    = -g  -Wall -fPIC ${INCLUDE} ${DNA_DEFINE}
 LDFLAGS   = -g -shared
 

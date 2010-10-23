@@ -27,11 +27,13 @@
 
 /* ******************************* */
 
+#if 0
 unsigned long long rdtsc() {
   unsigned long long a;
   asm volatile("rdtsc":"=A" (a));
   return(a);
 }
+#endif
 
 /* ******************************* */
 
