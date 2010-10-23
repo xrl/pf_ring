@@ -61,6 +61,7 @@
 #include <linux/config.h>
 #endif
 #include <linux/module.h>
+#include <linux/vmalloc.h>
 #include <linux/kernel.h>
 #include <linux/socket.h>
 #include <linux/skbuff.h>
@@ -91,6 +92,10 @@
 #include <linux/pf_ring.h>
 
 // #define RING_DEBUG
+
+#ifndef SVN_REV
+#define SVN_REV ""
+#endif
 
 /* ************************************************* */
 #define TH_FIN_MULTIPLIER	0x01
@@ -3962,7 +3967,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr,
 static int ring_setsockopt(struct socket *sock,
 			   int level, int optname,
 			   char __user * optval,
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32))
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
 			   unsigned
 #endif
 			   int optlen)
