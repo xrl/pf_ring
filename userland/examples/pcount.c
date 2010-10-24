@@ -239,6 +239,9 @@ static int32_t thiszone;
 void dummyProcesssPacket(u_char *_deviceId,
 			 const struct pcap_pkthdr *h,
 			 const u_char *p) {
+
+  printf("pcap_sendpacket returned %d\n", pcap_sendpacket(pd, p, h->caplen));
+
   if(verbose) {
     struct ether_header ehdr;
     u_short eth_type, vlan_id;

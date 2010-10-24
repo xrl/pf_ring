@@ -1060,6 +1060,11 @@ pcap_inject_linux(pcap_t *handle, const void *buf, size_t size)
 	}
 #endif
 
+#ifdef HAVE_PF_RING
+	if(handle->ring != NULL)
+	  return(pfring_send(handle->ring, (char*)buf, size));
+#endif
+
 	ret = send(handle->fd, buf, size, 0);
 	if (ret == -1) {
 		snprintf(handle->errbuf, PCAP_ERRBUF_SIZE, "send: %s",

@@ -33,6 +33,7 @@
  * - Vito Piserchia <vpiserchia@metatype.it>
  * - Guo Chen <johncg1983@gmail.com>
  * - Dan Kruchinin <dkruchinin@acm.org>
+ * - Andreas Tsopelas <tsopelas@kth.se>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -3489,6 +3490,8 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
    */
   if (saddr)
     {
+      if (saddr == NULL) proto = htons(ETH_P_ALL);
+
       if (msg->msg_namelen < sizeof(struct sockaddr))
 	return(-EINVAL);
       if (msg->msg_namelen == sizeof(struct sockaddr_pkt))
@@ -5152,7 +5155,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   int debug = 0;
 
   /* Skip non ethernet interfaces */
-  if((dev->name[0] != 'e') && (dev->name[1] != 't') && (dev->name[2] != 'h')) {
+  if(strncmp(dev->name, "eth", 3) && strncmp(dev->name, "lan", 3)) {
     if(debug) printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n", dev->name);
     return NOTIFY_DONE;
   }
