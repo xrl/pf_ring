@@ -240,7 +240,7 @@ void dummyProcesssPacket(u_char *_deviceId,
 			 const struct pcap_pkthdr *h,
 			 const u_char *p) {
 
-  printf("pcap_sendpacket returned %d\n", pcap_sendpacket(pd, p, h->caplen));
+  // printf("pcap_sendpacket returned %d\n", pcap_sendpacket(pd, p, h->caplen));
 
   if(verbose) {
     struct ether_header ehdr;
