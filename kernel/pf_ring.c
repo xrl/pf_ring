@@ -34,6 +34,7 @@
  * - Guo Chen <johncg1983@gmail.com>
  * - Dan Kruchinin <dkruchinin@acm.org>
  * - Andreas Tsopelas <tsopelas@kth.se>
+ * - Alfredo Cardigliano <cardigliano@ntop.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -99,17 +100,21 @@
 #endif
 
 /* ************************************************* */
+
 #define TH_FIN_MULTIPLIER	0x01
 #define TH_SYN_MULTIPLIER	0x02
 #define TH_RST_MULTIPLIER	0x04
 #define TH_PUSH_MULTIPLIER	0x08
 #define TH_ACK_MULTIPLIER	0x10
 #define TH_URG_MULTIPLIER	0x20
+
 /* ************************************************* */
+
 #define PROC_INFO               "info"
 #define PROC_DEV                "dev"
 #define PROC_RULES              "rules"
 #define PROC_PLUGINS_INFO       "plugins_info"
+
 /* ************************************************* */
 
 const static ip_addr ip_zero = { IN6ADDR_ANY_INIT };
@@ -222,7 +227,7 @@ ip_defrag(struct sk_buff *skb, u32 user);
 /* ********************************** */
 
 /* Defaults */
-static unsigned int num_slots = 4096;
+static unsigned int min_num_slots = 4096;
 static unsigned int enable_tx_capture = 1;
 static unsigned int enable_ip_defrag = 0;
 static unsigned int transparent_mode = standard_linux_path;
@@ -235,18 +240,18 @@ static u_int32_t ring_id_serial = 0;
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16)) || defined(REDHAT_PATCHED_KERNEL)
-module_param(num_slots, uint, 0644);
+module_param(min_num_slots, uint, 0644);
 module_param(transparent_mode, uint, 0644);
 module_param(enable_tx_capture, uint, 0644);
 module_param(enable_ip_defrag, uint, 0644);
 #else
-MODULE_PARM(num_slots, "i");
+MODULE_PARM(min_num_slots, "i");
 MODULE_PARM(transparent_mode, "i");
 MODULE_PARM(enable_tx_capture, "i");
 MODULE_PARM(enable_ip_defrag, "i");
 #endif
 
-MODULE_PARM_DESC(num_slots, "Number of ring slots");
+MODULE_PARM_DESC(min_num_slots, "Number of ring slots");
 MODULE_PARM_DESC(transparent_mode,
 		 "0=standard Linux, 1=direct2pfring+transparent, 2=direct2pfring+non transparent"
 		 "For 1 and 2 you need to use a PF_RING aware driver");
@@ -389,19 +394,18 @@ static void rvfree(void *mem, unsigned long size)
 
 /* ********************************** */
 
-static inline FlowSlot *get_slot(struct ring_opt *pfr, int idx)
+static inline FlowSlot *get_slot(struct ring_opt *pfr, u_int32_t off)
 {
   if(pfr->ring_slots != NULL) {
-    FlowSlot *slot =
-      (FlowSlot *) &(pfr->ring_slots[idx * pfr->slots_info->slot_len]);
+    FlowSlot *slot = (FlowSlot *) &(pfr->ring_slots[off]);
+
 #if defined(RING_DEBUG)
-    printk("[PF_RING] get_slot(%d): returned slot [slot_state=%d]\n",
-	   idx, slot->slot_state);
+    printk("[PF_RING] get_slot(offset=%d): returned slot\n", off);
 #endif
     return(slot);
   } else {
 #if defined(RING_DEBUG)
-    printk("[PF_RING] get_slot(%d): NULL slot\n", idx);
+    printk("[PF_RING] get_slot(offset=%d): NULL slot\n", off);
 #endif
     return(NULL);
   }
@@ -409,12 +413,75 @@ static inline FlowSlot *get_slot(struct ring_opt *pfr, int idx)
 
 /* ********************************** */
 
-static inline FlowSlot *get_remove_slot(struct ring_opt *pfr)
+static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_int32_t *real_off)
 {
+  FlowSlot *slot = get_slot(pfr, off);
+  struct pfring_pkthdr *hdr = (struct pfring_pkthdr*) &slot->bucket;
+  u_int32_t real_slot_size = sizeof(FlowSlot) - 1 + pfr->slot_header_len + hdr->extended_hdr.parsed_header_len + hdr->caplen;
+
+  if((off + real_slot_size + pfr->slots_info->slot_len) > (pfr->slots_info->tot_mem - sizeof(FlowSlotInfo))){
+    *real_off = pfr->slots_info->tot_mem - sizeof(FlowSlotInfo) - off;
+    return 0;
+  }
+
+  *real_off = real_slot_size;
+  return (off + real_slot_size);
+}
+
+/* ********************************** */
+
+static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
+{
+  if(pfr->ring_slots != NULL) {
+    u_int32_t tot_insert = pfr->slots_info->tot_insert, tot_read = pfr->slots_info->tot_read;
+
+    if(tot_insert >= tot_read) {
+      return(tot_insert - tot_read);
+    } else {
+      return(((u_int32_t) - 1) + tot_insert - tot_read);
+    }
+
 #if defined(RING_DEBUG)
-  printk("[PF_RING] get_remove_slot(%d)\n", pfr->slots_info->remove_idx);
+    printk("[PF_RING] -> [tot_insert=%d][tot_read=%d]\n",
+	   tot_insert, tot_read);
 #endif
-  return(get_slot(pfr, pfr->slots_info->remove_idx));
+  } else
+    return(0);
+}
+
+/* ********************************** */
+
+static inline int check_and_init_free_slot(struct ring_opt *pfr, int off)
+{
+  FlowSlot *slot = (FlowSlot *) (pfr->ring_slots + off);
+
+  if(pfr->slots_info->insert_off == pfr->slots_info->remove_off) {
+    /*
+      Both insert and remove offset are set on the same slot.
+      We need to find out whether the memory is full or empty
+    */
+
+    if(num_queued_pkts(pfr) >= min_num_slots)
+      return(0); /* Memory is full */
+  } else {
+    /* There are packets in the ring. We have to check whether we have enough to accommodate a new packet */
+
+    if(pfr->slots_info->insert_off < pfr->slots_info->remove_off) {
+      if((pfr->slots_info->remove_off - pfr->slots_info->insert_off) < pfr->slots_info->slot_len)
+	return(0);
+    } else {
+      /* We have enough room for the incoming packet as after we insert a packet, the insert_off
+	 offset is wrapped to the beginning in case the space remaining is less than slot_len
+	 (i.e. the memory needed to accommodate a packet)
+      */
+    }
+  }
+
+#ifdef RING_MAGIC
+  slot->magic = RING_MAGIC_VALUE;
+#endif
+
+  return 1;
 }
 
 /* ********************************** */
@@ -500,33 +567,11 @@ static void ring_proc_remove(struct ring_opt *pfr)
   }
 }
 
-/* ********************************** */
-
-static u_int32_t num_queued_pkts(struct ring_opt *pfr)
-{
-  if(pfr->ring_slots != NULL) {
-    u_int32_t tot_insert = pfr->slots_info->tot_insert, tot_read =
-      pfr->slots_info->tot_read;
-
-    if(tot_insert >= tot_read) {
-      return(tot_insert - tot_read);
-    } else {
-      return(((u_int32_t) - 1) + tot_insert - tot_read);
-    }
-
-#if defined(RING_DEBUG)
-    printk("[PF_RING] -> [tot_insert=%d][tot_read=%d]\n",
-	   tot_insert, tot_read);
-#endif
-  } else
-    return(0);
-}
-
 /* ************************************* */
 
 inline u_int get_num_ring_free_slots(struct ring_opt * pfr)
 {
-  return(pfr->slots_info->tot_slots - num_queued_pkts(pfr));
+  return(pfr->slots_info->min_num_slots - num_queued_pkts(pfr));
 }
 
 /* ********************************** */
@@ -770,7 +815,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen = sprintf(buf, "PF_RING Version     : %s ($Revision: %s$)\n",
 		   RING_VERSION, SVN_REV);
     rlen += sprintf(buf + rlen, "Ring slots          : %d\n",
-		    num_slots);
+		    min_num_slots);
     rlen += sprintf(buf + rlen, "Slot version        : %d\n",
 		    RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen, "Capture TX          : %s\n",
@@ -809,7 +854,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 			pfr->num_filtering_rules);
 	rlen += sprintf(buf + rlen, "Cluster Id     : %d\n", pfr->cluster_id);
 	rlen += sprintf(buf + rlen, "Channel Id     : %d\n", pfr->channel_id);
-	rlen += sprintf(buf + rlen, "Tot Slots      : %d\n", fsi->tot_slots);
+	rlen += sprintf(buf + rlen, "Min Num Slots  : %d\n", fsi->min_num_slots);
 	rlen += sprintf(buf + rlen, "Bucket Len     : %d\n", fsi->data_len);
 	rlen += sprintf(buf + rlen, "Slot Len       : %d [bucket+header]\n",
 			fsi->slot_len);
@@ -956,7 +1001,7 @@ static int ring_alloc_mem(struct sock *sk)
    * *        FlowSlot                   *   |
    * *************************************   |
    * *        FlowSlot                   *   |
-   * *************************************   +- num_slots
+   * *************************************   +- >= min_num_slots
    * *        FlowSlot                   *   |
    * *************************************   |
    * *        FlowSlot                   *   |
@@ -967,14 +1012,14 @@ static int ring_alloc_mem(struct sock *sk)
   /* printk("[PF_RING] SO_SET_PACKET_CONSUMER_MODE=%d\n", pfr->kernel_consumer_plugin_id); */
 
   pfr->slot_header_len = sizeof(struct pfring_pkthdr);
-  the_slot_len = sizeof(u_char)	/* flowSlot.slot_state */
+  the_slot_len =
 #ifdef RING_MAGIC
-    + sizeof(u_char)
+    sizeof(u_char) +
 #endif
-    + pfr->slot_header_len
+    pfr->slot_header_len
     + pfr->bucket_len /* flowSlot.bucket */ ;
 
-  tot_mem = sizeof(FlowSlotInfo) + num_slots * the_slot_len;
+  tot_mem = sizeof(FlowSlotInfo) + min_num_slots * the_slot_len;
   if(tot_mem % PAGE_SIZE)
     tot_mem += PAGE_SIZE - (tot_mem % PAGE_SIZE);
 
@@ -998,28 +1043,15 @@ static int ring_alloc_mem(struct sock *sk)
   pfr->slots_info->version = RING_FLOWSLOT_VERSION;
   pfr->slots_info->slot_len = the_slot_len;
   pfr->slots_info->data_len = pfr->bucket_len;
-  pfr->slots_info->tot_slots =
+  pfr->slots_info->min_num_slots =
     (tot_mem - sizeof(FlowSlotInfo)) / the_slot_len;
   pfr->slots_info->tot_mem = tot_mem;
   pfr->slots_info->sample_rate = 1;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] allocated %d slots [slot_len=%d][tot_mem=%u]\n",
-	 pfr->slots_info->tot_slots, pfr->slots_info->slot_len,
+	 pfr->slots_info->min_num_slots, pfr->slots_info->slot_len,
 	 pfr->slots_info->tot_mem);
-#endif
-
-#ifdef RING_MAGIC
-  {
-    int i;
-
-    for(i = 0; i < pfr->slots_info->tot_slots; i++) {
-      unsigned long idx = i * pfr->slots_info->slot_len;
-      FlowSlot *slot = (FlowSlot *) & pfr->ring_slots[idx];
-      slot->magic = RING_MAGIC_VALUE;
-      slot->slot_state = 0;
-    }
-  }
 #endif
 
   pfr->insert_page_id = 1, pfr->insert_slot_id = 0;
@@ -1633,101 +1665,6 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
 /* ********************************** */
 
-static int forward_slot_packet(struct ring_opt *pfr, char *bucket) {
-  struct pfring_pkthdr *hdr = (struct pfring_pkthdr*)bucket;
-  u_int payload_len = hdr->caplen;
-  char *payload = &bucket[sizeof(struct pfring_pkthdr) + hdr->extended_hdr.parsed_header_len];
-  struct net_device *forward_dev = pfr->reflector_dev;
-  struct sk_buff *skb;
-
-  if(forward_dev == NULL) return(-1);
-
-#if 0
-  {
-    int i;
-
-    printk("[PF_RING] forward_slot_packet(): %u bytes -> device %s\n",
-	   payload_len, forward_dev->name);
-
-    for(i=0; i<payload_len; i++)
-      printk("%02X ", payload[i] & 0xFF);
-
-    printk("\n");
-  }
-#endif
-
-  skb = dev_alloc_skb(payload_len);
-  if (!skb) {
-    printk("[PF_RING] forward_slot_packet(): unable to allocate memory\n");
-    return -ENOMEM;
-  }
-
-  skb->dev = forward_dev;
-  skb_put(skb, payload_len);
-  skb_copy_to_linear_data(skb, payload, payload_len);
-  skb->protocol = eth_type_trans(skb, forward_dev);
-  return(reflect_packet(skb, pfr, forward_dev, 14));
-}
-
-/* ********************************** */
-
-/* Flush packets waiting to be reflected */
-static void send_queued_packets(struct ring_opt *_pfr)
-{
-  FlowSlot *theSlot;
-  struct ring_opt *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
-  int idx;
-
-  if((pfr->ring_netdev == NULL)
-     || (pfr->ring_netdev == &none_dev)
-     || (!pfr->slots_info->do_forward)) return;
-  else idx = pfr->slots_info->forward_idx;
-
-#if defined(RING_DEBUG)
-  {
-    static int i = 0;
-
-    if(i < 100) {
-      printk("[PF_RING] ==> send_queued_packets(fwd=%d/insert=%d/remove=%d)\n",
-	     pfr->slots_info->forward_idx,
-	     pfr->slots_info->insert_idx, pfr->slots_info->remove_idx);
-      i++;
-    }
-  }
-#endif
-
-    while(idx != pfr->slots_info->remove_idx) {
-      int diff = pfr->slots_info->remove_idx-idx;
-
-      if(diff < 0) diff += pfr->slots_info->tot_slots;
-      if(diff <= 1) break; /* Leave at least one slot to process as the
-			      receiver might not yet have consumed the packet */
-      if((theSlot = get_slot(pfr, idx)) == NULL) break;
-
-#if defined(RING_DEBUG)
-      printk("[PF_RING] ==> slot_state(id=%d, state=%d)\n",
-	     idx, theSlot->slot_state);
-#endif
-
-      if(theSlot->slot_state == 2) {
-	if(pfr->reflector_dev != NULL) {
-	  /* We have to forward the packet prior to overwrite it */
-	  char *ring_bucket = &theSlot->bucket;
-
-	  forward_slot_packet(pfr, ring_bucket);
-	}
-      }
-
-      theSlot->slot_state = 0; /* We've done our job */
-      idx++;
-      if(idx == pfr->slots_info->tot_slots) idx = 0;
-    }
-
-    pfr->slots_info->forward_idx = idx, pfr->slots_info->do_forward = 0;
-}
-
-/* ********************************** */
-
 /*
   Generic function for copying either a skb or a raw
   memory block to the ring buffer
@@ -1738,25 +1675,22 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 			      int displ, int offset, void *plugin_mem,
 			      void *raw_data, uint raw_data_len) {
   char *ring_bucket;
-  int idx;
+  u_int32_t off, taken;
   FlowSlot *theSlot;
 
   write_lock_bh(&pfr->ring_index_lock);
 
-  if(pfr->slots_info->do_forward)
-    send_queued_packets(pfr);
-
-  idx = pfr->slots_info->insert_idx;
-  theSlot = get_slot(pfr, idx);
+  off = pfr->slots_info->insert_off;
+  theSlot = get_slot(pfr, off);
   pfr->slots_info->tot_pkts++;
 
-  if((theSlot == NULL) || (theSlot->slot_state != 0 /* Full */)) {
+  if((theSlot == NULL) || (!check_and_init_free_slot(pfr, off)) /* Full */) {
     /* No room left */
     pfr->slots_info->tot_lost++;
 #if defined(RING_DEBUG)
-    printk("[PF_RING] ==> slot(id=%d, state=%d) is full\n", idx, theSlot->slot_state);
+    printk("[PF_RING] ==> slot(off=%d) is full [insert_off=%u][remove_off=%u][slot_len=%u][num_queued_pkts=%u]\n",
+	   off, pfr->slots_info->insert_off, pfr->slots_info->remove_off, pfr->slots_info->slot_len, num_queued_pkts(pfr));
 #endif
-
     write_unlock_bh(&pfr->ring_index_lock);
     return;
   }
@@ -1793,24 +1727,19 @@ inline void copy_data_to_ring(struct sk_buff *skb,
     memcpy(&ring_bucket[pfr->slot_header_len], raw_data, raw_data_len); /* Copy raw data if present */
 
     hdr->len = hdr->caplen = raw_data_len, hdr->extended_hdr.if_index = FAKE_PACKET;
-    /* printk("[PF_RING] Copied raw data at index %d [len=%d]\n", idx, raw_data_len); */
+    /* printk("[PF_RING] Copied raw data at slot with offset %d [len=%d]\n", off, raw_data_len); */
   }
 
   memcpy(ring_bucket, hdr, pfr->slot_header_len); /* Copy extended packet header */
 
-  idx++;
-
-  if(idx == pfr->slots_info->tot_slots)
-    pfr->slots_info->insert_idx = 0;
-  else
-    pfr->slots_info->insert_idx = idx;
+  pfr->slots_info->insert_off = get_next_slot_offset(pfr, off, &taken);
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] ==> insert_idx=%d\n", pfr->slots_info->insert_idx);
+  printk("[PF_RING] ==> insert_off=%d\n", pfr->slots_info->insert_off);
 #endif
 
   pfr->slots_info->tot_insert++;
-  theSlot->slot_state = 1;
+
   write_unlock_bh(&pfr->ring_index_lock);
 
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
@@ -1993,9 +1922,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
       /* Filter failed */
 #if defined(RING_DEBUG)
       printk("[PF_RING] add_skb_to_ring(skb): Filter failed [len=%d][tot=%llu]"
-	     "[insertIdx=%d][pkt_type=%d][cloned=%d]\n",
+	     "[insert_off=%d][pkt_type=%d][cloned=%d]\n",
 	     (int)skb->len, pfr->slots_info->tot_pkts,
-	     pfr->slots_info->insert_idx, skb->pkt_type,
+	     pfr->slots_info->insert_off, skb->pkt_type,
 	     skb->cloned);
 #endif
       atomic_set(&pfr->num_ring_users, 0);
@@ -2016,10 +1945,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
   /* ************************************* */
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] add_skb_to_ring(skb) [len=%d][tot=%llu][insertIdx=%d]"
+  printk("[PF_RING] add_skb_to_ring(skb) [len=%d][tot=%llu][insert_off=%d]"
 	 "[pkt_type=%d][cloned=%d]\n",
 	 (int)skb->len, pfr->slots_info->tot_pkts,
-	 pfr->slots_info->insert_idx, skb->pkt_type, skb->cloned);
+	 pfr->slots_info->insert_off, skb->pkt_type, skb->cloned);
 #endif
 
   /* Extensions */
@@ -2030,9 +1959,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
   /* [2] Filter packet according to rules */
   if(debug)
-    printk("[PF_RING] About to evaluate packet [len=%d][tot=%llu][insertIdx=%d]"
+    printk("[PF_RING] About to evaluate packet [len=%d][tot=%llu][insert_off=%d]"
 	   "[pkt_type=%d][cloned=%d]\n", (int)skb->len,
-	   pfr->slots_info->tot_pkts, pfr->slots_info->insert_idx,
+	   pfr->slots_info->tot_pkts, pfr->slots_info->insert_off,
 	   skb->pkt_type, skb->cloned);
 
   /* [2.1] Search the hash */
@@ -2222,9 +2151,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
 #if defined(RING_DEBUG)
 	printk("[PF_RING] add_skb_to_ring(skb): sampled packet [len=%d]"
-	       "[tot=%llu][insertIdx=%d][pkt_type=%d][cloned=%d]\n",
+	       "[tot=%llu][insert_off=%d][pkt_type=%d][cloned=%d]\n",
 	       (int)skb->len, pfr->slots_info->tot_pkts,
-	       pfr->slots_info->insert_idx, skb->pkt_type,
+	       pfr->slots_info->insert_off, skb->pkt_type,
 	       skb->cloned);
 #endif
 
@@ -2264,9 +2193,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
       add_pkt_to_ring(skb, pfr, hdr, displ, channel_id, offset, mem);
     }
   }
+
 #if defined(RING_DEBUG)
-  printk("[PF_RING] [pfr->slots_info->insert_idx=%d]\n",
-	 pfr->slots_info->insert_idx);
+  printk("[PF_RING] [pfr->slots_info->insert_off=%d]\n",
+	 pfr->slots_info->insert_off);
 #endif
 
   if(free_parse_mem)
@@ -2642,12 +2572,12 @@ static int skb_ring_handler(struct sk_buff *skb,
 		     && (pfr->ring_netdev == skb->dev->master)))
 	     && is_valid_skb_direction(pfr->direction, recv_packet)
 	     ) {
-	    FlowSlot *theSlot = get_slot(pfr, pfr->slots_info->insert_idx);
+	    FlowSlot *theSlot = get_slot(pfr, pfr->slots_info->insert_off);
 
-	    if((theSlot == NULL) || (theSlot->slot_state == 0 /* Not full */)) {
+	    if((theSlot != NULL)
+	       && check_and_init_free_slot(pfr, pfr->slots_info->insert_off) /* Not full */) {
 	      /* We've found the ring where the packet can be stored */
-	      add_skb_to_ring(skb, pfr, &hdr,
-			      is_ip_pkt, displ,
+	      add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ,
 			      channel_id, num_rx_channels);
 	      rc = 1; /* Ring found: we've done our job */
 	      break;
@@ -3047,16 +2977,6 @@ static int ring_release(struct socket *sock)
   printk("[PF_RING] called ring_release(%s)\n", pfr->ring_netdev->name);
 #endif
 
-  if((pfr->ring_netdev == NULL) || (pfr->ring_netdev == &none_dev))
-    ;
-  else {
-    if(pfr->slots_info && pfr->slots_info->do_forward) {
-      // write_lock_bh(&pfr->ring_index_lock);
-      send_queued_packets(pfr); /* Flush packets in queue (if any) */
-      // write_unlock_bh(&pfr->ring_index_lock);
-    }
-  }
-
   if(pfr->kernel_consumer_options) kfree(pfr->kernel_consumer_options);
 
   /*
@@ -3070,9 +2990,6 @@ static int ring_release(struct socket *sock)
   if(pfr->ring_netdev != &none_dev) {
     if(pfr->cluster_id != 0)
       remove_from_cluster(sk, pfr);
-
-    if(pfr->reflector_dev != NULL)
-      dev_put(pfr->reflector_dev); /* Release device */
   }
 
   ring_remove(sk);
@@ -3382,7 +3299,7 @@ static int ring_mmap(struct file *file,
 #if defined(RING_DEBUG)
     printk("[PF_RING] mmap [slot_len=%d]"
 	   "[tot_slots=%d] for ring on device %s\n",
-	   pfr->slots_info->slot_len, pfr->slots_info->tot_slots,
+	   pfr->slots_info->slot_len, pfr->slots_info->min_num_slots,
 	   pfr->ring_netdev->name);
 #endif
 
@@ -3437,7 +3354,6 @@ static int ring_mmap(struct file *file,
 static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 			struct msghdr *msg, size_t len, int flags)
 {
-  FlowSlot *slot;
   struct ring_opt *pfr = ring_sk(sock->sk);
   u_int32_t queued_pkts, num_loops = 0;
 
@@ -3446,15 +3362,14 @@ static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 #endif
 
   pfr->ring_active = 1;
-  slot = get_remove_slot(pfr);
 
   while((queued_pkts = num_queued_pkts(pfr)) < MIN_QUEUED_PKTS) {
     wait_event_interruptible(pfr->ring_slots_waitqueue, 1);
 
 #if defined(RING_DEBUG)
-    printk("[PF_RING] -> ring_recvmsg returning %d "
+    printk("[PF_RING] -> ring_recvmsg "
 	   "[queued_pkts=%d][num_loops=%d]\n",
-	   slot->slot_state, queued_pkts, num_loops);
+	   queued_pkts, num_loops);
 #endif
 
     if(queued_pkts > 0) {
@@ -3555,7 +3470,7 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
     skb->tail -= pfr->ring_netdev->hard_header_len;
     if (len < pfr->ring_netdev->hard_header_len)
       skb->nh.raw = skb->data;
-  }   
+  }
 #endif
 
   /* Returns -EFAULT on error */
@@ -3588,7 +3503,6 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
 unsigned int ring_poll(struct file *file,
 		       struct socket *sock, poll_table * wait)
 {
-  FlowSlot *slot;
   struct ring_opt *pfr = ring_sk(sock->sk);
   int rc, mask = 0;
 
@@ -3599,29 +3513,18 @@ unsigned int ring_poll(struct file *file,
   if(pfr->dna_device == NULL) {
     /* PF_RING mode (No DNA) */
 
-    if(pfr->slots_info && pfr->slots_info->do_forward) {
-      // write_lock_bh(&pfr->ring_index_lock);
-      send_queued_packets(pfr); /* Flush packets in queue (if any) */
-      // write_unlock_bh(&pfr->ring_index_lock);
-    }
-
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll called (non DNA device)\n");
 #endif
 
     pfr->ring_active = 1;
-    slot = get_remove_slot(pfr);
 
-    if((slot != NULL) && (slot->slot_state == 0)) {
+    if(pfr->slots_info->tot_read == pfr->slots_info->tot_insert) {
       poll_wait(file, &pfr->ring_slots_waitqueue, wait);
       smp_mb();
     }
 
-#if defined(RING_DEBUG)
-    printk("[PF_RING] poll returning %d\n", slot->slot_state);
-#endif
-
-    if((slot != NULL) && (slot->slot_state == 1))
+    if(num_queued_pkts(pfr) > 0)
       mask |= POLLIN | POLLRDNORM;
 
     return(mask);
@@ -3647,7 +3550,8 @@ unsigned int ring_poll(struct file *file,
     printk("[PF_RING] wait_packet_function_ptr(1) returned %d\n", rc);
 #endif
 
-    if(rc == 0) {	/* No packet arrived yet */
+    if(rc == 0) {
+      /* No packet arrived yet */
       poll_wait(file, pfr->dna_device->packet_waitqueue, wait);
     } else
       rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 0);
@@ -3981,7 +3885,7 @@ static int ring_setsockopt(struct socket *sock,
   u_int debug = 0;
   struct add_to_cluster cluster;
   int32_t channel_id;
-  char applName[32 + 1] = { 0 }, dev_name[8] = { 0 };
+  char applName[32 + 1] = { 0 };
   struct list_head *prev = NULL;
   filtering_rule_element *entry, *rule;
   u_int16_t rule_id, rule_inactivity;
@@ -4520,34 +4424,6 @@ static int ring_setsockopt(struct socket *sock,
 	return -EFAULT;
       else
 	ret = ring_map_dna_device(pfr, &mapping), found = 1;
-    }
-    break;
-
-  case SO_SET_REFLECTION_DEVICE:
-    if(pfr->ring_netdev == &none_dev) return -EFAULT;
-
-    if(optlen > (sizeof(dev_name)-1))
-      return -EINVAL;
-    else {
-      struct net_device *dev = NULL;
-
-      if(copy_from_user(dev_name, optval, optlen))
-	return -EFAULT;
-
-      if(strcmp(dev_name, "none"))
-	if((dev = __dev_get_by_name(
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
-				    &init_net,
-#endif
-				    dev_name)) == NULL) {
-	  printk("[PF_RING] Unable to bind socket to device %s\n", dev_name);
-	  return(-EINVAL);
-	}
-
-      if(pfr->reflector_dev != NULL)
-	dev_put(pfr->reflector_dev); /* Release device */
-
-      pfr->reflector_dev = dev;
     }
     break;
 
@@ -5106,7 +4982,7 @@ int add_device_to_ring_list(struct net_device *dev) {
 
   create_proc_read_entry(PROC_INFO, 0 /* read-only */,
 			 dev_ptr->proc_entry,
-			 ring_proc_dev_get_info /* read */, 
+			 ring_proc_dev_get_info /* read */,
 			 dev_ptr);
 
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
@@ -5127,7 +5003,7 @@ int add_device_to_ring_list(struct net_device *dev) {
 
       entry = create_proc_read_entry(PROC_RULES, 0666 /* rw */,
 				     dev_ptr->proc_entry,
-				     ring_proc_dev_rule_read, 
+				     ring_proc_dev_rule_read,
 				     dev_ptr);
       if(entry) {
 	entry->write_proc = ring_proc_dev_rule_write;
@@ -5204,20 +5080,20 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 	ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
 
 	if(dev_ptr->dev == dev) {
-	  if(debug) printk("[PF_RING] ==>> FOUND device change name %s -> %s\n", 
+	  if(debug) printk("[PF_RING] ==>> FOUND device change name %s -> %s\n",
 			   dev_ptr->proc_entry->name, dev->name);
 
 	  /* Remove old entry */
 	  if(dev_ptr->has_hw_filtering)
 	    remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
-	  
+
 	  remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
 	  remove_proc_entry(dev_ptr->proc_entry->name, ring_proc_dev_dir);
 	  /* Add new entry */
 	  dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
 	  create_proc_read_entry(PROC_INFO, 0 /* read-only */,
 				 dev_ptr->proc_entry,
-				 ring_proc_dev_get_info /* read */, 
+				 ring_proc_dev_get_info /* read */,
 				 dev_ptr);
 
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
@@ -5226,10 +5102,10 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 
 	    entry= create_proc_read_entry(PROC_RULES, 0666 /* rw */,
 					  dev_ptr->proc_entry,
-					  ring_proc_dev_rule_read, 
+					  ring_proc_dev_rule_read,
 					  dev_ptr);
 	    if(entry)
-	      entry->write_proc = ring_proc_dev_rule_write;	      
+	      entry->write_proc = ring_proc_dev_rule_write;
 	  }
 #endif
 
@@ -5363,7 +5239,7 @@ static int __init ring_init(void)
   if(transparent_mode > driver2pf_ring_non_transparent)
     transparent_mode = standard_linux_path;
 
-  printk("[PF_RING] Ring slots       %d\n", num_slots);
+  printk("[PF_RING] Min # ring slots %d\n", min_num_slots);
   printk("[PF_RING] Slot version     %d\n",
 	 RING_FLOWSLOT_VERSION);
   printk("[PF_RING] Capture TX       %s\n",
@@ -5385,6 +5261,6 @@ module_exit(ring_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Luca Deri <deri@ntop.org>");
-MODULE_DESCRIPTION("Packet capture acceleration by means of a ring buffer");
+MODULE_DESCRIPTION("Packet capture acceleration and analysis");
 
 MODULE_ALIAS_NETPROTO(PF_RING);

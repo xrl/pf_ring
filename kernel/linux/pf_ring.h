@@ -34,8 +34,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.4.1"
-#define RING_VERSION_NUM           0x040401
+#define RING_VERSION                "4.5.0"
+#define RING_VERSION_NUM           0x040500
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -51,11 +51,10 @@
 #define SO_PURGE_IDLE_HASH_RULES         109 /* inactivity (sec) */
 #define SO_SET_APPL_NAME                 110
 #define SO_SET_PACKET_DIRECTION          111
-#define SO_SET_REFLECTION_DEVICE         112
-#define SO_SET_MASTER_RING               113
-#define SO_ADD_HW_FILTERING_RULE         114
-#define SO_DEL_HW_FILTERING_RULE         115
-#define SO_SET_PACKET_CONSUMER_MODE      116
+#define SO_SET_MASTER_RING               112
+#define SO_ADD_HW_FILTERING_RULE         113
+#define SO_DEL_HW_FILTERING_RULE         114
+#define SO_SET_PACKET_CONSUMER_MODE      115
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -345,25 +344,24 @@ typedef struct _filtering_hash_bucket {
 #endif
 
 /* *********************************** */
-/* False sharing reference: http://en.wikipedia.org/wiki/False_sharing */
-
-typedef struct flowSlotInfo {
-  u_int16_t version, sample_rate, do_forward;
-  u_int32_t tot_slots, slot_len, data_len, tot_mem;
-  u_int64_t tot_pkts, tot_lost, tot_insert, tot_read;
-  u_int64_t tot_fwd_ok, tot_fwd_notok;
-  u_int32_t insert_idx, remove_idx, forward_idx;
-} FlowSlotInfo;
-
-/* *********************************** */
 
 typedef struct flowSlot {
 #ifdef RING_MAGIC
   u_int8_t     magic;      /* It must alwasy be zero */
 #endif
-  u_int8_t     slot_state; /* 0=empty, 1=full, 2=reflect on the specified socket reflection device   */
   u_int8_t     bucket;     /* bucket[bucketLen] */
 } FlowSlot;
+
+/* *********************************** */
+/* False sharing reference: http://en.wikipedia.org/wiki/False_sharing */
+
+typedef struct flowSlotInfo {
+  u_int16_t version, sample_rate;
+  u_int32_t min_num_slots, slot_len, data_len, tot_mem;
+  u_int64_t tot_pkts, tot_lost, tot_insert, tot_read;
+  u_int64_t tot_fwd_ok, tot_fwd_notok;
+  u_int32_t insert_off /* managed by kernel */, remove_off /* managed by userland */;
+} FlowSlotInfo;
 
 /* *********************************** */
 
@@ -541,9 +539,6 @@ struct ring_opt {
 
   /* Channel */
   int32_t channel_id;  /* -1 = any channel */
-
-  /* Reflector Device */
-  struct net_device *reflector_dev; /* Reflector device */
 
   /* Packet buffers */
   unsigned long order;

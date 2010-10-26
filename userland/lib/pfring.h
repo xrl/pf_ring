@@ -103,7 +103,6 @@ extern "C" {
     u_int8_t kernel_packet_consumer;
     int fd;
     FlowSlotInfo *slots_info;
-    FlowSlot *last_slot_to_update;
     u_int page_id, slot_id, pkts_per_page;
     u_int poll_sleep;
     u_int8_t clear_promisc, reentrant;
@@ -124,7 +123,6 @@ extern "C" {
   /* ********************************* */
 
   int pfring_set_direction(pfring *ring, packet_direction direction);
-  int pfring_set_reflection_device(pfring *ring, char *dev_name);
   int pfring_set_cluster(pfring *ring, u_int clusterId, cluster_type the_type);
   int pfring_set_master_id(pfring *ring, u_int32_t master_id);
   int pfring_set_master(pfring *ring, pfring *master);
@@ -147,11 +145,9 @@ extern "C" {
   void pfring_close(pfring *ring);
   int  pfring_send(pfring *ring, char *pkt, u_int pkt_len);
   int pfring_stats(pfring *ring, pfring_stat *stats);
-  int pfring_notify(pfring *ring, u_int8_t reflect_packet);
   int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 		  struct pfring_pkthdr *hdr,
-		  u_int8_t wait_for_incoming_packet,
-		  u_int8_t consume_packet_immediately);    
+		  u_int8_t wait_for_incoming_packet);
   int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
 		  struct pfring_pkthdr *hdr, u_int8_t wait_for_incoming_packet);
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,

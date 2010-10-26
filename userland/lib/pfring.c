@@ -23,7 +23,7 @@
 #define MAX_NUM_LOOPS    1000000000
 #define YIELD_MULTIPLIER      10000
 
-// #define RING_DEBUG
+//#define RING_DEBUG
 
 /* ******************************* */
 
@@ -45,26 +45,6 @@ int pfring_set_direction(pfring *ring, packet_direction direction) {
 
   return(ring ? setsockopt(ring->fd, 0, SO_SET_PACKET_DIRECTION,
 			   &direction, sizeof(direction)): -1);
-#endif
-}
-
-/* ******************************* */
-
-/*
-  Device reflection is used only when pfring_notify() is called
-  with reflect_packet parameter set to 1. This function allows
-  developers to implement in userland a "filtering application"
-  that can instrument pf_ring to forward through those packets
-  that have passed the checks.
-*/
-int pfring_set_reflection_device(pfring *ring, char *dev_name) {
-#ifdef USE_PCAP
-  return(-1);
-#else
-  if(ring->dna_mapped_device) return(-1);
-
-  return(ring ? setsockopt(ring->fd, 0, SO_SET_REFLECTION_DEVICE,
-			   dev_name, strlen(dev_name)): -1);
 #endif
 }
 
@@ -384,25 +364,20 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
       ring->slots_info   = (FlowSlotInfo *)ring->buffer;
       ring->slots = (char *)(ring->buffer+sizeof(FlowSlotInfo));
 
-      /* Safety check */
-      if(ring->slots_info->remove_idx >= ring->slots_info->tot_slots) {
-	ring->slots_info->remove_idx = 0;
-	wmb();
-      }
-
       ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
 
       /* Set defaults */
       ring->device_name = strdup(device_name ? device_name : "");
 
 #ifdef RING_DEBUG
-      printf("RING (%s): tot_slots=%d/slot_len=%d/"
-	     "insertIdx=%d/remove_idx=%d/dropped=%d\n",
+      printf("RING (%s): tot_mem=%u/min_tot_slots=%u/max_slot_len=%u/"
+	     "insert_off=%u/remove_off=%u/dropped=%llu\n",
 	     device_name,
+	     ring->slots_info->tot_mem,
 	     ring->slots_info->tot_slots,
 	     ring->slots_info->slot_len,
-	     ring->slots_info->insert_idx,
-	     ring->slots_info->remove_idx,
+	     ring->slots_info->insert_off,
+	     ring->slots_info->remove_off,
 	     ring->slots_info->tot_lost);
 #endif
 
@@ -910,39 +885,9 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 
 /* **************************************************** */
 
-int pfring_notify(pfring *ring, u_int8_t reflect_packet) {
-  if(ring->reentrant) {
-    /*
-      We do not support late packet consumers in multithreaded
-      applications as threads can steal each other's packets
-    */
-
-    return(-1);
-  }
-
-  if(ring->last_slot_to_update) {
-    ring->last_slot_to_update->slot_state = reflect_packet ? 2 : 0; /* Empty slot */
-
-#if 0
-    {
-      static int num_updated = 0;
-      printf("DEBUG ==> slot_state[%d]=%d\n", num_updated++, ring->last_slot_to_update->slot_state);
-    }
-#endif
-
-    ring->last_slot_to_update = NULL;
-    if(reflect_packet) ring->slots_info->do_forward = 1;
-  }
-  
-  return(0);
-}
-
-/* **************************************************** */
-
 int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 		struct pfring_pkthdr *hdr,
-		u_int8_t wait_for_incoming_packet,
-		u_int8_t consume_packet_immediately) {
+		u_int8_t wait_for_incoming_packet) {
 #ifdef USE_PCAP
   pcap_t *pcapPtr = (pcap_t*)ring;
   const u_char *packet;
@@ -959,14 +904,6 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 #endif
 
   if(ring == NULL) return(-1);
-
-  if(ring->reentrant) {
-    /*
-      We do not support late packet consumers in multithreaded
-      applications as threads can steal each other's packets
-    */
-    consume_packet_immediately = 1;
-  }
 
   if(ring->dna_mapped_device) {
     char *pkt = NULL;
@@ -1008,35 +945,23 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       return(0);
   } else {
     FlowSlot *slot;
-    u_int32_t queuedPkts;
 #ifdef USE_ADAPTIVE_WAIT
     u_int32_t num_loops = 0;
 #endif
 
     if((ring == NULL) || (ring->buffer == NULL)) return(-1);
 
-    /*
-      Check if the kernel needs to be notified that the previous
-      packet has been finally consumed
-    */
-    if(ring->last_slot_to_update) 
-      pfring_notify(ring, REFLECT_PACKET_DEVICE_NONE);
-
   do_pfring_recv:
     if(ring->reentrant)
       pthread_spin_lock(&ring->spinlock);
 
-    slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_idx*ring->slots_info->slot_len];
+    slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_off];
 
-    if(ring->slots_info->tot_insert >= ring->slots_info->tot_read)
-      queuedPkts = ring->slots_info->tot_insert - ring->slots_info->tot_read;
-    else
-      queuedPkts = ring->slots_info->tot_slots + ring->slots_info->tot_insert - ring->slots_info->tot_read;
-
-    if(queuedPkts && (slot->slot_state == 1 /* There's a packet to read */)) {
+    if(ring->slots_info->tot_insert != ring->slots_info->tot_read) {
       char *bucket = (char*)&slot->bucket;
       struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
       int bktLen = _hdr->caplen+_hdr->extended_hdr.parsed_header_len;
+      u_int32_t real_slot_len = sizeof(FlowSlot) - 1 + sizeof(struct pfring_pkthdr) + bktLen;
 
       if(bktLen > buffer_len) bktLen = buffer_len-1;
 
@@ -1047,25 +972,19 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
       if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
 
-      if(ring->slots_info->remove_idx >= (ring->slots_info->tot_slots-1)) {
-	ring->slots_info->remove_idx = 0;
+      u_int32_t next_off = ring->slots_info->remove_off + real_slot_len;
+      u_int32_t freed;
+      if ((next_off + ring->slots_info->slot_len) > (ring->slots_info->tot_mem - sizeof(FlowSlotInfo))){  
+        freed = ring->slots_info->tot_mem - sizeof(FlowSlotInfo) - ring->slots_info->remove_off;
+        ring->slots_info->remove_off = 0;
 	ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
       } else {
-	ring->slots_info->remove_idx++;
-	ring->pkts_per_page++, ring->slot_id += ring->slots_info->slot_len;
+        freed = real_slot_len;
+        ring->slots_info->remove_off = next_off;
+      	ring->pkts_per_page++, ring->slot_id += real_slot_len;
       }
 
       ring->slots_info->tot_read++;
-
-      if(consume_packet_immediately) {
-	ring->last_slot_to_update = NULL, slot->slot_state = 0; /* Empty slot */
-      } else {
-	/* We do not notify pf_ring that the packet has been read
-	   hence this slot will not be available for storing a new packet
-	   until we notify pf_ring
-	*/
-	ring->last_slot_to_update = slot;
-      }      
 
       wmb();
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
@@ -1100,12 +1019,10 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       pfd.revents = 0;
 
 #ifdef RING_DEBUG
-      printf("==>> poll [remove_idx=%u][insert_idx=%u][loss=%d][queuedPkts=%u]"
-	     "[slot_state=%d][tot_insert=%u][tot_read=%u]\n",
-	     ring->slots_info->remove_idx,
-	     ring->slots_info->insert_idx,
+      printf("==>> poll [remove_off=%u][insert_off=%u][loss=%llu][tot_insert=%llu][tot_read=%llu]\n",
+	     ring->slots_info->remove_off,
+	     ring->slots_info->insert_off,
 	     ring->slots_info->tot_lost,
-	     queuedPkts, slot->slot_state,
 	     ring->slots_info->tot_insert,
 	     ring->slots_info->tot_read);
 #endif
@@ -1133,7 +1050,7 @@ int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
 		u_int8_t wait_for_incoming_packet) {
 
   return(pfring_read(ring, buffer, buffer_len,
-		     hdr, wait_for_incoming_packet, 1));
+		     hdr, wait_for_incoming_packet));
 }
 
 /* ******************************* */
