@@ -936,7 +936,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
     if(pkt && (hdr->len > 0)) {
       /* Set the (1) below to (0) for enabling packet parsing for DNA devices */
-      if(1)
+      if(0)
 	hdr->extended_hdr.parsed_header_len = 0;
       else
 	parse_pkt(buffer, hdr);
