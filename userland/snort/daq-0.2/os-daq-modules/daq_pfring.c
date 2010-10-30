@@ -88,8 +88,10 @@ static int pfring_daq_open(Pfring_Context_t *context)
       context->handle = pfring_open(context->device, context->promisc_flag ? 1 : 0,
 				    context->snaplen, 1);
 
-      if (!context->handle)
+      if (!context->handle) {
+	DPE(context->errbuf, "pfring_open(): unable to open device '%s'. Please use -i <device>", context->device);
 	return DAQ_ERROR;
+      }
     }
 
   if (context->clusterid > 0)
@@ -165,7 +167,7 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
       free(context);
       return DAQ_ERROR_NOMEM;
     }
-  
+
   if (config->mode == DAQ_MODE_READ_FILE)
     {
       snprintf(errbuf, len, "%s: function not supported on PF_RING", __FUNCTION__);
@@ -209,7 +211,7 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
 	      cpu_set_t mask;
 
 	      CPU_ZERO(&mask);
-	      CPU_SET((int)context->bindcpu, &mask); 
+	      CPU_SET((int)context->bindcpu, &mask);
 	      if (sched_setaffinity(0, sizeof(mask), &mask) <0)
 		{
 		  snprintf(errbuf, len, "%s:failed to set bindcpu (%u) on pid %i\n",
@@ -316,6 +318,28 @@ static void pfring_process_loop(u_char *user, const struct pfring_pkthdr *pkth, 
   verdict = context->analysis_func(context->user_data, &hdr, data);
   if (verdict >= MAX_DAQ_VERDICT)
     verdict = DAQ_VERDICT_PASS;
+
+  if(verdict == DAQ_VERDICT_BLACKLIST) {
+    /* Block the packet and block all future packets in the same flow systemwide. */
+    hash_filtering_rule hash_rule;
+    int rc;
+
+    memset(&hash_rule, 0, sizeof(hash_rule));
+
+    hash_rule.vlan_id     = pkth->extended_hdr.parsed_pkt.vlan_id;
+    hash_rule.proto       = pkth->extended_hdr.parsed_pkt.l3_proto;
+    memcpy(&hash_rule.host_peer_a, &pkth->extended_hdr.parsed_pkt.ipv4_src, sizeof(ip_addr));
+    memcpy(&hash_rule.host_peer_b, &pkth->extended_hdr.parsed_pkt.ipv4_dst, sizeof(ip_addr));
+    hash_rule.port_peer_a = pkth->extended_hdr.parsed_pkt.l4_src_port;
+    hash_rule.port_peer_b = pkth->extended_hdr.parsed_pkt.l4_dst_port;
+    hash_rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
+    hash_rule.plugin_action.plugin_id = NO_PLUGIN_ID;
+
+    rc = pfring_handle_hash_filtering_rule(context->handle, &hash_rule, 1 /* add_rule */);
+      
+    /* printf("Verdict=%d [pfring_handle_hash_filtering_rule=%d]\n", verdict, rc); */
+  }
+
   context->stats.verdicts[verdict]++;
 }
 
@@ -335,7 +359,7 @@ static int pfring_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callbac
 
       if(context->breakloop) break;
 
-      ret = pfring_read(context->handle, pkt_buffer, sizeof(pkt_buffer), &hdr, 1, 1);
+      ret = pfring_read(context->handle, pkt_buffer, sizeof(pkt_buffer), &hdr, 1);
       if (ret == -1)
         {
 	  DPE(context->errbuf, "%s", "pfring_read() errpr");
@@ -353,7 +377,7 @@ static int pfring_daq_inject(void *handle, const DAQ_PktHdr_t *hdr, const uint8_
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (pfring_send(context->handle, packet_data, len) < 0)
+  if (pfring_send(context->handle, (char*)packet_data, len) < 0)
     {
       DPE(context->errbuf, "%s", "pfring_send() error");
       return DAQ_ERROR;

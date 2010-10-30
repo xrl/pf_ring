@@ -5,7 +5,7 @@
 #define HAVE_DLFCN_H 1
 
 /* Define to 1 if you have the <dnet.h> header file. */
-/* #undef HAVE_DNET_H */
+#define HAVE_DNET_H 1
 
 /* Define to 1 if you have the `gethostbyname' function. */
 #define HAVE_GETHOSTBYNAME 1

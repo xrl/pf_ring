@@ -1308,6 +1308,34 @@ static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
 			     struct pfring_pkthdr *hdr,
 			     u_char mask_src, u_char mask_dst)
 {
+  if(0)
+    printk("[PF_RING] hash_bucket_match() (%u,%d,%d.%d.%d.%d:%u,%d.%d.%d.%d:%u) "
+	   "(%u,%d,%d.%d.%d.%d:%u,%d.%d.%d.%d:%u)\n",
+	   hash_bucket->rule.vlan_id, hash_bucket->rule.proto,
+	   ((hash_bucket->rule.host4_peer_a >> 24) & 0xff),
+	   ((hash_bucket->rule.host4_peer_a >> 16) & 0xff),
+	   ((hash_bucket->rule.host4_peer_a >> 8) & 0xff),
+	   ((hash_bucket->rule.host4_peer_a >> 0) & 0xff),
+	   hash_bucket->rule.port_peer_a,
+	   ((hash_bucket->rule.host4_peer_b >> 24) & 0xff),
+	   ((hash_bucket->rule.host4_peer_b >> 16) & 0xff),
+	   ((hash_bucket->rule.host4_peer_b >> 8) & 0xff),
+	   ((hash_bucket->rule.host4_peer_b >> 0) & 0xff),
+	   hash_bucket->rule.port_peer_b,
+
+	   hdr->extended_hdr.parsed_pkt.vlan_id,
+	   hdr->extended_hdr.parsed_pkt.l3_proto,
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_src >> 24) & 0xff),
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_src >> 16) & 0xff),
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_src >> 8) & 0xff),
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_src >> 0) & 0xff),
+	   hdr->extended_hdr.parsed_pkt.l4_src_port,
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 24) & 0xff),
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 16) & 0xff),
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 8) & 0xff),
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 0) & 0xff), 
+	   hdr->extended_hdr.parsed_pkt.l4_dst_port);
+
   /*
     When protocol of host_peer is IPv4, s6_addr32[0] contains IPv4
     address and the value of other elements of s6_addr32 are 0.
@@ -1981,8 +2009,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
     } /* while */
 
     if(hash_found) {
-      rule_action_behaviour behaviour =
-	forward_packet_and_stop_rule_evaluation;
+      rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
 
       if((hash_bucket->rule.plugin_action.plugin_id != NO_PLUGIN_ID)
 	 && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
@@ -2000,7 +2027,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	  free_parse_mem = 1;
 	last_matched_plugin = hash_bucket->rule.plugin_action.plugin_id;
 	hdr->extended_hdr.parsed_pkt.last_matched_plugin_id = hash_bucket->rule.plugin_action.plugin_id;
-      }
+      } else
+	behaviour = hash_bucket->rule.rule_action;
 
       switch (behaviour) {
       case forward_packet_and_stop_rule_evaluation:
@@ -2024,7 +2052,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ);
 	hash_found = 0;	/* This way we also evaluate the list of rules */
 	break;
-      }
+      }      
     } else {
       /* printk("[PF_RING] Packet not found\n"); */
     }
@@ -2058,7 +2086,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	  fwd_pkt = 1;
 
 	  hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket),
-							  GFP_KERNEL);
+							 GFP_KERNEL);
 
 	  if(hash_bucket) {
 	    int rc = 0;
@@ -5043,7 +5071,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     break;
   case NETDEV_REGISTER:
     if(debug) printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
-	   dev->name, dev->pfring_ptr, &ring_hooks);
+		     dev->name, dev->pfring_ptr, &ring_hooks);
 
     if(dev->pfring_ptr == NULL) {
       dev->pfring_ptr = &ring_hooks;
@@ -5053,7 +5081,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 
   case NETDEV_UNREGISTER:
     if(debug) printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
-	   dev->name, dev->pfring_ptr);
+		     dev->name, dev->pfring_ptr);
 
     hook = (struct pfring_hooks*)dev->pfring_ptr;
     if(hook->magic == PF_RING) {
@@ -5118,7 +5146,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 
   default:
     if(debug) printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
-	   dev->name, msg, dev->pfring_ptr);
+		     dev->name, msg, dev->pfring_ptr);
     break;
   }
 
