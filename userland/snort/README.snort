@@ -1,28 +1,13 @@
 
-Experimential support of snort DAQ for snprt 2.9
+Experimential support of snort DAQ for snort 2.9
 
-####
-
-This short readme explains how to build snort 2.x with PF_RING
-
-Prerequisites
-# cd PF_RING/kernel
-# make
-# sudo make install
-# cd ../userland/lib
-# make
-# sudo make install
-
-Snort
-# download snort source (e.g. into  ~/Downloads/snort-2.8.5.1.tar.gz)
-# cd PF_RING/userland
-# tar xvfz ~/Downloads/snort-2.8.5.1.tar.gz
-# cd snort-2.8.5.1/
-# ./configure --with-libpcap-includes=../libpcap-1.0.0-ring/ --with-libpcap-libraries=../libpcap-1.0.0-ring/ -with-libpfring-includes=../lib --with-libpfring-libraries=../lib LDFLAGS="-lpfring -lpcap"
-# make
-
-
+1. cd daq-xx; make; sudo make install
+2. download and unpack snort 2.9
+3. cd snort
+4  ./configure LIBS="-lpthread"
+5. make
+6.  ./snort --daq pfring
 
 ----
-Luca Deri <deri@ntop.org> - November 2009
+Luca Deri <deri@ntop.org> - Ocotober 2010
 
