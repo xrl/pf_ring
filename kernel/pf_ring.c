@@ -339,7 +339,7 @@ static void *rvmalloc(unsigned long size)
 #endif
 
   size = PAGE_ALIGN(size);
-  mem = vmalloc(size);
+  mem = vmalloc_32(size);
   if(!mem)
     return NULL;
 
@@ -3231,26 +3231,23 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 			  unsigned long size, char *ptr, u_int flags, int mode)
 {
   unsigned long start;
-  unsigned long page;
 
   /* we do not want to have this area swapped out, lock it */
   vma->vm_flags |= flags;
+  vma->vm_flags |= VM_RESERVED;   /* avoid to swap out this VMA */
+
   start = vma->vm_start;
 
   while(size > 0) {
     int rc;
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11))
-#define remap_pfn_range(a, b, c, d, e) remap_page_range(a, b, c, d, e)
-#endif
-
     if(mode == 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
-      page = vmalloc_to_pfn(ptr);
-#else
-      page = kvirt_to_pa((unsigned long)ptr);
+      rc = vm_insert_page(vma, start, vmalloc_to_page(ptr));  
+#else      
+      rc = remap_pfn_range(vma, start, kvirt_to_pa((unsigned long)ptr), PAGE_SIZE, PAGE_SHARED);
 #endif
-      rc = remap_pfn_range(vma, start, page, PAGE_SIZE, PAGE_SHARED);
+      
     } else if(mode == 1) {
       rc = remap_pfn_range(vma, start, __pa(ptr) >> PAGE_SHIFT,
 			   PAGE_SIZE, PAGE_SHARED);
