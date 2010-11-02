@@ -944,7 +944,6 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     } else
       return(0);
   } else {
-    FlowSlot *slot;
 #ifdef USE_ADAPTIVE_WAIT
     u_int32_t num_loops = 0;
 #endif
@@ -955,13 +954,11 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     if(ring->reentrant)
       pthread_spin_lock(&ring->spinlock);
 
-    slot = (FlowSlot*)&ring->slots[ring->slots_info->remove_off];
-
     if(ring->slots_info->tot_insert != ring->slots_info->tot_read) {
-      char *bucket = (char*)&slot->bucket;
+      char *bucket = &ring->slots[ring->slots_info->remove_off];
       struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
       int bktLen = _hdr->caplen+_hdr->extended_hdr.parsed_header_len;
-      u_int32_t real_slot_len = sizeof(FlowSlot) - 1 + sizeof(struct pfring_pkthdr) + bktLen;
+      u_int32_t real_slot_len = sizeof(struct pfring_pkthdr) + bktLen;
 
       if(bktLen > buffer_len) bktLen = buffer_len-1;
 

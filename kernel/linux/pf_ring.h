@@ -345,14 +345,6 @@ typedef struct _filtering_hash_bucket {
 
 /* *********************************** */
 
-typedef struct flowSlot {
-#ifdef RING_MAGIC
-  u_int8_t     magic;      /* It must alwasy be zero */
-#endif
-  u_int8_t     bucket;     /* bucket[bucketLen] */
-} FlowSlot;
-
-/* *********************************** */
 /* False sharing reference: http://en.wikipedia.org/wiki/False_sharing */
 
 typedef struct flowSlotInfo {
@@ -389,8 +381,8 @@ void deallocateRing(void);
 
 #ifdef __KERNEL__
 struct ring_sock {
-  struct sock             sk; /* It MUST be the first element */
-  struct packet_type      prot_hook;
+  struct sock           sk; /* It MUST be the first element */
+  struct packet_type    prot_hook;
   spinlock_t		bind_lock;
 };
 #endif
@@ -544,7 +536,7 @@ struct ring_opt {
   unsigned long order;
 
   /* Ring Slots */
-  void * ring_memory;
+  char* ring_memory;
   u_int16_t slot_header_len;
   u_int32_t bucket_len;
   FlowSlotInfo *slots_info; /* Points to ring_memory */
