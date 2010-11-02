@@ -80,6 +80,7 @@
 #include <linux/list.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
+#include <asm/cacheflush.h>
 #include <linux/proc_fs.h>
 #include <linux/if_arp.h>
 #include <net/xfrm.h>
@@ -1663,6 +1664,21 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
 /* ********************************** */
 
+void flush_packet_memory(u8 *start_addr, u_int len) {
+  struct page *p_start, *p_end;  
+  u8 *end_addr = start_addr + len;
+  
+  p_start = virt_to_page(start_addr);
+  p_end   = virt_to_page(end_addr);
+
+  while (p_start <= p_end) {
+    flush_dcache_page(p_start);
+    p_start++;
+  }  
+}
+
+/* ********************************** */
+
 /*
   Generic function for copying either a skb or a raw
   memory block to the ring buffer
@@ -1673,7 +1689,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 			      int displ, int offset, void *plugin_mem,
 			      void *raw_data, uint raw_data_len) {
   char *ring_bucket;
-  u_int32_t off, taken;
+  u_int32_t off, taken, bytes_to_flush = pfr->slot_header_len;
 
   if(pfr->ring_slots == NULL) return;
 
@@ -1698,8 +1714,10 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   if(skb != NULL) {
     /* skb copy mode */
 
-    if((plugin_mem != NULL) && (offset > 0))
+    if((plugin_mem != NULL) && (offset > 0)) {
       memcpy(&ring_bucket[pfr->slot_header_len], plugin_mem, offset);
+      bytes_to_flush += offset;
+    }
 
     if(hdr->caplen > 0) {
 #if defined(RING_DEBUG)
@@ -1708,6 +1726,8 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 	     pfr->slot_header_len);
 #endif
       skb_copy_bits(skb, -displ, &ring_bucket[pfr->slot_header_len + offset], hdr->caplen);
+
+      bytes_to_flush += hdr->caplen;
     } else {
       if(hdr->extended_hdr.parsed_header_len >= pfr->bucket_len) {
 	static u_char print_once = 0;
@@ -1723,7 +1743,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
     /* Raw data copy mode */
     raw_data_len = min(raw_data_len, pfr->bucket_len); /* Avoid overruns */
     memcpy(&ring_bucket[pfr->slot_header_len], raw_data, raw_data_len); /* Copy raw data if present */
-
+    bytes_to_flush += raw_data_len;
     hdr->len = hdr->caplen = raw_data_len, hdr->extended_hdr.if_index = FAKE_PACKET;
     /* printk("[PF_RING] Copied raw data at slot with offset %d [len=%d]\n", off, raw_data_len); */
   }
@@ -1738,6 +1758,11 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 
   pfr->slots_info->tot_insert++;
 
+  /* Flush data to mmap-ed memory area */
+  smp_mb();
+  flush_packet_memory(ring_bucket, bytes_to_flush);
+  flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
+ 
   write_unlock_bh(&pfr->ring_index_lock);
 
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
