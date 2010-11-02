@@ -339,7 +339,7 @@ static void *rvmalloc(unsigned long size)
 #endif
 
   size = PAGE_ALIGN(size);
-  mem = vmalloc_32(size);
+  mem = vmalloc(size);
   if(!mem)
     return NULL;
 
@@ -401,8 +401,13 @@ static inline char* get_slot(struct ring_opt *pfr, u_int32_t off) { return(&(pfr
 
 static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_int32_t *real_off)
 {
-  struct pfring_pkthdr *hdr = (struct pfring_pkthdr*)get_slot(pfr, off);
-  u_int32_t real_slot_size = pfr->slot_header_len + hdr->extended_hdr.parsed_header_len + hdr->caplen;
+  struct pfring_pkthdr *hdr;
+  u_int32_t real_slot_size;
+
+  smp_rmb();
+
+  hdr = (struct pfring_pkthdr*)get_slot(pfr, off);
+  real_slot_size = pfr->slot_header_len + hdr->extended_hdr.parsed_header_len + hdr->caplen;
 
   if((off + real_slot_size + pfr->slots_info->slot_len) > (pfr->slots_info->tot_mem - sizeof(FlowSlotInfo))){
     *real_off = pfr->slots_info->tot_mem - sizeof(FlowSlotInfo) - off;
@@ -417,6 +422,8 @@ static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_in
 
 static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
 {
+  smp_rmb();
+
   if(pfr->ring_slots != NULL) {
     u_int32_t tot_insert = pfr->slots_info->tot_insert, tot_read = pfr->slots_info->tot_read;
 
@@ -438,6 +445,8 @@ static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
 
 static inline int check_and_init_free_slot(struct ring_opt *pfr, int off)
 {
+  smp_rmb();
+
   if(pfr->slots_info->insert_off == pfr->slots_info->remove_off) {
     /*
       Both insert and remove offset are set on the same slot.
@@ -1304,7 +1313,7 @@ static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
 	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 24) & 0xff),
 	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 16) & 0xff),
 	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 8) & 0xff),
-	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 0) & 0xff), 
+	   ((hdr->extended_hdr.parsed_pkt.ipv4_dst >> 0) & 0xff),
 	   hdr->extended_hdr.parsed_pkt.l4_dst_port);
 
   /*
@@ -1665,16 +1674,16 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 /* ********************************** */
 
 void flush_packet_memory(u8 *start_addr, u_int len) {
-  struct page *p_start, *p_end;  
+  struct page *p_start, *p_end;
   u8 *end_addr = start_addr + len;
-  
-  p_start = virt_to_page(start_addr);
-  p_end   = virt_to_page(end_addr);
 
-  while (p_start <= p_end) {
+  p_start = vmalloc_to_page(start_addr);
+  p_end   = vmalloc_to_page(end_addr);
+
+  while(p_start <= p_end) {
     flush_dcache_page(p_start);
     p_start++;
-  }  
+  }
 }
 
 /* ********************************** */
@@ -1694,6 +1703,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   if(pfr->ring_slots == NULL) return;
 
   write_lock_bh(&pfr->ring_index_lock);
+  smp_rmb();
 
   off = pfr->slots_info->insert_off;
   pfr->slots_info->tot_pkts++;
@@ -1759,10 +1769,11 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   pfr->slots_info->tot_insert++;
 
   /* Flush data to mmap-ed memory area */
-  smp_mb();
+  smp_wmb();
   flush_packet_memory(ring_bucket, bytes_to_flush);
   flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
- 
+  smp_mb();
+
   write_unlock_bh(&pfr->ring_index_lock);
 
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
@@ -2047,7 +2058,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ);
 	hash_found = 0;	/* This way we also evaluate the list of rules */
 	break;
-      }      
+      }
     } else {
       /* printk("[PF_RING] Packet not found\n"); */
     }
@@ -3538,10 +3549,10 @@ unsigned int ring_poll(struct file *file,
 #endif
 
     pfr->ring_active = 1;
+    smp_rmb();
 
     if(pfr->slots_info->tot_read == pfr->slots_info->tot_insert) {
       poll_wait(file, &pfr->ring_slots_waitqueue, wait);
-      smp_mb();
     }
 
     if(num_queued_pkts(pfr) > 0)
