@@ -364,8 +364,6 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
       ring->slots_info   = (FlowSlotInfo *)ring->buffer;
       ring->slots = (char *)(ring->buffer+sizeof(FlowSlotInfo));
 
-      ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
-
       /* Set defaults */
       ring->device_name = strdup(device_name ? device_name : "");
 
@@ -956,10 +954,12 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
     if(ring->slots_info->tot_insert != ring->slots_info->tot_read) {
       char *bucket = &ring->slots[ring->slots_info->remove_off];
-      struct pfring_pkthdr *_hdr = (struct pfring_pkthdr*)bucket;
-      int bktLen = _hdr->caplen+_hdr->extended_hdr.parsed_header_len;
-      u_int32_t real_slot_len = sizeof(struct pfring_pkthdr) + bktLen;
+      int bktLen;
+      u_int32_t next_off, real_slot_len = sizeof(struct pfring_pkthdr) + bktLen, insert_off = ring->slots_info->insert_off;
 
+      memcpy(hdr, bucket, sizeof(struct pfring_pkthdr));
+
+      bktLen = hdr->caplen+hdr->extended_hdr.parsed_header_len;
       if(bktLen > buffer_len) bktLen = buffer_len-1;
 
       if(buffer && (bktLen > 0)) {
@@ -967,23 +967,22 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	buffer[bktLen] = '\0';
       }
 
-      if(hdr) memcpy(hdr, _hdr, sizeof(struct pfring_pkthdr));
+      
 
-      u_int32_t next_off = ring->slots_info->remove_off + real_slot_len;
-      u_int32_t freed;
+      next_off = ring->slots_info->remove_off + real_slot_len;
       if ((next_off + ring->slots_info->slot_len) > (ring->slots_info->tot_mem - sizeof(FlowSlotInfo))){  
-        freed = ring->slots_info->tot_mem - sizeof(FlowSlotInfo) - ring->slots_info->remove_off;
-        ring->slots_info->remove_off = 0;
-	ring->page_id = PAGE_SIZE, ring->slot_id = 0, ring->pkts_per_page = 0;
+        next_off = 0;
       } else {
-        freed = real_slot_len;
-        ring->slots_info->remove_off = next_off;
-      	ring->pkts_per_page++, ring->slot_id += real_slot_len;
+	if((ring->slots_info->tot_insert == (1+ring->slots_info->tot_read)) && (insert_off < next_off))
+	  next_off = insert_off;
       }
-
+      
+      ring->slots_info->remove_off = next_off;
+      
+      
       ring->slots_info->tot_read++;
 
-      wmb();
+      //wmb();
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
       return(1);
     }

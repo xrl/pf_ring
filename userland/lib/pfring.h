@@ -103,7 +103,6 @@ extern "C" {
     u_int8_t kernel_packet_consumer;
     int fd;
     FlowSlotInfo *slots_info;
-    u_int page_id, slot_id, pkts_per_page;
     u_int poll_sleep;
     u_int8_t clear_promisc, reentrant;
     u_long num_poll_calls;
