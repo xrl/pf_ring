@@ -334,7 +334,7 @@ static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_in
   struct pfring_pkthdr *hdr;
   u_int32_t real_slot_size;
 
-  smp_rmb();
+  // smp_rmb();
 
   hdr = (struct pfring_pkthdr*)get_slot(pfr, off);
   real_slot_size = pfr->slot_header_len + hdr->extended_hdr.parsed_header_len + hdr->caplen;
@@ -352,7 +352,7 @@ static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_in
 
 static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
 {
-  smp_rmb();
+  // smp_rmb();
 
   if(pfr->ring_slots != NULL) {
     u_int32_t tot_insert = pfr->slots_info->tot_insert, tot_read = pfr->slots_info->tot_read;
@@ -371,18 +371,25 @@ static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
     return(0);
 }
 
+/* ************************************* */
+
+inline u_int get_num_ring_free_slots(struct ring_opt * pfr)
+{
+  return(pfr->slots_info->min_num_slots - num_queued_pkts(pfr));
+}
+
 /* ********************************** */
 
 static inline int check_and_init_free_slot(struct ring_opt *pfr, int off)
 {
-  smp_rmb();
+  // smp_rmb();
 
   if(pfr->slots_info->insert_off == pfr->slots_info->remove_off) {
     /*
       Both insert and remove offset are set on the same slot.
       We need to find out whether the memory is full or empty
     */
-
+    
     if(num_queued_pkts(pfr) >= min_num_slots)
       return(0); /* Memory is full */
   } else {
@@ -483,13 +490,6 @@ static void ring_proc_remove(struct ring_opt *pfr)
 
     if(debug) printk("[PF_RING] Removed /proc/net/pf_ring/%s\n", name);
   }
-}
-
-/* ************************************* */
-
-inline u_int get_num_ring_free_slots(struct ring_opt * pfr)
-{
-  return(pfr->slots_info->min_num_slots - num_queued_pkts(pfr));
 }
 
 /* ********************************** */
@@ -730,22 +730,14 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 
   if(data == NULL) {
     /* /proc/net/pf_ring/info */
-    rlen = sprintf(buf, "PF_RING Version     : %s ($Revision: %s$)\n",
-		   RING_VERSION, SVN_REV);
-    rlen += sprintf(buf + rlen, "Ring slots          : %d\n",
-		    min_num_slots);
-    rlen += sprintf(buf + rlen, "Slot version        : %d\n",
-		    RING_FLOWSLOT_VERSION);
-    rlen += sprintf(buf + rlen, "Capture TX          : %s\n",
-		    enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
-    rlen += sprintf(buf + rlen, "IP Defragment       : %s\n",
-		    enable_ip_defrag ? "Yes" : "No");
-    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n",
-		    (transparent_mode != driver2pf_ring_non_transparent) ? "Yes" : "No");
-    rlen += sprintf(buf + rlen, "Total rings         : %d\n",
-		    ring_table_size);
-    rlen += sprintf(buf + rlen, "Total plugins       : %d\n",
-		    plugin_registration_size);
+    rlen = sprintf(buf, "PF_RING Version     : %s ($Revision: %s$)\n", RING_VERSION, SVN_REV);
+    rlen += sprintf(buf + rlen, "Ring slots          : %d\n", min_num_slots);
+    rlen += sprintf(buf + rlen, "Slot version        : %d\n", RING_FLOWSLOT_VERSION);
+    rlen += sprintf(buf + rlen, "Capture TX          : %s\n", enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
+    rlen += sprintf(buf + rlen, "IP Defragment       : %s\n", enable_ip_defrag ? "Yes" : "No");
+    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n", (transparent_mode != driver2pf_ring_non_transparent) ? "Yes" : "No");
+    rlen += sprintf(buf + rlen, "Total rings         : %d\n", ring_table_size);
+    rlen += sprintf(buf + rlen, "Total plugins       : %d\n", plugin_registration_size);
   } else {
     /* detailed statistics about a PF_RING */
     pfr = (struct ring_opt *)data;
@@ -754,43 +746,29 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
       fsi = pfr->slots_info;
 
       if(fsi) {
-	rlen = sprintf(buf, "Bound Device   : %s\n",
-		       pfr->ring_netdev->name);
-	rlen += sprintf(buf + rlen, "Slot Version   : %d [%s]\n",
-			fsi->version, RING_VERSION);
-	rlen += sprintf(buf + rlen, "Active         : %d\n",
-			pfr->ring_active);
-	rlen += sprintf(buf + rlen, "Sampling Rate  : %d\n",
-			pfr->sample_rate);
-	rlen += sprintf(buf + rlen, "Appl. Name     : %s\n",
-			pfr->appl_name ? pfr->appl_name : "<unknown>");
-	rlen += sprintf(buf + rlen, "IP Defragment  : %s\n",
-			enable_ip_defrag ? "Yes" : "No");
-	rlen += sprintf(buf + rlen, "BPF Filtering  : %s\n",
-			pfr->bpfFilter ? "Enabled" : "Disabled");
-	rlen += sprintf(buf + rlen, "# Filt. Rules  : %d\n",
-			pfr->num_filtering_rules);
+	rlen = sprintf(buf, "Bound Device   : %s\n", pfr->ring_netdev->name);
+	rlen += sprintf(buf + rlen, "Slot Version   : %d [%s]\n", fsi->version, RING_VERSION);
+	rlen += sprintf(buf + rlen, "Active         : %d\n", pfr->ring_active);
+	rlen += sprintf(buf + rlen, "Sampling Rate  : %d\n", pfr->sample_rate);
+	rlen += sprintf(buf + rlen, "Appl. Name     : %s\n", pfr->appl_name ? pfr->appl_name : "<unknown>");
+	rlen += sprintf(buf + rlen, "IP Defragment  : %s\n", enable_ip_defrag ? "Yes" : "No");
+	rlen += sprintf(buf + rlen, "BPF Filtering  : %s\n", pfr->bpfFilter ? "Enabled" : "Disabled");
+	rlen += sprintf(buf + rlen, "# Filt. Rules  : %d\n", pfr->num_filtering_rules);
 	rlen += sprintf(buf + rlen, "Cluster Id     : %d\n", pfr->cluster_id);
 	rlen += sprintf(buf + rlen, "Channel Id     : %d\n", pfr->channel_id);
 	rlen += sprintf(buf + rlen, "Min Num Slots  : %d\n", fsi->min_num_slots);
 	rlen += sprintf(buf + rlen, "Bucket Len     : %d\n", fsi->data_len);
-	rlen += sprintf(buf + rlen, "Slot Len       : %d [bucket+header]\n",
-			fsi->slot_len);
+	rlen += sprintf(buf + rlen, "Slot Len       : %d [bucket+header]\n", fsi->slot_len);
 	rlen += sprintf(buf + rlen, "Tot Memory     : %d\n", fsi->tot_mem);
-	rlen += sprintf(buf + rlen, "Tot Packets    : %lu\n",
-			(unsigned long)fsi->tot_pkts);
-	rlen += sprintf(buf + rlen, "Tot Pkt Lost   : %lu\n",
-			(unsigned long)fsi->tot_lost);
-	rlen += sprintf(buf + rlen, "Tot Insert     : %lu\n",
-			(unsigned long)fsi->tot_insert);
-	rlen += sprintf(buf + rlen, "Tot Read       : %lu\n",
-			(unsigned long)fsi->tot_read);
-	rlen += sprintf(buf + rlen, "Tot Fwd Ok     : %lu\n",
-			(unsigned long)fsi->tot_fwd_ok);
-	rlen += sprintf(buf + rlen, "Tot Fwd Errors : %lu\n",
-			(unsigned long)fsi->tot_fwd_notok);
-	rlen += sprintf(buf + rlen, "Num Free Slots : %u\n",
-			get_num_ring_free_slots(pfr));
+	rlen += sprintf(buf + rlen, "Tot Packets    : %lu\n", (unsigned long)fsi->tot_pkts);
+	rlen += sprintf(buf + rlen, "Tot Pkt Lost   : %lu\n", (unsigned long)fsi->tot_lost);
+	rlen += sprintf(buf + rlen, "Tot Insert     : %lu\n", (unsigned long)fsi->tot_insert);
+	rlen += sprintf(buf + rlen, "Tot Read       : %lu\n", (unsigned long)fsi->tot_read);
+	rlen += sprintf(buf + rlen, "Insert Offset  : %lu\n", (unsigned long)fsi->insert_off);
+	rlen += sprintf(buf + rlen, "Remove Offset  : %lu\n", (unsigned long)fsi->remove_off);
+	rlen += sprintf(buf + rlen, "Tot Fwd Ok     : %lu\n", (unsigned long)fsi->tot_fwd_ok);
+	rlen += sprintf(buf + rlen, "Tot Fwd Errors : %lu\n", (unsigned long)fsi->tot_fwd_notok);
+	rlen += sprintf(buf + rlen, "Num Free Slots : %u\n",  get_num_ring_free_slots(pfr));
       } else
 	rlen = sprintf(buf, "WARNING fsi == NULL\n");
     } else
@@ -1629,7 +1607,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   if(pfr->ring_slots == NULL) return;
 
   write_lock_bh(&pfr->ring_index_lock);
-  smp_rmb();
+  // smp_rmb();
 
   off = pfr->slots_info->insert_off;
   pfr->slots_info->tot_pkts++;
@@ -1695,10 +1673,10 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   pfr->slots_info->tot_insert++;
 
   /* Flush data to mmap-ed memory area */
-  smp_wmb();
-  flush_packet_memory(ring_bucket, bytes_to_flush);
-  flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
-  smp_mb();
+  // smp_wmb();
+  //flush_packet_memory(ring_bucket, bytes_to_flush);
+  //flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
+  // smp_mb();
 
   write_unlock_bh(&pfr->ring_index_lock);
 
@@ -3462,7 +3440,7 @@ unsigned int ring_poll(struct file *file,
 #endif
 
     pfr->ring_active = 1;
-    smp_rmb();
+    // smp_rmb();
 
     if(pfr->slots_info->tot_read == pfr->slots_info->tot_insert) {
       poll_wait(file, &pfr->ring_slots_waitqueue, wait);
