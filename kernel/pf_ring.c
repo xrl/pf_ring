@@ -323,77 +323,7 @@ static inline void skb_reset_transport_header(struct sk_buff *skb)
 #endif
 #endif
 
-/* ***** Code taken from other kernel modules ******** */
-
-/**
- * rvmalloc copied from usbvideo.c
- */
-static void *rvmalloc(unsigned long size)
-{
-  void *mem;
-  unsigned long adr;
-  unsigned long pages = 0;
-
-#if defined(RING_DEBUG)
-  printk("[PF_RING] rvmalloc: %lu bytes\n", size);
-#endif
-
-  size = PAGE_ALIGN(size);
-  mem = vmalloc_32(size);
-  if(!mem)
-    return NULL;
-
-  memset(mem, 0, size);	/* Clear the ram out, no junk to the user */
-  adr = (unsigned long)mem;
-
-  while(size > 0) {
-    SetPageReserved(vmalloc_to_page((void *)adr));
-    pages++;
-    adr += PAGE_SIZE;
-    size -= PAGE_SIZE;
-  }
-
-#if defined(RING_DEBUG)
-  printk("[PF_RING] rvmalloc: %lu pages\n", pages);
-#endif
-  return mem;
-}
-
 /* ************************************************** */
-
-/**
- * rvfree copied from usbvideo.c
- */
-static void rvfree(void *mem, unsigned long size)
-{
-  unsigned long adr;
-  unsigned long pages = 0;
-
-#if defined(RING_DEBUG)
-  printk("[PF_RING] rvfree: %lu bytes\n", size);
-#endif
-
-  if(!mem)
-    return;
-
-  adr = (unsigned long)mem;
-  while((long)size > 0) {
-    ClearPageReserved(vmalloc_to_page((void *)adr));
-    pages++;
-    adr += PAGE_SIZE;
-    size -= PAGE_SIZE;
-  }
-#if defined(RING_DEBUG)
-  printk("[PF_RING] rvfree: %lu pages\n", pages);
-  printk("[PF_RING] rvfree: calling vfree....\n");
-#endif
-  vfree(mem);
-#if defined(RING_DEBUG)
-  printk("[PF_RING] rvfree: after vfree....\n");
-#endif
-}
-
-/* ********************************** */
 
 static inline char* get_slot(struct ring_opt *pfr, u_int32_t off) { return(&(pfr->ring_slots[off])); }
 
@@ -1000,23 +930,19 @@ static int ring_alloc_mem(struct sock *sk)
   pfr->slot_header_len = sizeof(struct pfring_pkthdr);
   the_slot_len = pfr->slot_header_len + pfr->bucket_len;
 
-  tot_mem = sizeof(FlowSlotInfo) + min_num_slots * the_slot_len;
-  if(tot_mem % PAGE_SIZE)
-    tot_mem += PAGE_SIZE - (tot_mem % PAGE_SIZE);
-
-  pfr->ring_memory = rvmalloc(tot_mem);
+  tot_mem = PAGE_ALIGN(sizeof(FlowSlotInfo) + min_num_slots * the_slot_len);
+  pfr->ring_memory = vmalloc_32(tot_mem);
 
   if(pfr->ring_memory != NULL) {
 #if defined(RING_DEBUG)
     printk("[PF_RING] successfully allocated %lu bytes at 0x%08lx\n",
 	   (unsigned long)tot_mem, (unsigned long)pfr->ring_memory);
 #endif
+    memset(pfr->ring_memory, 0, tot_mem);
   } else {
     printk("[PF_RING] ERROR: not enough memory for ring\n");
     return(-1);
   }
-
-  // memset(pfr->ring_memory, 0, tot_mem); // rvmalloc does the memset already
 
   pfr->slots_info = (FlowSlotInfo *) pfr->ring_memory;
   pfr->ring_slots = (char *)(pfr->ring_memory + sizeof(FlowSlotInfo));
@@ -3096,17 +3022,10 @@ static int ring_release(struct socket *sock)
   if(pfr->appl_name != NULL)
     kfree(pfr->appl_name);
 
-  if(ring_memory_ptr != NULL) {
-#if defined(RING_DEBUG)
-    printk("[PF_RING] ring_release: rvfree\n");
-#endif
-    rvfree(ring_memory_ptr, pfr->slots_info->tot_mem);
-  }
+  if(ring_memory_ptr != NULL)
+    vfree(ring_memory_ptr);
 
   kfree(pfr);
-#if defined(RING_DEBUG)
-  printk("[PF_RING] ring_release: rvfree done\n");
-#endif
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_release: done\n");
@@ -3212,6 +3131,7 @@ static int ring_bind(struct socket *sock, struct sockaddr *sa, int addr_len)
 
 /* ************************************* */
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11))
 /*
  * rvmalloc / rvfree / kvirt_to_pa copied from usbvideo.c
  */
@@ -3224,6 +3144,7 @@ unsigned long kvirt_to_pa(unsigned long adr)
   ret = __pa(kva);
   return ret;
 }
+#endif
 
 /* ************************************* */
 
@@ -3234,7 +3155,6 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
   /* we do not want to have this area swapped out, lock it */
   vma->vm_flags |= flags;
-  vma->vm_flags |= VM_RESERVED;   /* avoid to swap out this VMA */
 
   start = vma->vm_start;
 
@@ -3243,11 +3163,10 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
     if(mode == 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
-      rc = vm_insert_page(vma, start, vmalloc_to_page(ptr));  
-#else      
+      rc = vm_insert_page(vma, start, vmalloc_to_page(ptr));
+#else
       rc = remap_pfn_range(vma, start, kvirt_to_pa((unsigned long)ptr), PAGE_SIZE, PAGE_SHARED);
 #endif
-      
     } else if(mode == 1) {
       rc = remap_pfn_range(vma, start, __pa(ptr) >> PAGE_SHIFT,
 			   PAGE_SIZE, PAGE_SHARED);
@@ -3341,24 +3260,21 @@ static int ring_mmap(struct file *file,
     switch (pfr->mmap_count) {
     case 0:
       if((rc = do_memory_mmap(vma, size,
-			      (void *)pfr->dna_device->
-			      packet_memory, VM_LOCKED,
-			      1)) < 0)
+			      (void *)pfr->dna_device->packet_memory,
+			      VM_LOCKED, 1)) < 0)
 	return(rc);
       break;
 
     case 1:
       if((rc = do_memory_mmap(vma, size,
-			      (void *)pfr->dna_device->
-			      descr_packet_memory, VM_LOCKED,
-			      1)) < 0)
+			      (void *)pfr->dna_device->descr_packet_memory,
+			      VM_LOCKED, 1)) < 0)
 	return(rc);
       break;
 
     case 2:
       if((rc = do_memory_mmap(vma, size,
-			      (void *)pfr->dna_device->
-			      phys_card_memory,
+			      (void *)pfr->dna_device->phys_card_memory,
 			      (VM_RESERVED | VM_IO), 2)) < 0)
 	return(rc);
       break;
