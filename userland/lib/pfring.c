@@ -953,36 +953,30 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       pthread_spin_lock(&ring->spinlock);
 
     if(ring->slots_info->tot_insert != ring->slots_info->tot_read) {
-      char *bucket = &ring->slots[ring->slots_info->remove_off];
-      int bktLen;
-      u_int32_t next_off, real_slot_len = sizeof(struct pfring_pkthdr) + bktLen, insert_off = ring->slots_info->insert_off;
+      char *bucket = &ring->slots[ring->slots_info->remove_off];      
+      u_int32_t next_off, real_slot_len, insert_off, bktLen;
 
       memcpy(hdr, bucket, sizeof(struct pfring_pkthdr));
 
       bktLen = hdr->caplen+hdr->extended_hdr.parsed_header_len;
       if(bktLen > buffer_len) bktLen = buffer_len-1;
 
+      real_slot_len = sizeof(struct pfring_pkthdr) + bktLen;
+      insert_off = ring->slots_info->insert_off;
       if(buffer && (bktLen > 0)) {
 	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
 	buffer[bktLen] = '\0';
       }
-
-      
-
+    
       next_off = ring->slots_info->remove_off + real_slot_len;
       if ((next_off + ring->slots_info->slot_len) > (ring->slots_info->tot_mem - sizeof(FlowSlotInfo))){  
         next_off = 0;
-      } else {
-	if((ring->slots_info->tot_insert == (1+ring->slots_info->tot_read)) && (insert_off < next_off))
-	  next_off = insert_off;
       }
-      
-      ring->slots_info->remove_off = next_off;
-      
-      
+
+      ring->slots_info->remove_off = next_off;     
       ring->slots_info->tot_read++;
 
-      //wmb();
+      wmb();
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
       return(1);
     }
