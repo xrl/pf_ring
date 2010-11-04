@@ -56,7 +56,7 @@ char* get_next_e1000_packet(pfring* ring,
     if(++ring->rx_reg == ring->dna_dev.descr_packet_memory_num_slots)
       ring->rx_reg = 0;
 
-    if((ring->rx_reg % 512) == 0) {
+    if((ring->rx_reg % 32) == 0) {
       wmb(); /* Flush out memory first */  
       set_e1000_rx_register(ring, ring->rx_reg);  
     }

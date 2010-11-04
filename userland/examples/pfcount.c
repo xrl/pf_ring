@@ -330,21 +330,30 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
     printf("%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
-    printf("[eth_type=0x%04X]", h->extended_hdr.parsed_pkt.eth_type);
-    printf("[l3_proto=%u]", (unsigned int)h->extended_hdr.parsed_pkt.l3_proto);
 
-    printf("[%s:%d -> ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
-	   in6toa(h->extended_hdr.parsed_pkt.ipv6_src) : intoa(h->extended_hdr.parsed_pkt.ipv4_src), 
-	   h->extended_hdr.parsed_pkt.l4_src_port);
-    printf("%s:%d] ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
-	   in6toa(h->extended_hdr.parsed_pkt.ipv6_dst) : intoa(h->extended_hdr.parsed_pkt.ipv4_dst), 
-	   h->extended_hdr.parsed_pkt.l4_dst_port);
+    if(h->extended_hdr.parsed_header_len > 0) {
+      printf("[eth_type=0x%04X]", h->extended_hdr.parsed_pkt.eth_type);
+      printf("[l3_proto=%u]", (unsigned int)h->extended_hdr.parsed_pkt.l3_proto);
+      
+      printf("[%s:%d -> ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
+	     in6toa(h->extended_hdr.parsed_pkt.ipv6_src) : intoa(h->extended_hdr.parsed_pkt.ipv4_src), 
+	     h->extended_hdr.parsed_pkt.l4_src_port);
+      printf("%s:%d] ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
+	     in6toa(h->extended_hdr.parsed_pkt.ipv6_dst) : intoa(h->extended_hdr.parsed_pkt.ipv4_dst), 
+	     h->extended_hdr.parsed_pkt.l4_dst_port);
+      
+      printf("[%s -> %s] ",
+	     etheraddr_string(h->extended_hdr.parsed_pkt.smac, buf1),
+	     etheraddr_string(h->extended_hdr.parsed_pkt.dmac, buf2));
+    }
 
     memcpy(&ehdr, p+h->extended_hdr.parsed_header_len, sizeof(struct ether_header));
     eth_type = ntohs(ehdr.ether_type);
+
     printf("[%s -> %s] ",
-	   etheraddr_string(h->extended_hdr.parsed_pkt.smac, buf1),
-	   etheraddr_string(h->extended_hdr.parsed_pkt.dmac, buf2));
+	   etheraddr_string(ehdr.ether_shost, buf1),
+	   etheraddr_string(ehdr.ether_dhost, buf2));
+
 
     if(eth_type == 0x8100) {
       vlan_id = (p[14] & 15)*256 + p[15];
@@ -352,6 +361,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
       printf("[vlan %u] ", vlan_id);
       p+=4;
     }
+
     if(eth_type == 0x0800) {
       memcpy(&ip, p+h->extended_hdr.parsed_header_len+sizeof(ehdr), sizeof(struct ip));
       printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->extended_hdr.parsed_pkt.l4_src_port);

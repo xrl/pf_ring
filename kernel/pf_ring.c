@@ -94,7 +94,7 @@
 
 #include <linux/pf_ring.h>
 
-// #define RING_DEBUG
+#define RING_DEBUG
 
 #ifndef SVN_REV
 #define SVN_REV ""
@@ -481,10 +481,12 @@ static void ring_proc_remove(struct ring_opt *pfr)
 
   if(ring_proc_dir != NULL) {
     char name[64];
-
+    
     snprintf(name, sizeof(name), "%d-%s.%d",
 	     pfr->ring_pid, pfr->ring_netdev->name,
 	     pfr->ring_id);
+
+    printk("[PF_RING] Removing /proc/net/pf_ring/%s\n", name);
 
     remove_proc_entry(name, ring_proc_dir);
 
@@ -2300,11 +2302,10 @@ static int skb_ring_handler(struct sk_buff *skb,
 #endif
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n", channel_id, num_rx_channels);
+  // printk("[PF_RING] --> skb_ring_handler() [channel_id=%d/%d]\n", channel_id, num_rx_channels);
 #endif
 
-  if((!skb) /* Invalid skb */
-     ||((!enable_tx_capture) && (!recv_packet))) {
+  if((!skb) /* Invalid skb */ ||((!enable_tx_capture) && (!recv_packet))) {
     /*
       An outgoing packet is about to be sent out
       but we decided not to handle transmitted
@@ -3136,6 +3137,8 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
   start = vma->vm_start;
 
+  printk("[PF_RING] do_memory_mmap(mode=%d, size=%lu, ptr=%p)\n", mode, size, ptr);
+
   while(size > 0) {
     int rc;
 
@@ -3146,11 +3149,9 @@ static int do_memory_mmap(struct vm_area_struct *vma,
       rc = remap_pfn_range(vma, start, kvirt_to_pa((unsigned long)ptr), PAGE_SIZE, PAGE_SHARED);
 #endif
     } else if(mode == 1) {
-      rc = remap_pfn_range(vma, start, __pa(ptr) >> PAGE_SHIFT,
-			   PAGE_SIZE, PAGE_SHARED);
+      rc = remap_pfn_range(vma, start, __pa(ptr) >> PAGE_SHIFT, PAGE_SIZE, PAGE_SHARED);
     } else {
-      rc = remap_pfn_range(vma, start, ((unsigned long)ptr) >> PAGE_SHIFT,
-			   PAGE_SIZE, PAGE_SHARED);
+      rc = remap_pfn_range(vma, start, ((unsigned long)ptr) >> PAGE_SHIFT, PAGE_SIZE, PAGE_SHARED);
     }
 
     if(rc) {
@@ -3193,11 +3194,11 @@ static int ring_mmap(struct file *file,
 
   if(size % PAGE_SIZE) {
 #if defined(RING_DEBUG)
-    printk("[PF_RING] ring_mmap() failed: "
-	   "len is not multiple of PAGE_SIZE\n");
+    printk("[PF_RING] ring_mmap() failed: len is not multiple of PAGE_SIZE\n");
 #endif
     return(-EINVAL);
   }
+
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_mmap() called, size: %ld bytes [bucket_len=%d]\n",
 	 size, pfr->bucket_len);
@@ -3231,37 +3232,37 @@ static int ring_mmap(struct file *file,
     if((rc = do_memory_mmap(vma, size, pfr->ring_memory, VM_LOCKED, 0)) < 0)
       return(rc);
   } else {
+    int count = pfr->mmap_count;
     /* DNA Device */
     if(pfr->dna_device == NULL)
       return(-EAGAIN);
 
-    switch (pfr->mmap_count) {
+    printk("[PF_RING] mmap count(%d)\n", count);
+
+    pfr->mmap_count++;
+
+    switch(count) {
     case 0:
       if((rc = do_memory_mmap(vma, size,
-			      (void *)pfr->dna_device->packet_memory,
-			      VM_LOCKED, 1)) < 0)
+			      (void *)pfr->dna_device->packet_memory, VM_LOCKED, 1)) < 0)
 	return(rc);
       break;
 
     case 1:
       if((rc = do_memory_mmap(vma, size,
-			      (void *)pfr->dna_device->descr_packet_memory,
-			      VM_LOCKED, 1)) < 0)
+			      (void *)pfr->dna_device->descr_packet_memory, VM_LOCKED, 1)) < 0)
 	return(rc);
       break;
 
     case 2:
       if((rc = do_memory_mmap(vma, size,
-			      (void *)pfr->dna_device->phys_card_memory,
-			      (VM_RESERVED | VM_IO), 2)) < 0)
+			      (void *)pfr->dna_device->phys_card_memory, (VM_RESERVED | VM_IO), 2)) < 0)
 	return(rc);
       break;
 
     default:
       return(-EAGAIN);
     }
-
-    pfr->mmap_count++;
   }
 
 #if defined(RING_DEBUG)
@@ -3299,13 +3300,6 @@ static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 	break;
     }
   }
-
-#if defined(RING_DEBUG)
-  if(slot != NULL)
-    printk("[PF_RING] ring_recvmsg is returning "
-	   "[queued_pkts=%d][num_loops=%d]\n",
-	   queued_pkts, num_loops);
-#endif
 
   return(queued_pkts);
 }
@@ -3681,7 +3675,7 @@ static int add_sock_to_cluster(struct sock *sock,
 static int ring_map_dna_device(struct ring_opt *pfr,
 			       dna_device_mapping * mapping)
 {
-  int debug = 0;
+  int debug = 1;
 
   if(mapping->operation == remove_device_mapping) {
     pfr->dna_device = NULL;
@@ -3703,8 +3697,8 @@ static int ring_map_dna_device(struct ring_opt *pfr,
 	pfr->dna_device = &entry->dev, pfr->ring_netdev = entry->dev.netdev;
 
 	if(debug)
-	  printk("[PF_RING] ring_map_dna_device(%s): added mapping\n",
-		 mapping->device_name);
+	  printk("[PF_RING] ring_map_dna_device(%s, %u): added mapping\n",
+		 mapping->device_name, mapping->channel_id);
 
 	ring_proc_add(pfr);
 	return(0);
@@ -3712,8 +3706,8 @@ static int ring_map_dna_device(struct ring_opt *pfr,
     }
   }
 
-  printk("[PF_RING] ring_map_dna_device(%s): mapping failed\n",
-	 mapping->device_name);
+  printk("[PF_RING] ring_map_dna_device(%s, %u): mapping failed\n", 
+	 mapping->device_name, mapping->channel_id);
 
   return(-1);
 }
@@ -4727,12 +4721,9 @@ void dna_device_handler(dna_device_operation operation,
 	packet_memory_slot_len;
       next->dev.packet_memory_tot_len = packet_memory_tot_len;
       next->dev.descr_packet_memory = descr_packet_memory;
-      next->dev.descr_packet_memory_num_slots =
-	descr_packet_memory_num_slots;
-      next->dev.descr_packet_memory_slot_len =
-	descr_packet_memory_slot_len;
-      next->dev.descr_packet_memory_tot_len =
-	descr_packet_memory_tot_len;
+      next->dev.descr_packet_memory_num_slots = descr_packet_memory_num_slots;
+      next->dev.descr_packet_memory_slot_len =  descr_packet_memory_slot_len;
+      next->dev.descr_packet_memory_tot_len =   descr_packet_memory_tot_len;
       next->dev.phys_card_memory = phys_card_memory;
       next->dev.phys_card_memory_len = phys_card_memory_len;
       next->dev.channel_id = channel_id;
