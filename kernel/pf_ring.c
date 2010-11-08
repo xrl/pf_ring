@@ -911,7 +911,7 @@ static int ring_alloc_mem(struct sock *sk)
   the_slot_len = pfr->slot_header_len + pfr->bucket_len;
 
   tot_mem = PAGE_ALIGN(sizeof(FlowSlotInfo) + min_num_slots * the_slot_len);
-  pfr->ring_memory = vmalloc_32(tot_mem);
+  pfr->ring_memory = vmalloc_user(tot_mem);
 
   if(pfr->ring_memory != NULL) {
 #if defined(RING_DEBUG)
