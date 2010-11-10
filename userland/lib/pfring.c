@@ -973,8 +973,14 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
         next_off = 0;
       }
 
-      ring->slots_info->remove_off = next_off;     
       ring->slots_info->tot_read++;
+      ring->slots_info->remove_off = next_off;     
+
+      /* Ugly safety check */
+      if((ring->slots_info->tot_insert == ring->slots_info->tot_read)
+	 && (ring->slots_info->remove_off > ring->slots_info->insert_off)) {
+	ring->slots_info->remove_off = ring->slots_info->insert_off;
+      }
 
       wmb();
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
