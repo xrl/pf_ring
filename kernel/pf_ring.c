@@ -3144,7 +3144,9 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
     if(mode == 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
-      rc = vm_insert_page(vma, start, vmalloc_to_page(ptr));
+      // rc = vm_insert_page(vma, start, vmalloc_to_page(ptr));
+      rc = remap_vmalloc_range(vma, ptr, 0);
+      break;
 #else
       rc = remap_pfn_range(vma, start, kvirt_to_pa((unsigned long)ptr), PAGE_SIZE, PAGE_SHARED);
 #endif
