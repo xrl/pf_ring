@@ -959,10 +959,10 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       memcpy(hdr, bucket, sizeof(struct pfring_pkthdr));
 
       bktLen = hdr->caplen+hdr->extended_hdr.parsed_header_len;
-      if(bktLen > buffer_len) bktLen = buffer_len-1;
-
       real_slot_len = sizeof(struct pfring_pkthdr) + bktLen;
       insert_off = ring->slots_info->insert_off;
+      if(bktLen > buffer_len) bktLen = buffer_len-1;
+
       if(buffer && (bktLen > 0)) {
 	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
 	buffer[bktLen] = '\0';
