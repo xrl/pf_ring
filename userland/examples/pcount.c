@@ -373,7 +373,9 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:l:vf:")) != -1) {
+  while((c = getopt(argc,argv,"hi:l:vf:")) != '?') {
+    if(c == 255) break;
+
     switch(c) {
     case 'h':
       printHelp();

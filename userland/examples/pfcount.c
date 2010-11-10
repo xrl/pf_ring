@@ -326,10 +326,17 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
     char buf1[32], buf2[32];
     struct ip ip;
     int s = (h->ts.tv_sec + thiszone) % 86400;
-
+    
     printf("%02d:%02d:%02d.%06u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
 	   (unsigned)h->ts.tv_usec);
+
+#if 0
+    for(i=0; i<32; i++)
+      printf("%02X ", p[i]);
+
+    printf("\n");
+#endif
 
     if(h->extended_hdr.parsed_header_len > 0) {
       printf("[eth_type=0x%04X]", h->extended_hdr.parsed_pkt.eth_type);
@@ -350,9 +357,9 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
     memcpy(&ehdr, p+h->extended_hdr.parsed_header_len, sizeof(struct ether_header));
     eth_type = ntohs(ehdr.ether_type);
 
-    printf("[%s -> %s] ",
+    printf("[%s -> %s][eth_type=0x%04X] ",
 	   etheraddr_string(ehdr.ether_shost, buf1),
-	   etheraddr_string(ehdr.ether_dhost, buf2));
+	   etheraddr_string(ehdr.ether_dhost, buf2), eth_type);
 
 
     if(eth_type == 0x8100) {
@@ -366,19 +373,30 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
       memcpy(&ip, p+h->extended_hdr.parsed_header_len+sizeof(ehdr), sizeof(struct ip));
       printf("[%s:%d ", intoa(ntohl(ip.ip_src.s_addr)), h->extended_hdr.parsed_pkt.l4_src_port);
       printf("-> %s:%d] ", intoa(ntohl(ip.ip_dst.s_addr)), h->extended_hdr.parsed_pkt.l4_dst_port);
-    } else if(eth_type == 0x0806)
-      printf("[ARP]");
-    else
-      printf("[eth_type=0x%04X]", eth_type);
 
-    printf("[tos=%d][tcp_seq_num=%u][caplen=%d][len=%d][parsed_header_len=%d]"
-	   "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
-	   h->extended_hdr.parsed_pkt.ipv4_tos, h->extended_hdr.parsed_pkt.tcp.seq_num,
-	   h->caplen, h->len, h->extended_hdr.parsed_header_len,
-	   h->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset,
-	   h->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset,
-	   h->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset,
-	   h->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset);
+      printf("[tos=%d][tcp_seq_num=%u][caplen=%d][len=%d][parsed_header_len=%d]"
+	     "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
+	     h->extended_hdr.parsed_pkt.ipv4_tos, h->extended_hdr.parsed_pkt.tcp.seq_num,
+	     h->caplen, h->len, h->extended_hdr.parsed_header_len,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset);
+      
+    } else {
+      if(eth_type == 0x0806)
+	printf("[ARP]");
+      else
+	printf("[eth_type=0x%04X]", eth_type);
+
+      printf("[caplen=%d][len=%d][parsed_header_len=%d]"
+	     "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
+	     h->caplen, h->len, h->extended_hdr.parsed_header_len,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset,
+	     h->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset);
+    }
   }
 
   numPkts[threadId]++, numBytes[threadId] += h->len;
@@ -542,7 +560,8 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:" /* "f:" */)) != '?') {
+    if(c == 255) break;
     switch(c) {
     case 'h':
       printHelp();
@@ -587,6 +606,8 @@ int main(int argc, char* argv[]) {
       */
     case 's':
       string = strdup(optarg);
+      break;
+    case 255:
       break;
     }
   }

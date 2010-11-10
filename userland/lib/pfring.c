@@ -982,7 +982,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	ring->slots_info->remove_off = ring->slots_info->insert_off;
       }
 
-      wmb();
+      // wmb();
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
       return(1);
     }
@@ -1011,7 +1011,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
       /* Sleep when nothing is happening */
       pfd.fd      = ring->fd;
-      pfd.events  = POLLIN|POLLERR;
+      pfd.events  = POLLIN /* |POLLERR */;
       pfd.revents = 0;
 
 #ifdef RING_DEBUG
@@ -1025,7 +1025,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
       errno = 0;
 
-      rc = poll(&pfd, 1, -1);
+      rc = poll(&pfd, 1, 500);
 
       ring->num_poll_calls++;
 
