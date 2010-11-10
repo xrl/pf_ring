@@ -1683,7 +1683,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   // smp_wmb();
   //flush_packet_memory(ring_bucket, bytes_to_flush);
   //flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
-   smp_mb();
+  // smp_mb();
 
   write_unlock_bh(&pfr->ring_index_lock);
 
@@ -3142,7 +3142,9 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
   start = vma->vm_start;
 
+#if defined(RING_DEBUG)
   printk("[PF_RING] do_memory_mmap(mode=%d, size=%lu, ptr=%p)\n", mode, size, ptr);
+#endif
 
   while(size > 0) {
     int rc;

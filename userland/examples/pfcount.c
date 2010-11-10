@@ -562,6 +562,7 @@ int main(int argc, char* argv[]) {
 
   while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:" /* "f:" */)) != '?') {
     if(c == 255) break;
+
     switch(c) {
     case 'h':
       printHelp();
@@ -606,8 +607,6 @@ int main(int argc, char* argv[]) {
       */
     case 's':
       string = strdup(optarg);
-      break;
-    case 255:
       break;
     }
   }
