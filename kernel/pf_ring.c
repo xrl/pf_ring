@@ -94,7 +94,7 @@
 
 #include <linux/pf_ring.h>
 
-#define RING_DEBUG
+/* #define RING_DEBUG */
 
 #ifndef SVN_REV
 #define SVN_REV ""
@@ -911,6 +911,9 @@ static int ring_alloc_mem(struct sock *sk)
   the_slot_len = pfr->slot_header_len + pfr->bucket_len;
 
   tot_mem = PAGE_ALIGN(sizeof(FlowSlotInfo) + min_num_slots * the_slot_len);
+
+  tot_mem += (tot_mem + (SHMLBA-1)) % SHMLBA;
+
   pfr->ring_memory = vmalloc_user(tot_mem);
 
   if(pfr->ring_memory != NULL) {
@@ -1676,8 +1679,8 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 
   /* Flush data to mmap-ed memory area */
   // smp_wmb();
-  //flush_packet_memory(ring_bucket, bytes_to_flush);
-  //flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
+  flush_packet_memory(ring_bucket, bytes_to_flush);
+  flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
   // smp_mb();
 
   write_unlock_bh(&pfr->ring_index_lock);
