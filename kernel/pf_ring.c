@@ -1681,9 +1681,9 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 
   /* Flush data to mmap-ed memory area */
   // smp_wmb();
-  flush_packet_memory(ring_bucket, bytes_to_flush);
-  flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
-  // smp_mb();
+  //flush_packet_memory(ring_bucket, bytes_to_flush);
+  //flush_packet_memory((u8*)pfr->slots_info, sizeof(FlowSlotInfo));
+   smp_mb();
 
   write_unlock_bh(&pfr->ring_index_lock);
 
