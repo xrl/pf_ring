@@ -878,7 +878,7 @@ static void ring_proc_term(void)
  */
 static int ring_alloc_mem(struct sock *sk)
 {
-  u_int the_slot_len;
+  u_int the_slot_len, num_pages;
   u_int32_t tot_mem;
   struct ring_opt *pfr = ring_sk(sk);
 
@@ -912,9 +912,11 @@ static int ring_alloc_mem(struct sock *sk)
 
   tot_mem = PAGE_ALIGN(sizeof(FlowSlotInfo) + min_num_slots * the_slot_len);
 
-  tot_mem += (tot_mem + (SHMLBA-1)) % SHMLBA;
+  /* Alignment necessary on ARM platforms */
+  num_pages = tot_mem / PAGE_SIZE;
+  num_pages += (num_pages + (SHMLBA-1)) % SHMLBA;
 
-  pfr->ring_memory = vmalloc_user(tot_mem);
+  pfr->ring_memory = vmalloc_user(num_pages*PAGE_SIZE);
 
   if(pfr->ring_memory != NULL) {
 #if defined(RING_DEBUG)
