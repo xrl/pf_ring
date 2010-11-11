@@ -39,7 +39,7 @@ INCLUDE    = -I../../kernel -I${PFRINGDIR} -I${PCAPDIR}
 # CROSS_COMPILE=arm-mv5sft-linux-gnueabi-
 #
 CC         = ${CROSS_COMPILE}gcc
-CFLAGS     = -g -O2 -Wall ${INCLUDE} ${DNA_DEFINE}
+CFLAGS     = -g -Wall ${INCLUDE} ${DNA_DEFINE}
 # LDFLAGS  =
 
 #

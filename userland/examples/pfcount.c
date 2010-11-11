@@ -561,7 +561,7 @@ int main(int argc, char* argv[]) {
   thiszone = gmt2local(0);
 
   while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:" /* "f:" */)) != '?') {
-    if(c == 255) break;
+    if((c == 255) || (c == -1)) break;
 
     switch(c) {
     case 'h':
