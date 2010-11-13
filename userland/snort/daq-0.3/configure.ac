@@ -2,8 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.62)
-AC_INIT([daq], [0.2], [snort-team@sourcefire.com])
-AM_INIT_AUTOMAKE([daq], [0.2])
+AC_INIT([daq], [0.3], [snort-team@sourcefire.com])
+AM_INIT_AUTOMAKE([daq], [0.3])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([sfbpf/gencode.h])
 AC_CONFIG_HEADERS([config.h])
@@ -190,6 +190,7 @@ AM_CONDITIONAL([BUILD_MODULES], [test "$enable_afpacket_module" = yes -o \
                                       "$enable_dump_module" = yes -o \
                                       "$enable_ipfw_module" = yes -o \
                                       "$enable_ipq_module" = yes -o \
+                                      "$enable_pfring_module" = yes -o \
                                       "$enable_nfq_module" = yes])
 
 AC_CHECK_LIB([dl], [dlopen], [LIBDL="-ldl"])

@@ -41,21 +41,37 @@
 #include "daq_api.h"
 #include "sfbpf.h"
 
-#define DAQ_AFPACKET_VERSION 2
+#define DAQ_AFPACKET_VERSION 4
 
-#define AF_PACKET_MAX_BUFFER_SIZE   128
+#define AF_PACKET_DEFAULT_BUFFER_SIZE   128
 #define AF_PACKET_MAX_INTERFACES    32
+
+#ifdef TPACKET2_HDRLEN
+#define HAVE_TPACKET2
+#else
+#define TPACKET_V1   0
+#endif
+
+union thdr
+{
+    struct tpacket_hdr *h1;
+    struct tpacket2_hdr *h2;
+    const uint8_t *raw;
+};
 
 typedef struct _af_packet_entry
 {
     struct _af_packet_entry *next;
-    struct tpacket_hdr *hdr;
-    const u_int8_t *begin;
+    union thdr hdr;
+    const uint8_t *begin;
 } AFPacketEntry;
 
 typedef struct _af_packet_instance
 {
     struct _af_packet_instance *next;
+    unsigned tp_version;
+    unsigned tp_hdrlen;
+    uint32_t frames_per_block;
     struct tpacket_req layout;
     AFPacketEntry *ring;
     AFPacketEntry *entry;
@@ -73,12 +89,12 @@ typedef struct _afpacket_context
     char *filter;
     int snaplen;
     int timeout;
+    uint32_t size;
+    int debug;
     AFPacketInstance *instances;
-    struct tpacket_req layout;
-    uint32_t frames_per_block;
     uint32_t intf_count;
     struct sfbpf_program fcode;
-    int break_loop;
+    volatile int break_loop;
     DAQ_Stats_t stats;
     DAQ_State state;
     char errbuf[256];
@@ -163,17 +179,9 @@ static void destroy_rx_ring(AFPacketInstance *instance)
     }
 }
 
-static int create_rx_ring(AFPacket_Context_t *afpc, AFPacketInstance *instance)
+static int set_up_rx_ring(AFPacket_Context_t *afpc, AFPacketInstance *instance)
 {
     unsigned idx, block, frame, ringsize;
-
-    /* Ask the kernel to create the ring. */
-    if (setsockopt(instance->fd, SOL_PACKET, PACKET_RX_RING, (void*) &instance->layout, sizeof(struct tpacket_req)))
-    {
-        DPE(afpc->errbuf, "%s: Couldn't create kernel RX ring on packet socket: %s",
-                __FUNCTION__, strerror(errno));
-        return DAQ_ERROR_NOMEM;
-    }
 
     /* Memory map the RX ring. */
     ringsize = instance->layout.tp_block_nr * instance->layout.tp_block_size;
@@ -200,10 +208,10 @@ static int create_rx_ring(AFPacket_Context_t *afpc, AFPacketInstance *instance)
     idx = 0;
     for (block = 0; block < instance->layout.tp_block_nr; block++)
     {
-        for (frame = 0; frame < afpc->frames_per_block; frame++)
+        for (frame = 0; frame < instance->frames_per_block; frame++)
         {
             instance->ring[idx].begin = (uint8_t *) instance->buffer + (block * instance->layout.tp_block_size) + (frame * instance->layout.tp_frame_size);
-            instance->ring[idx].hdr = (struct tpacket_hdr *)instance->ring[idx].begin;
+            instance->ring[idx].hdr.raw = instance->ring[idx].begin;
             instance->ring[idx].next = &instance->ring[idx + 1];
             idx++;
         }
@@ -292,6 +300,110 @@ err:
     return NULL;
 }
 
+/* The function below was heavily influenced by LibPCAP's pcap-linux.c.  Thanks! */
+static int determine_version(AFPacket_Context_t *afpc, AFPacketInstance *instance)
+{
+#ifdef HAVE_TPACKET2
+    socklen_t len;
+    int val;
+#endif
+
+    instance->tp_version = TPACKET_V1;
+    instance->tp_hdrlen = sizeof(struct tpacket_hdr);
+
+#ifdef HAVE_TPACKET2
+    /* Probe whether kernel supports TPACKET_V2 */
+    val = TPACKET_V2;
+    len = sizeof(val);
+    if (getsockopt(instance->fd, SOL_PACKET, PACKET_HDRLEN, &val, &len) < 0)
+    {
+        /* Version 2 is not supported, stick with V1. */
+        if (errno == ENOPROTOOPT)
+            return DAQ_SUCCESS;
+
+        DPE(afpc->errbuf, "Couldn't retrieve TPACKET_V2 header length: %s", strerror(errno));
+        return -1;
+    }
+    instance->tp_hdrlen = val;
+
+    val = TPACKET_V2;
+    if (setsockopt(instance->fd, SOL_PACKET, PACKET_VERSION, &val, sizeof(val)) < 0)
+    {
+        DPE(afpc->errbuf, "Couldn't activate TPACKET_V2 on packet socket: %s", strerror(errno));
+        return -1;
+    }
+    instance->tp_version = TPACKET_V2;
+
+#endif /* HAVE_TPACKET2 */
+    return DAQ_SUCCESS;
+}
+
+static int calculate_layout(AFPacket_Context_t *afpc, AFPacketInstance *instance, int order)
+{
+    /* Calculate the frame size and minimum block size required. */
+    instance->layout.tp_frame_size = TPACKET_ALIGN(afpc->snaplen + TPACKET_ALIGN(TPACKET_ALIGN(instance->tp_hdrlen) + sizeof(struct sockaddr_ll) + ETH_HLEN) - ETH_HLEN);
+    instance->layout.tp_block_size = getpagesize() << order;
+    while (instance->layout.tp_block_size < instance->layout.tp_frame_size)
+        instance->layout.tp_block_size <<= 1;
+    instance->frames_per_block = instance->layout.tp_block_size / instance->layout.tp_frame_size;
+    if (instance->frames_per_block == 0)
+    {
+        DPE(afpc->errbuf, "%s: Invalid frames per block (%u/%u) for %s",
+                __FUNCTION__, instance->layout.tp_block_size, instance->layout.tp_frame_size, afpc->device);
+        return DAQ_ERROR;
+    }
+
+    /* Find the total number of frames required to amount to the requested per-interface memory.
+        Then find the number of blocks required to hold those packet buffer frames. */
+    instance->layout.tp_frame_nr = afpc->size / instance->layout.tp_frame_size;
+    instance->layout.tp_block_nr = instance->layout.tp_frame_nr / instance->frames_per_block;
+    /* afpc->layout.tp_frame_nr is requested to match frames_per_block*n_blocks */
+    instance->layout.tp_frame_nr = instance->layout.tp_block_nr * instance->frames_per_block;
+    if (afpc->debug)
+    {
+        printf("AFPacket Layout:\n");
+        printf("  Frame Size: %u\n", instance->layout.tp_frame_size);
+        printf("  Frames:     %u\n", instance->layout.tp_frame_nr);
+        printf("  Block Size: %u (Order %d)\n", instance->layout.tp_block_size, order);
+        printf("  Blocks:     %u\n", instance->layout.tp_block_nr);
+    }
+
+    return DAQ_SUCCESS;
+}
+
+#define DEFAULT_ORDER 3
+static int create_rx_ring(AFPacket_Context_t *afpc, AFPacketInstance *instance)
+{
+    int rc, order;
+
+    /* Starting with page allocations of order 3, try to allocate an RX ring in the kernel. */
+    for (order = DEFAULT_ORDER; order >= 0; order--)
+    {
+        if (calculate_layout(afpc, instance, order))
+            return DAQ_ERROR;
+
+        /* Ask the kernel to create the ring. */
+        rc = setsockopt(instance->fd, SOL_PACKET, PACKET_RX_RING, (void*) &instance->layout, sizeof(struct tpacket_req));
+        if (rc)
+        {
+            if (errno == ENOMEM)
+            {
+                if (afpc->debug)
+                    printf("%s: Allocation of kernel packet RX ring failed with order %d, retrying...\n", instance->name, order);
+                continue;
+            }
+            DPE(afpc->errbuf, "%s: Couldn't create kernel RX ring on packet socket: %s",
+                    __FUNCTION__, strerror(errno));
+            return DAQ_ERROR;
+        }
+        return DAQ_SUCCESS;
+    }
+
+    /* If we got here, it means we failed allocation on order 0. */
+    DPE(afpc->errbuf, "%s: Couldn't allocate enough memory for the kernel RX ring!", instance->name);
+    return DAQ_ERROR;
+}
+
 static int start_instance(AFPacket_Context_t *afpc, AFPacketInstance *instance)
 {
     struct packet_mreq mr;
@@ -327,7 +439,20 @@ static int start_instance(AFPacket_Context_t *afpc, AFPacketInstance *instance)
         return -1;
     }
 
+    /* Determine which versions of TPACKET the socket supports. */
+    if (determine_version(afpc, instance) != DAQ_SUCCESS)
+        return -1;
+
+    if (afpc->debug)
+    {
+        printf("Version: %u\n", instance->tp_version);
+        printf("Header Length: %u\n", instance->tp_hdrlen);
+    }
+
     if (create_rx_ring(afpc, instance) != DAQ_SUCCESS)
+        return -1;
+
+    if (set_up_rx_ring(afpc, instance) != DAQ_SUCCESS)
         return -1;
 
     return 0;
@@ -344,7 +469,8 @@ static void update_hw_stats(AFPacket_Context_t *afpc)
         memset(&kstats, 0, len);
         if (getsockopt(instance->fd, SOL_PACKET, PACKET_STATISTICS, &kstats, &len) > -1)
         {
-            afpc->stats.hw_packets_received += kstats.tp_packets;
+            /* The IOCTL adds tp_drops to tp_packets in the returned structure for some mind-boggling reason... */
+            afpc->stats.hw_packets_received += kstats.tp_packets - kstats.tp_drops;
             afpc->stats.hw_packets_dropped += kstats.tp_drops;
         }
         else
@@ -420,7 +546,6 @@ static int afpacket_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, 
     size_t len;
     int num_intfs = 0;
     int rval = DAQ_ERROR;
-    int debug = 0;
     DAQ_Dict *entry;
 
     afpc = calloc(1, sizeof(AFPacket_Context_t));
@@ -440,7 +565,7 @@ static int afpacket_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, 
     }
 
     afpc->snaplen = config->snaplen;
-    afpc->timeout = config->timeout;
+    afpc->timeout = (config->timeout > 0) ? (int) config->timeout : -1;
 
     dev = afpc->device;
     if (*dev == ':' || ((len = strlen(dev)) > 0 && *(dev + len - 1) == ':') || (config->mode == DAQ_MODE_PASSIVE && strstr(dev, "::")))
@@ -512,19 +637,15 @@ static int afpacket_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, 
         if (!strcmp(entry->key, "buffer_size_mb"))
             size_str = entry->value;
         else if (!strcmp(entry->key, "debug"))
-            debug = 1;
+            afpc->debug = 1;
     }
     /* Fall back to the environment variable. */
     if (!size_str)
         size_str = getenv("AF_PACKET_BUFFER_SIZE");
     if (size_str && strcmp("max", size_str) != 0)
-    {
         size = strtoul(size_str, NULL, 10);
-        if (size > AF_PACKET_MAX_BUFFER_SIZE)
-            size = AF_PACKET_MAX_BUFFER_SIZE;
-    }
     else
-        size = AF_PACKET_MAX_BUFFER_SIZE;
+        size = AF_PACKET_DEFAULT_BUFFER_SIZE;
     /* The size is specified in megabytes. */
     size = size * 1024 * 1024;
 
@@ -532,39 +653,7 @@ static int afpacket_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, 
     num_intfs = 0;
     for (instance = afpc->instances; instance; instance = instance->next)
         num_intfs++;
-    size /= num_intfs;
-
-    /* 3. Calculate the frame size and minimum block size required. */
-    afpc->layout.tp_frame_size = TPACKET_ALIGN(afpc->snaplen + TPACKET_HDRLEN);
-    afpc->layout.tp_block_size = getpagesize();
-    while (afpc->layout.tp_block_size < afpc->layout.tp_frame_size)
-        afpc->layout.tp_block_size <<= 1;
-    afpc->frames_per_block = afpc->layout.tp_block_size / afpc->layout.tp_frame_size;
-    if (afpc->frames_per_block == 0)
-    {
-        snprintf(errbuf, errlen, "%s: invalid frames per block (%u/%u) for %s",
-                __FUNCTION__, afpc->layout.tp_block_size, afpc->layout.tp_frame_size, afpc->device);
-        goto err;
-    }
-
-    /* 4. Find the total number of frames required to amount to the requested per-interface memory.
-           Then find the number of blocks required to hold those packet buffer frames. */
-    afpc->layout.tp_frame_nr = size / afpc->layout.tp_frame_size;
-    afpc->layout.tp_block_nr = afpc->layout.tp_frame_nr / afpc->frames_per_block;
-    /* afpc->layout.tp_frame_nr is requested to match frames_per_block*n_blocks */
-    afpc->layout.tp_frame_nr = afpc->layout.tp_block_nr * afpc->frames_per_block;
-    if (debug)
-    {
-        printf("AFPacket Layout:\n");
-        printf("  Frame Size: %u\n", afpc->layout.tp_frame_size);
-        printf("  Frames:     %u\n", afpc->layout.tp_frame_nr);
-        printf("  Block Size: %u\n", afpc->layout.tp_block_size);
-        printf("  Blocks:     %u\n", afpc->layout.tp_block_nr);
-    }
-
-    /* Propagate the calculated ring layout to the instances. */
-    for (instance = afpc->instances; instance; instance = instance->next)
-        memcpy(&instance->layout, &afpc->layout, sizeof(struct tpacket_req));
+    afpc->size = size / num_intfs;
 
     afpc->state = DAQ_STATE_INITIALIZED;
 
@@ -643,7 +732,7 @@ static int afpacket_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callb
     AFPacketInstance *instance;
     DAQ_PktHdr_t daqhdr;
     DAQ_Verdict verdict;
-    struct tpacket_hdr *hdr;
+    union thdr hdr;
     struct pollfd pfd[AF_PACKET_MAX_INTERFACES];
     const uint8_t *data;
     uint32_t i;
@@ -651,6 +740,7 @@ static int afpacket_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callb
     int result, c = 0;
     struct sockaddr_ll *sll;
     const struct ethhdr *eth;
+    unsigned int tp_len, tp_mac, tp_snaplen, tp_sec, tp_usec;
 
     while (cnt <= 0 || c < cnt)
     {
@@ -666,22 +756,49 @@ static int afpacket_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callb
             }
 
             hdr = instance->entry->hdr;
-            if (hdr->tp_status)
+            if ((instance->tp_version == TPACKET_V1 && hdr.h1->tp_status)
+#ifdef HAVE_TPACKET2
+                || (instance->tp_version == TPACKET_V2 && hdr.h2->tp_status)
+#endif
+               )
             {
-                data = instance->entry->begin + hdr->tp_mac;
+                switch (instance->tp_version)
+                {
+                    case TPACKET_V1:
+                        tp_len = hdr.h1->tp_len;
+                        tp_mac = hdr.h1->tp_mac;
+                        tp_snaplen = hdr.h1->tp_snaplen;
+                        tp_sec = hdr.h1->tp_sec;
+                        tp_usec = hdr.h1->tp_usec;
+                        break;
+#ifdef HAVE_TPACKET2
+                    case TPACKET_V2:
+                        tp_len = hdr.h2->tp_len;
+                        tp_mac = hdr.h2->tp_mac;
+                        tp_snaplen = hdr.h2->tp_snaplen;
+                        tp_sec = hdr.h2->tp_sec;
+                        tp_usec = hdr.h2->tp_nsec / 1000;
+                        break;
+#endif
+                    default:
+                        DPE(afpc->errbuf, "%s: Unknown TPACKET version: %u!", __FUNCTION__, instance->tp_version);
+                        return DAQ_ERROR;
+                }
+                data = instance->entry->begin + tp_mac;
 
                 verdict = DAQ_VERDICT_PASS;
-                if (afpc->fcode.bf_insns && sfbpf_filter(afpc->fcode.bf_insns, data, hdr->tp_len, hdr->tp_snaplen) == 0)
+                if (afpc->fcode.bf_insns && sfbpf_filter(afpc->fcode.bf_insns, data, tp_len, tp_snaplen) == 0)
                 {
                     ignored_one = 1;
                     afpc->stats.packets_filtered++;
                     goto send_packet;
                 }
                 got_one = 1;
-                daqhdr.caplen = hdr->tp_snaplen;
-                daqhdr.pktlen = hdr->tp_len;
-                daqhdr.ts.tv_sec = hdr->tp_sec;
-                daqhdr.ts.tv_usec = hdr->tp_usec;
+
+                daqhdr.caplen = tp_snaplen;
+                daqhdr.pktlen = tp_len;
+                daqhdr.ts.tv_sec = tp_sec;
+                daqhdr.ts.tv_usec = tp_usec;
                 daqhdr.device_index = instance->index;
                 daqhdr.flags = 0;
 
@@ -701,9 +818,19 @@ send_packet:
                     eth = (const struct ethhdr *)data;
                     sll = &instance->peer->sll;
                     sll->sll_protocol = eth->h_proto;
-                    sendto(instance->peer->fd, data, hdr->tp_snaplen, 0, (struct sockaddr *) sll, sizeof(*sll));
+                    sendto(instance->peer->fd, data, tp_snaplen, 0, (struct sockaddr *) sll, sizeof(*sll));
                 }
-                hdr->tp_status = TP_STATUS_KERNEL;
+                switch (instance->tp_version)
+                {
+                    case TPACKET_V1:
+                        hdr.h1->tp_status = TP_STATUS_KERNEL;
+                        break;
+#ifdef HAVE_TPACKET2
+                    case TPACKET_V2:
+                        hdr.h2->tp_status = TP_STATUS_KERNEL;
+                        break;
+#endif
+                }
                 instance->entry = instance->entry->next;
             }
         }
@@ -718,7 +845,10 @@ send_packet:
             result = poll(pfd, afpc->intf_count, afpc->timeout);
             if (result < 0)
             {
-                DPE(afpc->errbuf, "%s: Poll failed: %s", __FUNCTION__, strerror(errno));
+                /* If we were interrupted by a signal, just return without error. */
+                if (errno == EINTR)
+                    break;
+                DPE(afpc->errbuf, "%s: Poll failed: %s (%d)", __FUNCTION__, strerror(errno), errno);
                 return DAQ_ERROR;
             }
             else if (result == 0)
@@ -860,9 +990,9 @@ static int afpacket_daq_get_device_index(void *handle, const char *string)
 }
 
 #ifdef BUILDING_SO
-SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA = 
+SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA =
 #else
-const DAQ_Module_t afpacket_daq_module_data = 
+const DAQ_Module_t afpacket_daq_module_data =
 #endif
 {
     .api_version = DAQ_API_VERSION,

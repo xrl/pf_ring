@@ -33,6 +33,7 @@
 #include <stdint.h>
 #include "pfring.h"
 #include "sfbpf.h"
+#include <sys/sysinfo.h> /* get_nprocs (void) */
 
 #include "daq_api.h"
 
@@ -44,26 +45,17 @@ typedef struct _pfring_context
   char *filter_string;
   int snaplen;
   pfring *handle;
-  char errbuf[1024];
+  char errbuf[1024], *pkt_buffer;
   u_int breakloop;
   int promisc_flag;
   int timeout;
-  int buffer_size;
-  int packets;
-  int delayed_open;
-  struct sfbpf_program fcode;
   DAQ_Analysis_Func_t analysis_func;
-  u_char *user_data;
   uint32_t netmask;
   DAQ_Stats_t stats;
-  uint32_t base_recv;
-  uint32_t base_drop;
-  uint64_t rollover_recv;
-  uint64_t rollover_drop;
-  uint32_t wrap_recv;
-  uint32_t wrap_drop;
   u_int clusterid;
   u_int bindcpu;
+  uint32_t base_recv;
+  uint32_t base_drop;
   DAQ_State state;
 } Pfring_Context_t;
 
@@ -85,6 +77,12 @@ static int pfring_daq_open(Pfring_Context_t *context)
 
   if (context->device)
     {
+      context->pkt_buffer = (char*)malloc(context->snaplen+1);
+      if (context->pkt_buffer == NULL) {
+	DPE(context->errbuf, "pfring_daq_open(): unable to allocate enough memory for snaplen %d", context->snaplen);
+	return DAQ_ERROR;
+      }
+
       context->handle = pfring_open(context->device, context->promisc_flag ? 1 : 0,
 				    context->snaplen, 1);
 
@@ -123,19 +121,8 @@ static int update_hw_stats(Pfring_Context_t *context)
 	  return DAQ_ERROR;
         }
 
-      /* PF_RING receive counter wrapped */
-      if (ps.recv < context->wrap_recv)
-	context->rollover_recv += UINT32_MAX;
-
-      /* PF_RING drop counter wrapped */
-      if (ps.drop < context->wrap_drop)
-	context->rollover_drop += UINT32_MAX;
-
-      context->wrap_recv = ps.recv;
-      context->wrap_drop = ps.drop;
-
-      context->stats.hw_packets_received = context->rollover_recv + context->wrap_recv - context->base_recv;
-      context->stats.hw_packets_dropped = context->rollover_drop + context->wrap_drop - context->base_drop;
+      context->stats.hw_packets_received = ps.recv - context->base_recv;
+      context->stats.hw_packets_dropped = ps.drop - context->base_drop;
     }
 
   return DAQ_SUCCESS;
@@ -146,7 +133,7 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
   Pfring_Context_t *context;
   DAQ_Dict* entry;
   /* taken from pfcount example */
-  u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
+  u_int numCPU = get_nprocs();
 
   context = calloc(1, sizeof(Pfring_Context_t));
   if (!context)
@@ -230,16 +217,6 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
 	}
     }
 
-  if (!context->delayed_open)
-    {
-      if (pfring_daq_open(context) != DAQ_SUCCESS)
-        {
-	  snprintf(errbuf, len, "%s", context->errbuf);
-	  free(context);
-	  return DAQ_ERROR;
-        }
-    }
-
   context->state = DAQ_STATE_INITIALIZED;
 
   *ctxt_ptr = context;
@@ -249,29 +226,50 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
 static int pfring_daq_set_filter(void *handle, const char *filter)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
+  int ret;
   struct sfbpf_program fcode;
-  if (context->filter_string)
-    free(context->filter_string);
 
-  context->filter_string = strdup(filter);
-  if (!context->filter_string)
-    {
-      DPE(context->errbuf, "%s: Couldn't allocate memory for the filter string!", __FUNCTION__);
-      return DAQ_ERROR;
-    }
+  if (context->handle) {
+    if (sfbpf_compile(context->snaplen, DLT_EN10MB, &fcode, 
+		      context->filter_string, 1, htonl(0xFFFFFF00) /* /24 */) < 0)
+      {
+	DPE(context->errbuf, "%s: BPF state machine compilation failed!", __FUNCTION__);
+	return DAQ_ERROR;
+      }
+    
+    if (setsockopt(pfring_get_selectable_fd(context->handle), 0, 
+		   SO_ATTACH_FILTER, &fcode, sizeof(fcode)) == 0) {                  
+      ret = DAQ_SUCCESS;
+    } else
+      ret = DAQ_ERROR;
 
-  if (sfbpf_compile(context->snaplen, DLT_EN10MB, &fcode, context->filter_string, 1, 0) < 0)
-    {
-      DPE(context->errbuf, "%s: BPF state machine compilation failed!", __FUNCTION__);
-      return DAQ_ERROR;
-    }
+    sfbpf_freecode(&fcode);
+  } else {
+    /* Just check if the filter is valid */
 
-  sfbpf_freecode(&context->fcode);
-  context->fcode.bf_len = fcode.bf_len;
-  context->fcode.bf_insns = fcode.bf_insns;
+    if (sfbpf_compile(context->snaplen, DLT_EN10MB, &fcode, filter, 1, htonl(0xFFFFFF00) /* /24 */) < 0)
+      {
+	DPE(context->errbuf, "%s: BPF state machine compilation failed!", __FUNCTION__);
+	return DAQ_ERROR;
+      }
+    
+    ret = DAQ_SUCCESS;
+    
+    if (context->filter_string)
+      free(context->filter_string);
+    
+    context->filter_string = strdup(filter);
+    if (!context->filter_string)
+      {
+	DPE(context->errbuf, "%s: Couldn't allocate memory for the filter string!", __FUNCTION__);
+	return DAQ_ERROR;
+      }
+    
+    sfbpf_freecode(&fcode);
+  }
 
-  /* TODO: MISSING pfring_setfilter() */
-  return DAQ_SUCCESS;
+
+  return ret;
 }
 
 static int pfring_daq_start(void *handle)
@@ -285,11 +283,9 @@ static int pfring_daq_start(void *handle)
 
   if (context->filter_string)
     {
-      /* TODO: MISSING pfring_daq_set_filter() */
-      /*
-        if (pfring_daq_set_filter(handle, context->filter_string))
+      if (pfring_daq_set_filter(handle, context->filter_string))
 	return DAQ_ERROR;
-      */
+
       free(context->filter_string);
       context->filter_string = NULL;
     }
@@ -299,75 +295,64 @@ static int pfring_daq_start(void *handle)
   return DAQ_SUCCESS;
 }
 
-static void pfring_process_loop(u_char *user, const struct pfring_pkthdr *pkth, const u_char *data)
-{
-  Pfring_Context_t *context = (Pfring_Context_t *) user;
-  DAQ_PktHdr_t hdr;
-  DAQ_Verdict verdict;
-
-  hdr.caplen = pkth->caplen;
-  hdr.pktlen = pkth->len;
-  hdr.ts = pkth->ts;
-  hdr.device_index = pkth->extended_hdr.if_index;
-  hdr.flags = 0;
-
-  /* Increment the current acquire loop's packet counter. */
-  context->packets++;
-  /* ...and then the module instance's packet counter. */
-  context->stats.packets_received++;
-  verdict = context->analysis_func(context->user_data, &hdr, data);
-  if (verdict >= MAX_DAQ_VERDICT)
-    verdict = DAQ_VERDICT_PASS;
-
-  if(verdict == DAQ_VERDICT_BLACKLIST) {
-    /* Block the packet and block all future packets in the same flow systemwide. */
-    hash_filtering_rule hash_rule;
-    int rc;
-
-    memset(&hash_rule, 0, sizeof(hash_rule));
-
-    hash_rule.vlan_id     = pkth->extended_hdr.parsed_pkt.vlan_id;
-    hash_rule.proto       = pkth->extended_hdr.parsed_pkt.l3_proto;
-    memcpy(&hash_rule.host_peer_a, &pkth->extended_hdr.parsed_pkt.ipv4_src, sizeof(ip_addr));
-    memcpy(&hash_rule.host_peer_b, &pkth->extended_hdr.parsed_pkt.ipv4_dst, sizeof(ip_addr));
-    hash_rule.port_peer_a = pkth->extended_hdr.parsed_pkt.l4_src_port;
-    hash_rule.port_peer_b = pkth->extended_hdr.parsed_pkt.l4_dst_port;
-    hash_rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-    hash_rule.plugin_action.plugin_id = NO_PLUGIN_ID;
-
-    rc = pfring_handle_hash_filtering_rule(context->handle, &hash_rule, 1 /* add_rule */);
-      
-    /* printf("Verdict=%d [pfring_handle_hash_filtering_rule=%d]\n", verdict, rc); */
-  }
-
-  context->stats.verdicts[verdict]++;
-}
-
 static int pfring_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callback, void *user)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
   int ret;
 
   context->analysis_func = callback;
-  context->user_data = user;
+  context->breakloop = 0;
 
-  context->packets = context->breakloop = 0;
-  while (context->packets < cnt || cnt <= 0)
+  while ((!context->breakloop) && ((cnt == -1) || (cnt > 0)))
     {
-      char pkt_buffer[1600];
-      struct pfring_pkthdr hdr;
+      struct pfring_pkthdr phdr;
+      DAQ_PktHdr_t hdr;
+      DAQ_Verdict verdict;
 
       if(context->breakloop) break;
 
-      ret = pfring_read(context->handle, pkt_buffer, sizeof(pkt_buffer), &hdr, 1);
+      ret = pfring_read(context->handle, context->pkt_buffer, context->snaplen, &phdr, 1);
       if (ret == -1)
         {
 	  DPE(context->errbuf, "%s", "pfring_read() errpr");
 	  return ret;
-        } else
-	context->packets++;
+        }
 
-      pfring_process_loop((u_char*)context, &hdr, (u_char*)pkt_buffer);
+      hdr.caplen = phdr.caplen;
+      hdr.pktlen = phdr.len;
+      hdr.ts = phdr.ts;
+      hdr.device_index = phdr.extended_hdr.if_index;
+      hdr.flags = 0;
+
+      context->stats.packets_received++;
+      verdict = context->analysis_func(user, &hdr, (u_char*)context->pkt_buffer);
+      if (verdict >= MAX_DAQ_VERDICT)
+	verdict = DAQ_VERDICT_PASS;
+
+      if(verdict == DAQ_VERDICT_BLACKLIST) {
+	hash_filtering_rule hash_rule;
+	int rc;
+
+	/* Block the packet and block all future packets in the same flow systemwide. */
+
+	memset(&hash_rule, 0, sizeof(hash_rule));
+
+	hash_rule.vlan_id     = phdr.extended_hdr.parsed_pkt.vlan_id;
+	hash_rule.proto       = phdr.extended_hdr.parsed_pkt.l3_proto;
+	memcpy(&hash_rule.host_peer_a, &phdr.extended_hdr.parsed_pkt.ipv4_src, sizeof(ip_addr));
+	memcpy(&hash_rule.host_peer_b, &phdr.extended_hdr.parsed_pkt.ipv4_dst, sizeof(ip_addr));
+	hash_rule.port_peer_a = phdr.extended_hdr.parsed_pkt.l4_src_port;
+	hash_rule.port_peer_b = phdr.extended_hdr.parsed_pkt.l4_dst_port;
+	hash_rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
+	hash_rule.plugin_action.plugin_id = NO_PLUGIN_ID;
+
+	rc = pfring_handle_hash_filtering_rule(context->handle, &hash_rule, 1 /* add_rule */);
+
+	/* printf("Verdict=%d [pfring_handle_hash_filtering_rule=%d]\n", verdict, rc); */
+      }
+
+      context->stats.verdicts[verdict]++;
+      if(cnt > 0) cnt--;
     }
 
   return 0;
@@ -409,6 +394,12 @@ static int pfring_daq_stop(void *handle)
       update_hw_stats(context);
       pfring_close(context->handle);
       context->handle = NULL;
+
+      if (context->pkt_buffer)
+	{
+	  free(context->pkt_buffer);
+	  context->pkt_buffer = NULL;
+	}
     }
 
   context->state = DAQ_STATE_STOPPED;
@@ -426,6 +417,9 @@ static void pfring_daq_shutdown(void *handle)
     free(context->device);
   if (context->filter_string)
     free(context->filter_string);
+  if (context->pkt_buffer)
+    free(context->pkt_buffer);
+
   free(context);
 }
 
@@ -461,8 +455,8 @@ static void pfring_daq_reset_stats(void *handle)
   memset(&ps, 0, sizeof(pfring_stat));
   if (context->handle && context->device && pfring_stats(context->handle, &ps) == 0)
     {
-      context->base_recv = context->wrap_recv = ps.recv;
-      context->base_drop = context->wrap_drop = ps.drop;
+      context->base_recv = ps.recv;
+      context->base_drop = ps.drop;
     }
 }
 
@@ -478,8 +472,7 @@ static int pfring_daq_get_snaplen(void *handle)
 
 static uint32_t pfring_daq_get_capabilities(void *handle)
 {
-  return /* DAQ_CAPA_BLOCK | DAQ_CAPA_REPLACE | */ DAQ_CAPA_INJECT | DAQ_CAPA_INJECT_RAW
-    | DAQ_CAPA_BREAKLOOP | DAQ_CAPA_UNPRIV_START | DAQ_CAPA_BPF;
+  return DAQ_CAPA_INJECT | DAQ_CAPA_INJECT_RAW | DAQ_CAPA_BREAKLOOP | DAQ_CAPA_UNPRIV_START | DAQ_CAPA_BPF;
 }
 
 static int pfring_daq_get_datalink_type(void *handle)

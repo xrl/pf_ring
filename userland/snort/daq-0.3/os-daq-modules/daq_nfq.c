@@ -1,4 +1,4 @@
-/* $Id: daq_nfq.c,v 1.15 2010/09/23 19:12:29 bbantwal Exp $ */
+/* $Id: daq_nfq.c,v 1.18 2010/10/21 16:15:29 rcombs Exp $ */
 /*
  ** Portions Copyright (C) 1998-2010 Sourcefire, Inc.
  **
@@ -39,24 +39,31 @@
 #include "daq_api.h"
 #include "sfbpf.h"
 
-#define DAQ_MOD_VERSION  2
+#define DAQ_MOD_VERSION  3
 
 #define DAQ_NAME "nfq"
 #define DAQ_TYPE (DAQ_TYPE_INTF_CAPABLE | DAQ_TYPE_INLINE_CAPABLE | \
                   DAQ_TYPE_MULTI_INSTANCE | DAQ_TYPE_NO_UNPRIV)
 
+// FIXTHIS meta data is 80 bytes on my test platform but who knows?
+// documentation is poor; need correct way to size meta data
+// erring on the high side here to avoid truncation errors
+#define META_DATA_SIZE 512
+
+#define MSG_BUF_SIZE META_DATA_SIZE + IP_MAXPACKET
+
 typedef struct
 {
     int protos, sock, qid;
     int qlen;
-  
+
     struct nfq_handle* nf_handle;
     struct nfq_q_handle* nf_queue;
-    
+
     const char* device;
     char* filter;
     struct sfbpf_program fcode;
-    
+
     ip_t* net;
     eth_t* link;
 
@@ -64,9 +71,9 @@ typedef struct
     void* user_data;
     DAQ_Analysis_Func_t user_func;
 
-    int count;
+    volatile int count;
     int passive;
-    unsigned snaplen;
+    uint32_t snaplen;
     unsigned timeout;
 
     char error[DAQ_ERRBUF_SIZE];
@@ -193,7 +200,7 @@ static int nfq_daq_initialize (
     }
     // setup internal stuff
     NfqImpl *impl = calloc(1, sizeof(*impl));
-    
+
     if ( !impl )
     {
         snprintf(errBuf, errMax, "%s: failed to allocate nfq context\n",
@@ -207,7 +214,7 @@ static int nfq_daq_initialize (
         return DAQ_ERROR;
     }
 
-    if ( (impl->buf = malloc(impl->snaplen)) == NULL )
+    if ( (impl->buf = malloc(MSG_BUF_SIZE)) == NULL )
     {
         snprintf(errBuf, errMax, "%s: failed to allocate nfq buffer\n",
             __FUNCTION__);
@@ -224,14 +231,14 @@ static int nfq_daq_initialize (
         nfq_daq_shutdown(impl);
         return DAQ_ERROR;
     }
-    
+
     // 2. now use the new q handle to rip the rug out from other
-    //    nfq users / handles?  actually that doesn't seem to 
+    //    nfq users / handles?  actually that doesn't seem to
     //    happen which is good, but then why is this *supposed*
     //    to be necessary?  especially since we haven't bound to
     //    a qid yet, and that is exclusive anyway.
     if (
-        (IP4(impl) && nfq_unbind_pf(impl->nf_handle, PF_INET) < 0) || 
+        (IP4(impl) && nfq_unbind_pf(impl->nf_handle, PF_INET) < 0) ||
         (IP6(impl) && nfq_unbind_pf(impl->nf_handle, PF_INET6) < 0) )
     {
         snprintf(errBuf, errMax, "%s: failed to unbind protocols for nfq\n",
@@ -239,7 +246,7 @@ static int nfq_daq_initialize (
         //nfq_daq_shutdown(impl);
         //return DAQ_ERROR;
     }
-    
+
     // 3. select protocols for the q handle
     //    this is necessary but insufficient because we still
     //    must configure iptables externally, eg:
@@ -250,9 +257,9 @@ static int nfq_daq_initialize (
     // :( iptables rules should be managed automatically to avoid
     //    queueing packets to nowhere or waiting for packets that
     //    will never come.  (ie this bind should take the -p, -s,
-    //    etc args you can pass to iptables and create the dang 
+    //    etc args you can pass to iptables and create the dang
     //    rule!)
-    if ( 
+    if (
         (IP4(impl) && nfq_bind_pf(impl->nf_handle, PF_INET) < 0) ||
         (IP6(impl) && nfq_bind_pf(impl->nf_handle, PF_INET6) < 0) )
     {
@@ -275,16 +282,16 @@ static int nfq_daq_initialize (
         nfq_daq_shutdown(impl);
         return DAQ_ERROR;
     }
-    
+
     // 5. configure copying for maximum overhead
-    if ( nfq_set_mode(impl->nf_queue, NFQNL_COPY_PACKET, 0xffff) < 0 )
+    if ( nfq_set_mode(impl->nf_queue, NFQNL_COPY_PACKET, IP_MAXPACKET) < 0 )
     {
         snprintf(errBuf, errMax, "%s: unable to set packet copy mode\n",
             __FUNCTION__);
         nfq_daq_shutdown(impl);
         return DAQ_ERROR;
     }
-    
+
     // 6. set queue length (optional)
     if ( impl->qlen > 0 &&
             nfq_set_queue_maxlen(impl->nf_queue, impl->qlen))
@@ -298,12 +305,12 @@ static int nfq_daq_initialize (
     // 7. get the q socket descriptor
     //    (after getting not 1 but 2 handles!)
     impl->sock = nfq_fd(impl->nf_handle);
-    
+
     // setup output stuff
     // we've got 2 handles and a socket descriptor but, incredibly,
     // no way to inject?
     if ( impl->device && strcasecmp(impl->device, "ip") )
-    {   
+    {
         impl->link = eth_open(impl->device);
 
         if ( !impl->link )
@@ -313,9 +320,9 @@ static int nfq_daq_initialize (
             nfq_daq_shutdown(impl);
             return DAQ_ERROR;
         }
-    }   
+    }
     else
-    {   
+    {
         impl->net = ip_open();
 
         if ( !impl->net )
@@ -324,7 +331,7 @@ static int nfq_daq_initialize (
             nfq_daq_shutdown(impl);
             return DAQ_ERROR;
         }
-    }   
+    }
 
     impl->state = DAQ_STATE_INITIALIZED;
 
@@ -337,10 +344,11 @@ static int nfq_daq_initialize (
 static void nfq_daq_shutdown (void* handle)
 {
     NfqImpl *impl = (NfqImpl*)handle;
-    
+    impl->state = DAQ_STATE_UNINITIALIZED;
+
     if (impl->nf_queue)
         nfq_destroy_queue(impl->nf_queue);
-    
+
     // note that we don't unbind here because
     // we will unbind other programs too
 
@@ -365,7 +373,8 @@ static void nfq_daq_shutdown (void* handle)
 //-------------------------------------------------------------------------
 
 static inline int SetPktHdr (
-    struct nfq_data* nfad, 
+    NfqImpl* impl,
+    struct nfq_data* nfad,
     DAQ_PktHdr_t* hdr,
     uint8_t** pkt
 ) {
@@ -374,8 +383,8 @@ static inline int SetPktHdr (
     if ( len <= 0 )
         return -1;
 
-    hdr->caplen = len;
-    hdr->pktlen = len;        
+    hdr->caplen = ((uint32_t)len <= impl->snaplen) ? (uint32_t)len : impl->snaplen;
+    hdr->pktlen = len;
     hdr->flags = 0;
 
     nfq_get_timestamp(nfad, &hdr->ts);
@@ -392,7 +401,7 @@ static const int s_fwd[MAX_DAQ_VERDICT] = { 1, 0, 1, 1, 0, 1 };
 static int daq_nfq_callback(
     struct nfq_q_handle* qh,
     struct nfgenmsg* nfmsg,
-    struct nfq_data* nfad, 
+    struct nfq_data* nfad,
     void* data)
 {
     NfqImpl *impl = (NfqImpl*)data;
@@ -404,7 +413,10 @@ static int daq_nfq_callback(
     int nf_verdict;
     uint32_t data_len;
 
-    if ( !ph || SetPktHdr(nfad, &hdr, &pkt) )
+    if ( impl->state != DAQ_STATE_STARTED )
+        return -1;
+
+    if ( !ph || SetPktHdr(impl, nfad, &hdr, &pkt) )
     {
         DPE(impl->error, "%s: can't setup packet header",
             __FUNCTION__);
@@ -428,7 +440,7 @@ static int daq_nfq_callback(
     data_len = ( verdict == DAQ_VERDICT_REPLACE ) ? hdr.caplen : 0;
 
     nfq_set_verdict(
-        impl->nf_queue, ntohl(ph->packet_id), 
+        impl->nf_queue, ntohl(ph->packet_id),
         nf_verdict, data_len, pkt);
 
     return 0;
@@ -460,7 +472,7 @@ static int nfq_daq_acquire (
     struct timeval tv;
     tv.tv_usec = 0;
 
-    // If c is <= 0, don't limit the packets acquired.  However, 
+    // If c is <= 0, don't limit the packets acquired.  However,
     // impl->count = 0 has a special meaning, so interpret accordingly.
     impl->count = (c == 0) ? -1 : c;
     impl->user_data = user;
@@ -485,9 +497,9 @@ static int nfq_daq_acquire (
             return DAQ_ERROR;
         }
 
-        if (FD_ISSET(impl->sock, &fdset)) 
+        if (FD_ISSET(impl->sock, &fdset))
         {
-            int len = recv(impl->sock, impl->buf, impl->snaplen, 0);
+            int len = recv(impl->sock, impl->buf, MSG_BUF_SIZE, 0);
 
             if ( len > 0)
             {
@@ -504,7 +516,7 @@ static int nfq_daq_acquire (
                 }
                 n++;
             }
-        }        
+        }
     }
     return 0;
 }
@@ -540,14 +552,14 @@ static int nfq_daq_set_filter (void* handle, const char* filter)
 {
     NfqImpl* impl = (NfqImpl*)handle;
     struct sfbpf_program fcode;
-    
+
     if (sfbpf_compile(impl->snaplen, DLT_RAW, &fcode, filter, 1, 0) < 0)
     {
         DPE(impl->error, "%s: failed to compile bpf '%s'",
             __FUNCTION__, filter);
         return DAQ_ERROR;
     }
-    
+
     if ( impl->filter )
         free((void *)impl->filter);
 

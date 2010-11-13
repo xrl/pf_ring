@@ -1,4 +1,4 @@
-/* $Id: daq_dump.c,v 1.6 2010/06/10 19:32:04 rcombs Exp $*/
+/* $Id: daq_dump.c,v 1.7 2010/10/21 16:15:28 rcombs Exp $*/
 /****************************************************************************
  *
  * Copyright (C) 2007-2010 Sourcefire, Inc.
@@ -56,28 +56,6 @@ typedef struct {
 
 static int dump_daq_stop(void*);
 
-#if 0
-static int daq_dump_get_vars (
-    DumpImpl* impl, DAQ_Config_t* cfg, char* errBuf, size_t errMax
-) {
-    int i;
-    const char* s = daq_config_get_value(cfg, "load-mode");
-
-    if ( !s )
-        return 1;
-
-    for ( i = 0; i < MAX_DAQ_MODE; i++ )
-    {
-        if ( !strcasecmp(daq_mode_string((DAQ_Mode)i), s) )
-        {
-            cfg->mode = (DAQ_Mode)i;
-            return 1;
-        }
-    }
-    snprintf(errBuf, errMax, "invalid load-mode (%s)", s);
-    return 0;
-}
-#else
 static int daq_dump_get_vars (
     DumpImpl* impl, DAQ_Config_t* cfg, char* errBuf, size_t errMax
 ) {
@@ -116,7 +94,6 @@ static int daq_dump_get_vars (
     snprintf(errBuf, errMax, "invalid load-mode (%s)", s);
     return 0;
 }
-#endif
 
 //-------------------------------------------------------------------------
 // constructor / destructor

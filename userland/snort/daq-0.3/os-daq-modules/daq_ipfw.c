@@ -1,4 +1,4 @@
-/* $Id: daq_ipfw.c,v 1.11 2010/09/23 19:12:29 bbantwal Exp $ */
+/* $Id: daq_ipfw.c,v 1.12 2010/10/01 21:58:15 rdempster Exp $ */
 /*
  ** Portions Copyright (C) 1998-2010 Sourcefire, Inc.
  **
@@ -138,7 +138,7 @@ static int ipfw_daq_initialize (
             __FUNCTION__);
         return DAQ_ERROR_NOMEM;
     }
-    
+
     if ( ipfw_daq_get_setup(impl, cfg, errBuf, errMax) != DAQ_SUCCESS )
     {
         ipfw_daq_shutdown(impl);
@@ -180,14 +180,14 @@ static int ipfw_daq_set_filter (void* handle, const char* filter)
 {
     IpfwImpl* impl = (IpfwImpl*)handle;
     struct sfbpf_program fcode;
-    
+
     if ( sfbpf_compile(impl->snaplen, DLT_RAW, &fcode, filter, 1, 0) < 0 )
     {
         // FIXTHIS is errno set?
         // XICHE: No, which is why relying on strerror for everything is bad.
         return DAQ_ERROR;
     }
-    
+
     if ( impl->filter )
         free((void *)impl->filter);
 
@@ -213,7 +213,7 @@ static int ipfw_daq_start (void* handle)
         return DAQ_ERROR;
     }
 
-    if ( bind(impl->sock, (struct sockaddr *)&impl->sin, sizeof(impl->sin)) == -1 ) 
+    if ( bind(impl->sock, (struct sockaddr *)&impl->sin, sizeof(impl->sin)) == -1 )
     {
         DPE(impl->error, "%s: can't bind divert socket (%s)\n",
             __FUNCTION__, strerror(errno));
@@ -293,11 +293,11 @@ static int ipfw_daq_acquire (
     struct timeval tv;
 
     tv.tv_usec = 0;
-    // If cnt is <= 0, don't limit the packets acquired.  However, 
+    // If cnt is <= 0, don't limit the packets acquired.  However,
     // impl->count = 0 has a special meaning, so interpret accordingly.
     impl->count = (cnt == 0) ? -1 : cnt;
 
-    while ( impl->count < 0 || n < impl->count ) 
+    while ( impl->count < 0 || n < impl->count )
     {
         FD_ZERO(&fdset);
         FD_SET(impl->sock, &fdset);
@@ -312,7 +312,7 @@ static int ipfw_daq_acquire (
             return DAQ_ERROR;
         }
 
-        if (FD_ISSET(impl->sock, &fdset)) 
+        if (FD_ISSET(impl->sock, &fdset))
         {
             socklen_t sinlen = sizeof(impl->sin);
             ssize_t pktlen;

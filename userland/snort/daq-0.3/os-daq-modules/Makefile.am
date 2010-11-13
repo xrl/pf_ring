@@ -40,18 +40,6 @@ if BUILD_PCAP_MODULE
     STATIC_LIBS += -lpcap
 endif
 
-if BUILD_PFRING_MODULE
-    pkglib_LTLIBRARIES += daq_pfring.la
-    daq_pfring_la_SOURCES = daq_pfring.c
-    daq_pfring_la_CFLAGS = -DBUILDING_SO
-    daq_pfring_la_LDFLAGS = -module -export-dynamic -avoid-version -shared
-    daq_pfring_la_LIBADD = -lpfring
-    libdaq_static_modules_la_SOURCES += daq_pfring.c
-    libdaq_static_modules_la_CFLAGS += -DBUILD_PFRING_MODULE
-    libdaq_static_modules_la_LIBADD += -lpfring
-    STATIC_LIBS += -lpfring
-endif
-
 if BUILD_DUMP_MODULE
     pkglib_LTLIBRARIES += daq_dump.la
     daq_dump_la_SOURCES = daq_dump.c
@@ -62,6 +50,18 @@ if BUILD_DUMP_MODULE
     libdaq_static_modules_la_CFLAGS += -DBUILD_DUMP_MODULE
     libdaq_static_modules_la_LIBADD += -lpcap
     STATIC_LIBS += -lpcap
+endif
+
+if BUILD_PFRING_MODULE
+    pkglib_LTLIBRARIES += daq_pfring.la
+    daq_pfring_la_SOURCES = daq_pfring.c
+    daq_pfring_la_CFLAGS = -DBUILDING_SO
+    daq_pfring_la_LDFLAGS = -module -export-dynamic -avoid-version -shared
+    daq_pfring_la_LIBADD = -lpfring
+    libdaq_static_modules_la_SOURCES += daq_pfring.c
+    libdaq_static_modules_la_CFLAGS += -DBUILD_PFRING_MODULE
+    libdaq_static_modules_la_LIBADD += -lpfring
+    STATIC_LIBS += -lpfring
 endif
 
 if BUILD_IPFW_MODULE

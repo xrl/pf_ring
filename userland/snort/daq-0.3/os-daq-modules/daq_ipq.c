@@ -1,4 +1,4 @@
-/* $Id: daq_ipq.c,v 1.17 2010/09/23 19:12:29 bbantwal Exp $ */
+/* $Id: daq_ipq.c,v 1.19 2010/10/21 16:15:29 rcombs Exp $ */
 /*
  ** Portions Copyright (C) 1998-2010 Sourcefire, Inc.
  **
@@ -39,10 +39,12 @@
 #include "daq_api.h"
 #include "sfbpf.h"
 
-#define DAQ_MOD_VERSION  2
+#define DAQ_MOD_VERSION  3
 
 #define DAQ_TYPE (DAQ_TYPE_INTF_CAPABLE | DAQ_TYPE_INLINE_CAPABLE | \
                   DAQ_TYPE_MULTI_INSTANCE | DAQ_TYPE_NO_UNPRIV)
+
+#define MSG_BUF_SIZE (sizeof(ipq_packet_msg_t) + IP_MAXPACKET)
 
 typedef struct {
     int proto;
@@ -58,16 +60,15 @@ typedef struct {
     uint8_t* buf;
     char error[DAQ_ERRBUF_SIZE];
 
-    int count;
+    volatile int count;
     int passive;
-    unsigned snaplen;
+    uint32_t snaplen;
     unsigned timeout;
 
     DAQ_State state;
     DAQ_Stats_t stats;
 } IpqImpl;
 
-static void SetPktHdr(ipq_packet_msg_t*, DAQ_PktHdr_t*);
 static void ipq_daq_shutdown(void* handle);
 
 //-------------------------------------------------------------------------
@@ -153,11 +154,11 @@ static int ipq_daq_initialize (
     IpqImpl* impl = calloc(1, sizeof(*impl));
 
     if ( !impl )
-    {   
+    {
         snprintf(errBuf, errMax, "%s: failed to allocate the ipq context!",
             __FUNCTION__);
         return DAQ_ERROR_NOMEM;
-    }   
+    }
 
     if ( ipq_daq_get_setup(impl, cfg, errBuf, errMax) != DAQ_SUCCESS )
     {
@@ -165,15 +166,15 @@ static int ipq_daq_initialize (
         return DAQ_ERROR;
     }
 
-    impl->buf = malloc(sizeof(ipq_packet_msg_t) + impl->snaplen);
+    impl->buf = malloc(MSG_BUF_SIZE);
 
     if ( !impl->buf )
-    {   
+    {
         snprintf(errBuf, errMax, "%s: failed to allocate the ipq buffer!",
             __FUNCTION__);
         ipq_daq_shutdown(impl);
         return DAQ_ERROR_NOMEM;
-    }   
+    }
 
     // remember to also link in, eg:
     //    iptables -A OUTPUT -p icmp -j QUEUE
@@ -186,8 +187,10 @@ static int ipq_daq_initialize (
         ipq_daq_shutdown(impl);
         return DAQ_ERROR;
     }
- 
-    status = ipq_set_mode(impl->ipqh, IPQ_COPY_PACKET, impl->snaplen);
+
+    // copy both packet metadata and packet payload
+    // paket payload is limited to IP_MAXPACKET
+    status = ipq_set_mode(impl->ipqh, IPQ_COPY_PACKET, IP_MAXPACKET);
 
     if ( status < 0 )
     {
@@ -253,9 +256,9 @@ static void ipq_daq_shutdown (void* handle)
 //-------------------------------------------------------------------------
 
 static void SetPktHdr(
-    ipq_packet_msg_t* m, DAQ_PktHdr_t* phdr)
+    IpqImpl* impl, ipq_packet_msg_t* m, DAQ_PktHdr_t* phdr)
 {
-    if ( !m->timestamp_sec ) 
+    if ( !m->timestamp_sec )
     {
         struct timeval t;
         gettimeofday(&t, NULL);
@@ -263,12 +266,12 @@ static void SetPktHdr(
         phdr->ts.tv_sec = t.tv_sec;
         phdr->ts.tv_usec = t.tv_usec;
     }
-    else 
+    else
     {
         phdr->ts.tv_sec = m->timestamp_sec;
         phdr->ts.tv_usec = m->timestamp_usec;
     }
-    phdr->caplen = m->data_len;
+    phdr->caplen = (m->data_len <= impl->snaplen) ? m->data_len : impl->snaplen;
     phdr->pktlen = m->data_len;
 }
 
@@ -283,7 +286,7 @@ static int ipq_daq_acquire (
     int n = 0;
     DAQ_PktHdr_t hdr;
 
-    // If cnt is <= 0, don't limit the packets acquired.  However, 
+    // If cnt is <= 0, don't limit the packets acquired.  However,
     // impl->count = 0 has a special meaning, so interpret accordingly.
     impl->count = (cnt == 0) ? -1 : cnt;
     hdr.device_index = 0;
@@ -292,7 +295,7 @@ static int ipq_daq_acquire (
     while ( impl->count < 0 || n < impl->count )
     {
         int ipqt, status = ipq_read(
-            impl->ipqh, impl->buf, impl->snaplen, impl->timeout);
+            impl->ipqh, impl->buf, MSG_BUF_SIZE, impl->timeout);
 
         if ( status <= 0 )
         {
@@ -311,7 +314,7 @@ static int ipq_daq_acquire (
         {
             DAQ_Verdict verdict;
             ipq_packet_msg_t* ipqm = ipq_get_packet(impl->buf);
-            SetPktHdr(ipqm, &hdr);
+            SetPktHdr(impl, ipqm, &hdr);
             impl->stats.hw_packets_received++;
 
             if (
@@ -387,7 +390,7 @@ static int ipq_daq_inject (
     else if ( impl->net )
         sent = ip_send(impl->net, buf, len);
 
-    if ( sent != len )
+    if ( (uint32_t)sent != len )
     {
         DPE(impl->error, "%s: failed to send",
             __FUNCTION__);
@@ -403,14 +406,14 @@ static int ipq_daq_set_filter (void* handle, const char* filter)
 {
     IpqImpl* impl = (IpqImpl*)handle;
     struct sfbpf_program fcode;
-    
+
     if (sfbpf_compile(impl->snaplen, DLT_RAW, &fcode, filter, 1, 0) < 0)
     {
         DPE(impl->error, "%s: failed to compile '%s'",
             __FUNCTION__, filter);
         return DAQ_ERROR;
     }
-    
+
     if ( impl->filter )
         free((void *)impl->filter);
 

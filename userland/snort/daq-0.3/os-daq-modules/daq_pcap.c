@@ -332,7 +332,7 @@ static int pcap_daq_start(void *handle)
         free(context->filter_string);
         context->filter_string = NULL;
     }
- 
+
     context->state = DAQ_STATE_STARTED;
 
     return DAQ_SUCCESS;
@@ -544,9 +544,9 @@ static int pcap_daq_get_device_index(void *handle, const char *device)
 }
 
 #ifdef BUILDING_SO
-SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA = 
+SO_PUBLIC const DAQ_Module_t DAQ_MODULE_DATA =
 #else
-const DAQ_Module_t pcap_daq_module_data = 
+const DAQ_Module_t pcap_daq_module_data =
 #endif
 {
 #ifndef WIN32

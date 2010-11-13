@@ -208,6 +208,48 @@ you will probably want to have the pcap DAQ acquire in another mode like this:
     ./snort -i <device> -Q --daq dump --daq-var load-mode=passive
 
 
+PF_RING Module
+==============
+
+PF_RING (http://www.ntop.org/PR_FING.html) is a Linux kernel module that 
+accelerates packet capture. In order to compile the PF_RING DAQ module,
+you need to first install PF_RING:
+    - cd PF_RING
+    - make
+    - cd kernel
+    - sudo make install
+    - sudo depmod
+    - cd ../userland/lib
+    - sudo make install
+    
+At this point you are ready to load the pf_ring module:
+   - sudo modprobe pf_ring
+
+You can run snort on PF_RING as follows:
+    ./snort -i <device> --daq pfring
+
+You can also optionally specify some extra parameters such as:
+    ./snort -i <device> --daq pfring --daq-var bindcpu=X clusterid=Y
+
+where:
+	- X = the cpu number on which you want to bind this snort instance
+	- Y = cluster identifier associated to the ring
+
+Using clusters you can share packets across multiple snort instances. Just choose
+a unique clusterId number (unique means that no other PF_RING applications running
+on your box will use the same id) and fire up snort. 
+
+For instance suppose you choose clusterId 10, and you want to start 3 snort instances
+all sharing packets from the same cluster/interface do
+
+    ./snort -i ethX --daq pfring --daq-var clusterid=10
+    ./snort -i ethX --daq pfring --daq-var clusterid=10
+    ./snort -i ethX --daq pfring --daq-var clusterid=10
+
+All the instances have the same parameters. Note that packets are distributed
+across instances per-flow.
+
+
 Notes on iptables
 =================
 
@@ -261,11 +303,14 @@ The solution seems to be to remove both modules from the kernel like this:
 
 and then install the module you want:
 
-    modprobe -r ip_queue
+    modprobe ip_queue
 
 or:
 
-    modprobe -r nfnetlink_queue
+    modprobe nfnetlink_queue
+
+These DAQs should be run with a snaplen of 65535 since the kernel defrags the
+packets before queuing.  Also, no need to configure frag3.
 
 
 Notes on FreeBSD::IPFW
@@ -277,7 +322,7 @@ Check the online manual at:
 
 Here is a brief example to divert icmp packets to Snort at port 8000:
 
-To enable support for divert sockets, place the following lines in the 
+To enable support for divert sockets, place the following lines in the
 kernel configuration file:
 
     options IPFIREWALL
@@ -293,8 +338,8 @@ forwarding disabled, default to deny, logging disabled
 $ kldload -v ipdivert
 Loaded ipdivert, id=4
 
-$ ipfw add 75 divert 8000 icmp from any to any 
-00075 divert 8000 icmp from any to any 
+$ ipfw add 75 divert 8000 icmp from any to any
+00075 divert 8000 icmp from any to any
 
 $ ipfw list
 ...
@@ -309,12 +354,12 @@ Please refer to the following articles for more information:
 https://forums.snort.org/forums/support/topics/snort-inline-on-freebsd-ipfw
 http://freebsd.rogness.net/snort_inline/
 
-NAT gateway can be used with divert sockets if the network environment is 
+NAT gateway can be used with divert sockets if the network environment is
 conducive to using NAT.
 
 The steps to set up NAT with ipfw are as follows:
 
-1. Set up NAT with two interface em0 and em1 by adding 
+1. Set up NAT with two interface em0 and em1 by adding
 the following to /etc/rc.conf
 
 gateway_enable="YES"
@@ -331,7 +376,7 @@ firewall_type="simple"
 
 Here em0 is connected to external network and em1 to host-only LAN.
 
-2. Add the following divert rules to divert packets to Snort above and 
+2. Add the following divert rules to divert packets to Snort above and
 below the NAT rule in the "Simple" section of /etc/rc.firewall.
 
    ...
