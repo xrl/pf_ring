@@ -41,10 +41,10 @@
 
 typedef struct _pfring_context
 {
-  char *device;
+  char *device, *twin_device;
   char *filter_string;
   int snaplen;
-  pfring *handle;
+  pfring *ring_handle, *twin_ring_handle;
   char errbuf[1024], *pkt_buffer;
   u_int breakloop;
   int promisc_flag;
@@ -54,75 +54,93 @@ typedef struct _pfring_context
   DAQ_Stats_t stats;
   u_int clusterid;
   u_int bindcpu;
-  uint32_t base_recv;
-  uint32_t base_drop;
+  uint32_t base_recv[2];
+  uint32_t base_drop[2];
   DAQ_State state;
 } Pfring_Context_t;
 
 static void pfring_daq_reset_stats(void *handle);
+static int pfring_daq_set_filter(void *handle, const char *filter);
 
-static int pfring_daq_open(Pfring_Context_t *context)
+static pfring* pfring_daq_open(Pfring_Context_t *context, char *device)
 {
-  uint32_t defaultnet = 0xFFFFFF00;
+  uint32_t default_net = 0xFFFFFF00;
   int pfring_rc;
+  pfring *ring_handle;
 
-  if (context->handle)
-    return DAQ_SUCCESS;
-
-  if (!context->device)
+  if (!device)
     {
       DPE(context->errbuf, "%s", "PF_RING a device must be specified");
-      return DAQ_ERROR;
+      return NULL;
     }
 
-  if (context->device)
+  if (device)
     {
       context->pkt_buffer = (char*)malloc(context->snaplen+1);
       if (context->pkt_buffer == NULL) {
 	DPE(context->errbuf, "pfring_daq_open(): unable to allocate enough memory for snaplen %d", context->snaplen);
-	return DAQ_ERROR;
+	return NULL;
       }
 
-      context->handle = pfring_open(context->device, context->promisc_flag ? 1 : 0,
-				    context->snaplen, 1);
+      ring_handle = pfring_open(device, context->promisc_flag ? 1 : 0,
+				context->snaplen, 1);
 
-      if (!context->handle) {
-	DPE(context->errbuf, "pfring_open(): unable to open device '%s'. Please use -i <device>", context->device);
-	return DAQ_ERROR;
+      if (!ring_handle) {
+	DPE(context->errbuf, "pfring_open(): unable to open device '%s'. Please use -i <device>", device);
+	return NULL;
       }
     }
 
   if (context->clusterid > 0)
     {
-      pfring_rc = pfring_set_cluster(context->handle, context->clusterid, cluster_per_flow);
+      pfring_rc = pfring_set_cluster(ring_handle, context->clusterid, cluster_per_flow);
 
-    if (pfring_rc != 0)
+      if (pfring_rc != 0)
 	{
           DPE(context->errbuf, "pfring_set_cluster returned %d", pfring_rc);
-          return DAQ_ERROR;
+          return NULL;
         }
     }
 
-  context->netmask = htonl(defaultnet);
+  context->netmask = htonl(default_net);
 
-  return DAQ_SUCCESS;
+  if (context->filter_string)
+    {
+      if (pfring_daq_set_filter(ring_handle, context->filter_string))
+	return NULL;
+    }
+
+  return(ring_handle);
 }
 
 static int update_hw_stats(Pfring_Context_t *context)
 {
   pfring_stat ps;
 
-  if (context->handle && context->device)
+  if (context->ring_handle && context->device)
     {
       memset(&ps, 0, sizeof(pfring_stat));
-      if (pfring_stats(context->handle, &ps) == -1)
+      if (pfring_stats(context->ring_handle, &ps) == -1)
         {
 	  DPE(context->errbuf, "%s", "pfring_stats error");
 	  return DAQ_ERROR;
         }
 
-      context->stats.hw_packets_received = ps.recv - context->base_recv;
-      context->stats.hw_packets_dropped = ps.drop - context->base_drop;
+      context->stats.hw_packets_received = ps.recv - context->base_recv[0];
+      context->stats.hw_packets_dropped = ps.drop - context->base_drop[0];
+    }
+
+  if (context->twin_ring_handle && context->twin_device)
+    {
+      memset(&ps, 0, sizeof(pfring_stat));
+      if (pfring_stats(context->twin_ring_handle, &ps) == -1)
+        {
+	  DPE(context->errbuf, "%s", "pfring_stats error");
+	  return DAQ_ERROR;
+        }
+
+      context->stats.hw_packets_received += ps.recv - context->base_recv[1];
+      context->stats.hw_packets_dropped += ps.drop - context->base_drop[1];
     }
 
   return DAQ_SUCCESS;
@@ -145,7 +163,7 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
   context->clusterid = 0;
   context->snaplen = config->snaplen;
   context->promisc_flag = (config->flags & DAQ_CFG_PROMISC);
-  context->timeout = config->timeout;
+  context->timeout = (config->timeout > 0) ? (int) config->timeout : -1;
 
   context->device = strdup(config->name);
   if (!context->device)
@@ -161,6 +179,15 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
       free(context);
 
       return DAQ_ERROR;
+    } else if(config->mode == DAQ_MODE_INLINE)
+    {
+      /* ethX:ethY */
+      char *column = strchr(context->device, ':');
+
+      if(column != NULL) {
+	column[0] = '\0';
+	context->twin_device = &column[1];
+      }
     }
 
   for ( entry = config->values; entry; entry = entry->next)
@@ -174,13 +201,19 @@ static int pfring_daq_initialize(const DAQ_Config_t *config, void **ctxt_ptr, ch
 
       else if ( !strcmp(entry->key, "clusterid") )
 	{
-	  char* end = entry->value;
-	  context->clusterid = (int)strtol(entry->value, &end, 0);
-	  if ( *end || context->clusterid <= 0 ||context->clusterid > 65535 )
+	  if (config->mode == DAQ_MODE_INLINE) {
+	    snprintf(errbuf, len, "Clustering is not supported in inline mode\n");
+	    return DAQ_ERROR;
+	  } else
 	    {
-	      snprintf(errbuf, len, "%s: bad clusterid (%s)\n",
-		       __FUNCTION__, entry->value);
-	      return DAQ_ERROR;
+	      char* end = entry->value;
+	      context->clusterid = (int)strtol(entry->value, &end, 0);
+	      if ( *end || context->clusterid <= 0 ||context->clusterid > 65535 )
+		{
+		  snprintf(errbuf, len, "%s: bad clusterid (%s)\n",
+			   __FUNCTION__, entry->value);
+		  return DAQ_ERROR;
+		}
 	    }
 	}
       else if ( !strcmp(entry->key, "bindcpu") )
@@ -229,16 +262,16 @@ static int pfring_daq_set_filter(void *handle, const char *filter)
   int ret;
   struct sfbpf_program fcode;
 
-  if (context->handle) {
-    if (sfbpf_compile(context->snaplen, DLT_EN10MB, &fcode, 
-		      context->filter_string, 1, htonl(0xFFFFFF00) /* /24 */) < 0)
+  if (context->ring_handle) {
+    if (sfbpf_compile(context->snaplen, DLT_EN10MB, &fcode,
+		      context->filter_string, 1, htonl(context->netmask)) < 0)
       {
 	DPE(context->errbuf, "%s: BPF state machine compilation failed!", __FUNCTION__);
 	return DAQ_ERROR;
       }
-    
-    if (setsockopt(pfring_get_selectable_fd(context->handle), 0, 
-		   SO_ATTACH_FILTER, &fcode, sizeof(fcode)) == 0) {                  
+
+    if (setsockopt(pfring_get_selectable_fd(context->ring_handle), 0,
+		   SO_ATTACH_FILTER, &fcode, sizeof(fcode)) == 0) {
       ret = DAQ_SUCCESS;
     } else
       ret = DAQ_ERROR;
@@ -252,19 +285,19 @@ static int pfring_daq_set_filter(void *handle, const char *filter)
 	DPE(context->errbuf, "%s: BPF state machine compilation failed!", __FUNCTION__);
 	return DAQ_ERROR;
       }
-    
+
     ret = DAQ_SUCCESS;
-    
+
     if (context->filter_string)
       free(context->filter_string);
-    
+
     context->filter_string = strdup(filter);
     if (!context->filter_string)
       {
 	DPE(context->errbuf, "%s: Couldn't allocate memory for the filter string!", __FUNCTION__);
 	return DAQ_ERROR;
       }
-    
+
     sfbpf_freecode(&fcode);
   }
 
@@ -276,20 +309,21 @@ static int pfring_daq_start(void *handle)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (pfring_daq_open(context) != DAQ_SUCCESS)
-    return DAQ_ERROR;
+  if(context->ring_handle == NULL) {
+    context->ring_handle = pfring_daq_open(context, context->device);
 
-  pfring_daq_reset_stats(handle);
+    if(context->ring_handle == NULL)
+      return DAQ_ERROR;
+  }
 
-  if (context->filter_string)
-    {
-      if (pfring_daq_set_filter(handle, context->filter_string))
-	return DAQ_ERROR;
+  if(context->twin_device) {
+    context->twin_ring_handle = pfring_daq_open(context, context->twin_device);
 
-      free(context->filter_string);
-      context->filter_string = NULL;
-    }
+    if(context->twin_ring_handle == NULL)
+      return DAQ_ERROR;
+  }
 
+  pfring_daq_reset_stats(context);
   context->state = DAQ_STATE_STARTED;
 
   return DAQ_SUCCESS;
@@ -299,6 +333,7 @@ static int pfring_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callbac
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
   int ret;
+  pfring *next_ring = context->ring_handle;
 
   context->analysis_func = callback;
   context->breakloop = 0;
@@ -308,51 +343,79 @@ static int pfring_daq_acquire(void *handle, int cnt, DAQ_Analysis_Func_t callbac
       struct pfring_pkthdr phdr;
       DAQ_PktHdr_t hdr;
       DAQ_Verdict verdict;
+      
+      ret = pfring_read(next_ring, context->pkt_buffer, context->snaplen, &phdr, 0 /* Dont't wait */);
+      if((ret == -1) && (context->twin_ring_handle != NULL))        
+	  ret = pfring_read(context->twin_ring_handle, context->pkt_buffer, context->snaplen, &phdr, 0 /* Dont't wait */);
+      else if(context->twin_ring_handle)
+	next_ring = context->twin_ring_handle;
 
-      if(context->breakloop) break;
+      if(ret == -1) {
+	/* No packet to read: let's poll */
+	struct pollfd pfd[2];
+	int num = 1, rc;
 
-      ret = pfring_read(context->handle, context->pkt_buffer, context->snaplen, &phdr, 1);
-      if (ret == -1)
-        {
-	  DPE(context->errbuf, "%s", "pfring_read() errpr");
-	  return ret;
-        }
+	pfd[0].fd = context->ring_handle->fd, pfd[0].events = POLLIN, pfd[0].revents = 0;
 
-      hdr.caplen = phdr.caplen;
-      hdr.pktlen = phdr.len;
-      hdr.ts = phdr.ts;
-      hdr.device_index = phdr.extended_hdr.if_index;
-      hdr.flags = 0;
+	if(context->twin_ring_handle)
+	  pfd[1].fd = context->twin_ring_handle->fd, pfd[1].events = POLLIN, pfd[1].revents = 0, num = 2;
 
-      context->stats.packets_received++;
-      verdict = context->analysis_func(user, &hdr, (u_char*)context->pkt_buffer);
-      if (verdict >= MAX_DAQ_VERDICT)
-	verdict = DAQ_VERDICT_PASS;
+	rc = poll(pfd, num, context->timeout);
 
-      if(verdict == DAQ_VERDICT_BLACKLIST) {
-	hash_filtering_rule hash_rule;
-	int rc;
+	if(rc < 0) {
+	  if(errno == EINTR)
+	    break;
 
-	/* Block the packet and block all future packets in the same flow systemwide. */
+	  DPE(context->errbuf, "%s: Poll failed: %s (%d)", __FUNCTION__, strerror(errno), errno);
+	  return DAQ_ERROR;
+	}
+      } else {
+	hdr.caplen = phdr.caplen;
+	hdr.pktlen = phdr.len;
+	hdr.ts = phdr.ts;
+	hdr.device_index = phdr.extended_hdr.if_index;
+	hdr.flags = 0;
 
-	memset(&hash_rule, 0, sizeof(hash_rule));
+	context->stats.packets_received++;
+	verdict = context->analysis_func(user, &hdr, (u_char*)context->pkt_buffer);
+	if (verdict >= MAX_DAQ_VERDICT)
+	  verdict = DAQ_VERDICT_PASS;
 
-	hash_rule.vlan_id     = phdr.extended_hdr.parsed_pkt.vlan_id;
-	hash_rule.proto       = phdr.extended_hdr.parsed_pkt.l3_proto;
-	memcpy(&hash_rule.host_peer_a, &phdr.extended_hdr.parsed_pkt.ipv4_src, sizeof(ip_addr));
-	memcpy(&hash_rule.host_peer_b, &phdr.extended_hdr.parsed_pkt.ipv4_dst, sizeof(ip_addr));
-	hash_rule.port_peer_a = phdr.extended_hdr.parsed_pkt.l4_src_port;
-	hash_rule.port_peer_b = phdr.extended_hdr.parsed_pkt.l4_dst_port;
-	hash_rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
-	hash_rule.plugin_action.plugin_id = NO_PLUGIN_ID;
+	if(verdict == DAQ_VERDICT_BLACKLIST) {
+	  hash_filtering_rule hash_rule;
+	  int rc;
 
-	rc = pfring_handle_hash_filtering_rule(context->handle, &hash_rule, 1 /* add_rule */);
+	  /* Block the packet and block all future packets in the same flow systemwide. */
 
-	/* printf("Verdict=%d [pfring_handle_hash_filtering_rule=%d]\n", verdict, rc); */
+	  memset(&hash_rule, 0, sizeof(hash_rule));
+
+	  hash_rule.vlan_id     = phdr.extended_hdr.parsed_pkt.vlan_id;
+	  hash_rule.proto       = phdr.extended_hdr.parsed_pkt.l3_proto;
+	  memcpy(&hash_rule.host_peer_a, &phdr.extended_hdr.parsed_pkt.ipv4_src, sizeof(ip_addr));
+	  memcpy(&hash_rule.host_peer_b, &phdr.extended_hdr.parsed_pkt.ipv4_dst, sizeof(ip_addr));
+	  hash_rule.port_peer_a = phdr.extended_hdr.parsed_pkt.l4_src_port;
+	  hash_rule.port_peer_b = phdr.extended_hdr.parsed_pkt.l4_dst_port;
+	  hash_rule.rule_action = dont_forward_packet_and_stop_rule_evaluation;
+	  hash_rule.plugin_action.plugin_id = NO_PLUGIN_ID;
+
+	  rc = pfring_handle_hash_filtering_rule(context->ring_handle, &hash_rule, 1 /* add_rule */);
+
+	  /* printf("Verdict=%d [pfring_handle_hash_filtering_rule=%d]\n", verdict, rc); */
+	} else if((verdict == DAQ_VERDICT_PASS) && (context->twin_ring_handle /* DAQ_MODE_INLINE */)) {
+	  /* Userland PF_RING bridge */
+	  if (pfring_send((next_ring == context->ring_handle) ? context->ring_handle : context->twin_ring_handle,
+			  (char*)context->pkt_buffer, hdr.caplen) < 0)
+	    {
+	      DPE(context->errbuf, "%s", "pfring_send() error");
+	      return DAQ_ERROR;
+	    }
+
+	  context->stats.packets_injected++;
+	}
+
+	context->stats.verdicts[verdict]++;
+	if(cnt > 0) cnt--;
       }
-
-      context->stats.verdicts[verdict]++;
-      if(cnt > 0) cnt--;
     }
 
   return 0;
@@ -362,7 +425,7 @@ static int pfring_daq_inject(void *handle, const DAQ_PktHdr_t *hdr, const uint8_
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (pfring_send(context->handle, (char*)packet_data, len) < 0)
+  if (pfring_send(context->ring_handle, (char*)packet_data, len) < 0)
     {
       DPE(context->errbuf, "%s", "pfring_send() error");
       return DAQ_ERROR;
@@ -376,7 +439,7 @@ static int pfring_daq_breakloop(void *handle)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (!context->handle)
+  if (!context->ring_handle)
     return DAQ_ERROR;
 
   context->breakloop = 1;
@@ -388,12 +451,12 @@ static int pfring_daq_stop(void *handle)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (context->handle)
+  if (context->ring_handle)
     {
       /* Store the hardware stats for post-stop stat calls. */
       update_hw_stats(context);
-      pfring_close(context->handle);
-      context->handle = NULL;
+      pfring_close(context->ring_handle);
+      context->ring_handle = NULL;
 
       if (context->pkt_buffer)
 	{
@@ -411,12 +474,18 @@ static void pfring_daq_shutdown(void *handle)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (context->handle)
-    pfring_close(context->handle);
+  if (context->ring_handle)
+    pfring_close(context->ring_handle);
+
+  if (context->twin_ring_handle)
+    pfring_close(context->twin_ring_handle);
+
   if (context->device)
     free(context->device);
+
   if (context->filter_string)
     free(context->filter_string);
+
   if (context->pkt_buffer)
     free(context->pkt_buffer);
 
@@ -449,14 +518,20 @@ static void pfring_daq_reset_stats(void *handle)
 
   memset(&context->stats, 0, sizeof(DAQ_Stats_t));
 
-  if (!context->handle)
+  if (!context->ring_handle)
     return;
 
   memset(&ps, 0, sizeof(pfring_stat));
-  if (context->handle && context->device && pfring_stats(context->handle, &ps) == 0)
+  if (context->ring_handle && context->device && pfring_stats(context->ring_handle, &ps) == 0)
     {
-      context->base_recv = ps.recv;
-      context->base_drop = ps.drop;
+      context->base_recv[0] = ps.recv;
+      context->base_drop[0] = ps.drop;
+    }
+
+  if (context->twin_ring_handle && context->twin_device && pfring_stats(context->twin_ring_handle, &ps) == 0)
+    {
+      context->base_recv[1] = ps.recv;
+      context->base_drop[1] = ps.drop;
     }
 }
 
@@ -464,7 +539,7 @@ static int pfring_daq_get_snaplen(void *handle)
 {
   Pfring_Context_t *context = (Pfring_Context_t *) handle;
 
-  if (!context->handle)
+  if (!context->ring_handle)
     return DAQ_ERROR;
   else
     return context->snaplen;
