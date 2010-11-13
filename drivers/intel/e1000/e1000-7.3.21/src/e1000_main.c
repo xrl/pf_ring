@@ -32,7 +32,7 @@
 #define HAVE_PF_RING
 
 #ifdef HAVE_PF_RING
-#include "../../../../kernel/linux/pf_ring.h"
+#include "../../../../../kernel/linux/pf_ring.h"
 #endif
 
 char e1000_driver_name[] = "e1000";
@@ -3943,7 +3943,7 @@ static bool e1000_clean_rx_irq(struct e1000_adapter *adapter,
                                      netdev->name, skb->len);
                 
                             if(*hook->transparent_mode != standard_linux_path) {
-                              rc = hook->ring_handler(skb, 1, 1, -1);
+                              rc = hook->ring_handler(skb, 1, 1, -1, 1);
                               
                               if(rc == 1 /* Packet handled by PF_RING */) {
                                 if(*hook->transparent_mode == driver2pf_ring_non_transparent) {

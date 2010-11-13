@@ -56,10 +56,12 @@
 
 #include "ixgbe.h"
 
+#ifndef HAVE_PF_RING
 #define HAVE_PF_RING
+#endif
 
 #ifdef HAVE_PF_RING
-#include "../../../../kernel/linux/pf_ring.h"
+#include "../../../../../kernel/linux/pf_ring.h"
 #endif
 
 #include "ixgbe_sriov.h"

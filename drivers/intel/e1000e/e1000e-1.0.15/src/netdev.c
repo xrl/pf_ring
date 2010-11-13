@@ -53,7 +53,7 @@
 #define HAVE_PF_RING
 
 #ifdef HAVE_PF_RING
-#include "../../../../kernel/linux/pf_ring.h"
+#include "../../../../../kernel/linux/pf_ring.h"
 #endif
 
 #ifdef CONFIG_E1000E_NAPI

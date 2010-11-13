@@ -39,7 +39,7 @@
 #include "ixgbe.h"
 
 #ifdef HAVE_PF_RING
-#include "../../../../kernel/linux/pf_ring.h"
+#include "../../../../../kernel/linux/pf_ring.h"
 extern s32 ixgbe_ftqf_add_filter(struct ixgbe_hw *hw, u8 proto, u32 saddr, u16 sport, u32 daddr, u16 dport, u8 rx_queue, u8 filter_id);
 #endif
 

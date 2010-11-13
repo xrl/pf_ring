@@ -31,7 +31,7 @@
 #include "ixgbe_phy.h"
 
 #ifdef HAVE_PF_RING
-#include "../../../../kernel/linux/pf_ring.h"
+#include "../../../../../kernel/linux/pf_ring.h"
 #endif
 
 s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw);
