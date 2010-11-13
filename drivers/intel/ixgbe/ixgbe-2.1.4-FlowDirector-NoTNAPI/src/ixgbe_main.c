@@ -660,7 +660,7 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 		     skb->dev->name, skb->len);
 
 	    if(*hook->transparent_mode != standard_linux_path) {
-	      rc = hook->ring_handler(skb, 1, 1, skb->iif, adapter->num_rx_queues);
+	      rc = hook->ring_handler(skb, 1, 1, skb_get_rx_queue(skb), adapter->num_rx_queues);
 	      
 	      if(rc == 1 /* Packet handled by PF_RING */) {
 		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
@@ -1462,7 +1462,7 @@ static bool ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		skb->protocol = eth_type_trans(skb, rx_ring->netdev);
 
 #ifdef HAVE_PF_RING
-                skb->iif = rx_ring->queue_index; /* Hack for bring the queue Id along */
+                skb_record_rx_queue(skb, rx_ring->queue_index);
 #endif
 
 #ifdef IXGBE_FCOE
