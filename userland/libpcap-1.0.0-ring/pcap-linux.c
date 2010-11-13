@@ -3604,13 +3604,6 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 	int ret;
 	int save_errno;
 
-#if 0
-#ifdef HAVE_PF_RING
-	if(handle->ring != NULL)
-	  return(-1); /* Filter in userland */
-#endif
-#endif
-
 	/*
 	 * The socket filter code doesn't discard all packets queued
 	 * up on the socket when the filter is changed; this means

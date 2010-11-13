@@ -55,6 +55,7 @@
 #define SO_ADD_HW_FILTERING_RULE         113
 #define SO_DEL_HW_FILTERING_RULE         114
 #define SO_SET_PACKET_CONSUMER_MODE      115
+#define SO_DEACTIVATE_RING               116
 
 /* Get */
 #define SO_GET_RING_VERSION              120

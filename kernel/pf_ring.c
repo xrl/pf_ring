@@ -3808,7 +3808,7 @@ static int ring_setsockopt(struct socket *sock,
   case SO_ATTACH_FILTER:
     ret = -EINVAL;
 
-#if defined(RING_DEBUG)
+#if !defined(RING_DEBUG)
     printk("[PF_RING] BPF filter (%d)\n", 0);
 #endif
 
@@ -3819,7 +3819,7 @@ static int ring_setsockopt(struct socket *sock,
 
       ret = -EFAULT;
 
-#if defined(RING_DEBUG)
+#if !defined(RING_DEBUG)
       printk("[PF_RING] BPF filter (%d)\n", 1);
 #endif
       /*
@@ -3834,9 +3834,8 @@ static int ring_setsockopt(struct socket *sock,
 	break;
 
       /* Fix below courtesy of Noam Dev <noamdev@gmail.com> */
-      fsize = sizeof(struct sock_filter) * fprog.len;
-      filter =
-	kmalloc(fsize + sizeof(struct sk_filter), GFP_KERNEL);
+      fsize  = sizeof(struct sock_filter) * fprog.len;
+      filter = kmalloc(fsize + sizeof(struct sk_filter), GFP_KERNEL);
 
       if(filter == NULL) {
 	ret = -ENOMEM;
@@ -3861,8 +3860,8 @@ static int ring_setsockopt(struct socket *sock,
       write_unlock(&pfr->ring_rules_lock);
       ret = 0;
 
-#if defined(RING_DEBUG)
-      printk("[PF_RING] BPF filter attached succesfully [len=%d]\n",
+#if !defined(RING_DEBUG)
+      printk("[PF_RING] BPF filter attached successfully [len=%d]\n",
 	     filter->len);
 #endif
     }
@@ -4303,6 +4302,12 @@ static int ring_setsockopt(struct socket *sock,
     if(debug)
       printk("[PF_RING] * SO_ACTIVATE_RING *\n");
     found = 1, pfr->ring_active = 1;
+    break;
+
+  case SO_DEACTIVATE_RING:
+    if(debug)
+      printk("[PF_RING] * SO_DEACTIVATE_RING *\n");
+    found = 1, pfr->ring_active = 0;
     break;
 
   case SO_RING_BUCKET_LEN:

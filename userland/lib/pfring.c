@@ -663,6 +663,19 @@ int pfring_enable_ring(pfring *ring) {
 
 /* **************************************************** */
 
+int pfring_disable_ring(pfring *ring) {
+#ifdef USE_PCAP
+  return(-1);
+#endif
+  char dummy;
+
+  if(!ring) return(-1);
+  else if(ring->dna_mapped_device) return(-1);
+  return(setsockopt(ring->fd, 0, SO_DEACTIVATE_RING, &dummy, sizeof(dummy)));
+}
+
+/* **************************************************** */
+
 int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id) {
 #ifdef USE_PCAP
   return(-1);
