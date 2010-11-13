@@ -23,6 +23,8 @@
 #define MAX_NUM_LOOPS    1000000000
 #define YIELD_MULTIPLIER      10000
 
+#define gcc_mb() __asm__ __volatile__("": : :"memory");
+
 //#define RING_DEBUG
 
 /* ******************************* */
@@ -986,6 +988,10 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
         next_off = 0;
       }
 
+      /* This prevents the compiler from reordering instructions.
+       * http://en.wikipedia.org/wiki/Memory_ordering#Compiler_memory_barrier */
+      gcc_mb();
+      
       ring->slots_info->tot_read++;
       ring->slots_info->remove_off = next_off;     
 
