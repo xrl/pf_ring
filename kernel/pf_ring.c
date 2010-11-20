@@ -736,7 +736,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen += sprintf(buf + rlen, "Slot version        : %d\n", RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen, "Capture TX          : %s\n", enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
     rlen += sprintf(buf + rlen, "IP Defragment       : %s\n", enable_ip_defrag ? "Yes" : "No");
-    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n", (transparent_mode != driver2pf_ring_non_transparent) ? "Yes" : "No");
+    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n", (transparent_mode == standard_linux_path ? "Yes (mode 0)" : (transparent_mode == driver2pf_ring_transparent ? "Yes (mode 1)" : "No (mode 2)")));
     rlen += sprintf(buf + rlen, "Total rings         : %d\n", ring_table_size);
     rlen += sprintf(buf + rlen, "Total plugins       : %d\n", plugin_registration_size);
   } else {
