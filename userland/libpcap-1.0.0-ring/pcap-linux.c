@@ -551,9 +551,19 @@ pcap_activate_linux(pcap_t *handle)
 	}
 
 #ifdef HAVE_PF_RING
-        if(!getenv("PCAP_NO_PF_RING"))
+	if(!getenv("PCAP_NO_PF_RING")) {
+	  /* Code courtesy of Chris Wakelin <c.d.wakelin@reading.ac.uk> */
+	  char *clusterId;
+
 	  handle->ring = pfring_open((char*)device, handle->opt.promisc, handle->snapshot, 1);
-	else
+	  
+	  if(clusterId = getenv("PCAP_PF_RING_CLUSTER_ID")) 
+	    if(atoi(clusterId) > 0 && atoi(clusterId) < 255)
+	      if(getenv("PCAP_PF_RING_USE_CLUSTER_PER_FLOW"))
+		pfring_set_cluster(handle->ring, atoi(clusterId), cluster_per_flow);
+	      else
+		pfring_set_cluster(handle->ring, atoi(clusterId), cluster_round_robin);
+	} else
           handle->ring = NULL;
 
 	if(handle->ring != NULL) {
