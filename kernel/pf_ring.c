@@ -374,7 +374,12 @@ static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
 
 inline u_int get_num_ring_free_slots(struct ring_opt * pfr)
 {
-  return(pfr->slots_info->min_num_slots - num_queued_pkts(pfr));
+  u_int32_t nqpkts = num_queued_pkts(pfr);
+  
+  if(nqpkts < (pfr->slots_info->min_num_slots))
+    return(pfr->slots_info->min_num_slots - nqpkts);
+  else
+    return(0);
 }
 
 /* ********************************** */
