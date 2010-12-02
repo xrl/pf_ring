@@ -60,11 +60,12 @@ char* get_next_e1000_packet(pfring* ring,
       wmb(); /* Flush out memory first */  
       set_e1000_rx_register(ring, ring->rx_reg);  
     }
-
-    /* FIX: increment packet read
-       
-       adapter->total_rx_bytes = 0;
-       adapter->total_rx_packets = 0;
+    
+    /*
+      FIX: increment packet read
+      
+      adapter->total_rx_bytes = 0;
+      adapter->total_rx_packets = 0;
     */
 
     return(buffer);
@@ -106,7 +107,7 @@ u_int8_t e1000_there_is_a_packet_to_read(pfring* ring, u_int8_t wait_for_incomin
     pfd.revents = 0;
 
     errno = 0;
-    rc = poll(&pfd, 1, -1);
+    rc = poll(&pfd, 1, 1);
     ring->num_poll_calls++;
 
 #ifdef PROFILE    
