@@ -741,7 +741,7 @@ int pfring_stats(pfring *ring, pfring_stat *stats) {
   return(-1);
 #else
 
-  if((ring == NULL) || ring->dna_mapped_device) {
+  if((ring != NULL) && ring->dna_mapped_device) {
     stats->recv = ring->tot_dna_read_pkts, stats->drop = 0;
     return(0);
   }
