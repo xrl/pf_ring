@@ -746,7 +746,7 @@ int pfring_stats(pfring *ring, pfring_stat *stats) {
     return(0);
   }
 
-  if(ring && stats) {
+  if((ring != NULL) && (ring->slots_info != NULL) && (stats != NULL)) {
     stats->recv = ring->slots_info->tot_read;
     stats->drop = ring->slots_info->tot_lost;
     return(0);
