@@ -90,6 +90,7 @@
 #endif
 #include <net/ip.h>
 #include <net/ipv6.h>
+#include <linux/eventfd.h> /* needed by vPFRing */
 
 #include <linux/pf_ring.h>
 
@@ -919,8 +920,18 @@ static int ring_alloc_mem(struct sock *sk)
   /* Alignment necessary on ARM platforms */
   num_pages = tot_mem / PAGE_SIZE;
   num_pages += (num_pages + (SHMLBA-1)) % SHMLBA;
+  tot_mem = num_pages*PAGE_SIZE;
 
-  pfr->ring_memory = vmalloc_user(num_pages*PAGE_SIZE);
+  /* roundingi size to the next power of 2 (needed by vPFRing) */
+  tot_mem--;
+  tot_mem |= tot_mem >> 1;
+  tot_mem |= tot_mem >> 2;
+  tot_mem |= tot_mem >> 4;
+  tot_mem |= tot_mem >> 8;
+  tot_mem |= tot_mem >> 16;
+  tot_mem++;
+
+  pfr->ring_memory = vmalloc_user(tot_mem);
 
   if(pfr->ring_memory != NULL) {
 #if defined(RING_DEBUG)
@@ -1673,6 +1684,12 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
     wake_up_interruptible(&pfr->ring_slots_waitqueue);
+
+  /* signaling on vPFRing's eventfd ctx when needed */
+  if (pfr->vpfring_ctx && !(pfr->slots_info->vpfring_guest_flags & VPFRING_GUEST_NO_INTERRUPT)) {
+     eventfd_signal(pfr->vpfring_ctx, 1);
+  }
+
 }
 
 /* ********************************** */
@@ -2987,6 +3004,10 @@ static int ring_release(struct socket *sock)
   sock_put(sk);
   write_unlock_bh(&ring_mgmt_lock);
 
+  /* Release the vPFRing eventfd */
+  if (pfr->vpfring_ctx)
+    eventfd_ctx_put(pfr->vpfring_ctx);
+
   if(pfr->appl_name != NULL)
     kfree(pfr->appl_name);
 
@@ -3800,6 +3821,8 @@ static int ring_setsockopt(struct socket *sock,
   u_int16_t rule_id, rule_inactivity;
   packet_direction direction;
   hw_filtering_rule hw_rule;
+  struct vpfring_eventfd_info eventfd_i;
+  struct file *eventfp;
 
   if(pfr == NULL)
     return(-EINVAL);
@@ -4413,6 +4436,20 @@ static int ring_setsockopt(struct socket *sock,
 	}
       }
     }
+    break;
+
+    case SO_SET_VPFRING_EVENTFD:
+      if(optlen != sizeof(eventfd_i))
+        return -EINVAL;
+    
+      if(copy_from_user(&eventfd_i, optval, sizeof(eventfd_i)))
+         return -EFAULT;
+    
+      if (IS_ERR(eventfp = eventfd_fget(eventfd_i.fd))) {
+        return -EFAULT;
+      }
+    
+      pfr->vpfring_ctx = eventfd_ctx_fileget(eventfp);
     break;
 
   default:

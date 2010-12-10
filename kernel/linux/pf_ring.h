@@ -56,6 +56,7 @@
 #define SO_DEL_HW_FILTERING_RULE         114
 #define SO_SET_PACKET_CONSUMER_MODE      115
 #define SO_DEACTIVATE_RING               116
+#define SO_SET_VPFRING_EVENTFD           117 /* vPFRing*/
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -349,16 +350,24 @@ typedef struct _filtering_hash_bucket {
 /* False sharing reference: http://en.wikipedia.org/wiki/False_sharing */
 
 typedef struct flowSlotInfo {
+  /* first page, managed by kernel */
   u_int16_t version, sample_rate;
   u_int32_t min_num_slots, slot_len, data_len, tot_mem;
   u_int64_t tot_pkts, tot_lost, tot_insert;
   u_int32_t insert_off /* managed by kernel */;
   u_int64_t tot_fwd_ok, tot_fwd_notok;
   /* <-- 64 bytes here, should be enough to avoid some L1 VIVT coherence issues (32 ~ 64bytes lines) */
-  char padding[128]; 
+  char padding[128];
   /* <-- 128 bytes here, should be enough to avoid false sharing in most L2 (64 ~ 128bytes lines) */  
+  char k_padding[3904];
+  /* <-- 4096 bytes here, to get a page aligned block writable by kernel side only */
+  
+  /* second page, managed by userland */
   u_int64_t tot_read;
   u_int32_t remove_off /* managed by userland */;  
+  u_int32_t vpfring_guest_flags; /* used by vPFRing */
+  char u_padding[4080];
+  /* <-- 8192 bytes here, to get a page aligned block writable by userland only */
 } FlowSlotInfo;
 
 /* *********************************** */
@@ -574,6 +583,8 @@ struct ring_opt {
   /* Kernel consumer */
   u_int8_t kernel_consumer_plugin_id; /* If != 0 it identifies a plugin responsible for consuming packets */
   char *kernel_consumer_options, *kernel_consumer_private;
+
+  struct eventfd_ctx *vpfring_ctx; /* eventfd ctx used by vPFRing */
 };
 
 /* **************************************** */
@@ -877,6 +888,18 @@ struct pcaplike_pkthdr {
 
 #endif /* __KERNEL__  */
 
+
+/* *********************************** */
+
+/* vPFRing */
+ 
+struct vpfring_eventfd_info {
+  u_int32_t id; /* an id (unused now, but maybe useful in future) */
+  int32_t fd; 
+};
+
+/* Values for the FlowSlotInfo.vpfring_guest_flags bitmap */
+#define VPFRING_GUEST_NO_INTERRUPT 1
 
 /* *********************************** */
 
