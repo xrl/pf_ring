@@ -575,9 +575,9 @@ static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
     rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
     rlen += sprintf(buf+rlen, "# Filters:         %d\n", dev_ptr->num_hw_filters);
     rlen += sprintf(buf+rlen, "\nFiltering Rules:\n"
-		    "[perfect rule]  +|-(rule_id,queue_id,vlan,tcp|udp|any,src_ip/mask,src_port,dst_ip/mask,dst_port)\n"
+		    "[perfect rule]  +|-(rule_id,queue_id,vlan,tcp|udp,src_ip/mask,src_port,dst_ip/mask,dst_port)\n"
 		    "Example:\t+(1,-1,0,tcp,192.168.0.10/32,25,10.6.0.0/16,0) (queue_id = -1 => drop)\n\n"
-		    "[5 tuple rule]  +|-(rule_id,queue_id,tcp|udp|any,src_ip,src_port,dst_ip,dst_port)\n"
+		    "[5 tuple rule]  +|-(rule_id,queue_id,tcp|udp,src_ip,src_port,dst_ip,dst_port)\n"
 		    "Example:\t+(1,-1,tcp,192.168.0.10,25,0.0.0.0,0)\n\n"
 		    "Note:\n\t- queue_id = -1 => drop\n\t- 0 = ignore value\n");
   }
@@ -668,10 +668,8 @@ static int ring_proc_dev_rule_write(struct file *file,
   if(num == 19) {
     if(proto[0] == 't')
       protocol = 6; /* TCP */
-    else if(proto[0] == 'u')
+    else /* if(proto[0] == 'u') */
       protocol = 17; /* UDP */
-    else
-      protocol = 0; /* any */
 
     init_perfect_filter_hw_rule(queue_id, rule_id, protocol, vlan,
 				((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff), s_mask,
@@ -4943,7 +4941,9 @@ int add_device_to_ring_list(struct net_device *dev) {
     memset(&element, 0, sizeof(element));
     eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
     element.command = CHECK_COMMAND;
+
     rc = dev_ptr->dev->ethtool_ops->set_eeprom(dev_ptr->dev, &eeprom, (u8*)&element);
+    /* printk("[PF_RING] set_eeprom returned %d\n", rc); */
 
     if(rc == 0) {
       /* This device supports hardware filtering */
