@@ -222,7 +222,9 @@ typedef enum {
   execute_action_and_continue_rule_evaluation,
   forward_packet_add_rule_and_stop_rule_evaluation,
   reflect_packet_and_stop_rule_evaluation,
-  reflect_packet_and_continue_rule_evaluation
+  reflect_packet_and_continue_rule_evaluation,
+  bounce_packet_and_stop_rule_evaluation,
+  bounce_packet_and_continue_rule_evaluation 
 } rule_action_behaviour;
 
 typedef enum {

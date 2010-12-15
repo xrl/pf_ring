@@ -175,7 +175,7 @@ static void ring_proc_term(void);
 static int reflect_packet(struct sk_buff *skb,
 			  struct ring_opt *pfr,
 			  struct net_device *reflector_dev,
-			  int displ);
+			  int displ, rule_action_behaviour behaviour);
 
 /*
   Caveat
@@ -1768,7 +1768,8 @@ static void free_parse_memory(struct parse_buffer *parse_memory_buffer[])
 static int reflect_packet(struct sk_buff *skb,
 			  struct ring_opt *pfr,
 			  struct net_device *reflector_dev,
-			  int displ)
+			  int displ,
+			  rule_action_behaviour behaviour)
 {
   int debug = 0;
 
@@ -1789,6 +1790,14 @@ static int reflect_packet(struct sk_buff *skb,
     atomic_inc(&skb->users);
     if(displ > 0) skb->data -= displ, skb->len += displ;
 
+    if(behaviour == bounce_packet_and_stop_rule_evaluation) {
+      char dst_mac[6];
+
+      /* Swap mac addresses */
+      memcpy(dst_mac, skb->data, 6);
+      memcpy(skb->data, &skb->data[6], 6);
+      memcpy(&skb->data[6], dst_mac, 6);
+    }
     /*
       NOTE
       dev_queue_xmit() must be called with interrupts enabled
@@ -1946,7 +1955,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
       } else
 	behaviour = hash_bucket->rule.rule_action;
 
-      switch (behaviour) {
+      switch(behaviour) {
       case forward_packet_and_stop_rule_evaluation:
 	fwd_pkt = 1;
 	break;
@@ -1960,12 +1969,14 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	fwd_pkt = 1;
 	break;
       case reflect_packet_and_stop_rule_evaluation:
+      case bounce_packet_and_stop_rule_evaluation:
 	fwd_pkt = 0;
-	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ);
+	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ, behaviour);
 	break;
       case reflect_packet_and_continue_rule_evaluation:
+      case bounce_packet_and_continue_rule_evaluation:
 	fwd_pkt = 0;
-	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ);
+	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ, behaviour);
 	hash_found = 0;	/* This way we also evaluate the list of rules */
 	break;
       }
@@ -2066,13 +2077,15 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	  /* The action has already been performed inside match_filtering_rule()
 	     hence instead of stopping rule evaluation, the next rule
 	     will be evaluated */
-	} else if(entry->rule.rule_action == reflect_packet_and_stop_rule_evaluation) {
+	} else if((entry->rule.rule_action == reflect_packet_and_stop_rule_evaluation)
+		  || (entry->rule.rule_action == bounce_packet_and_stop_rule_evaluation)) {
 	  fwd_pkt = 0;
-	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ);
+	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ, entry->rule.rule_action);
 	  break;
-	} else if(entry->rule.rule_action == reflect_packet_and_continue_rule_evaluation) {
-	  fwd_pkt = 0;
-	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ);
+	} else if((entry->rule.rule_action == reflect_packet_and_continue_rule_evaluation)
+		  || (entry->rule.rule_action == bounce_packet_and_continue_rule_evaluation)) {
+	  fwd_pkt = 1;
+	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ, entry->rule.rule_action);
 	}
       }
     }  /* for */
