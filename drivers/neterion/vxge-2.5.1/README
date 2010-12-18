@@ -1,0 +1,590 @@
+
+ __Readme for Neterion Inc's X3100 Series 10GbE PCIe I/O Virtualized Server Adapter Driver__ 
+
+=== Introduction ===
+Linux Driver for Neterion Inc's X3100 Series 10GbE PCIe I/O Virtualized Server Adapter
+
+ * Supports Neterion Inc's X3100 Series 10GbE adapters for 2.4.x and 2.6.x kernels. 
+ * Supports several features such as jumbo frames, MSI-X, checksum offloads, TSO, LRO, single function, multi function, SRIOV, MRIOV, Function level bandwidth and priority configuration.
+
+(See below for complete list of features supported for both IPv4 and IPv6)
+
+=== Installation Instructions ===
+
+For 2.6 kernel make sure you have installed the Linux kernel source rpm.  
+To verify whether you have kernel source directories inside
+/usr/src do "find /usr/src|grep <kernel Version>".  
+     Use "uname -r" to get kernel version.
+
+For 2.4 kernels make sure there is a symbolic link file named
+"/usr/src/linux-2.4" pointing to the correct kernel source directory. 
+Run "ls -l" and verify whether "/usr/src/linux-2.4" is pointing to the
+correct directory. If it is pointing to the wrong directory, please delete
+the link and create a new file with command:
+     # ln -s /usr/src/linux-2.4.xxxx /usr/src/linux-2.4
+
+''Installing driver from TAR file''
+
+1. Unzip and extract the downloaded file
+     # tar -zxvf REL_<version>_LX-vxge.tar.gz
+
+2. Build driver 
+     # make
+
+3. Install driver 
+     # make install
+
+4. The driver will be installed in:
+     /lib/modules/<kernel_version>/kernel/drivers/net/
+
+     The following supporting files will also be installed:
+       vquery.sh and sysctl_neterion.conf will be installed in /usr/local/vxge/
+
+5. Create a symbol dependency file to load driver using modprobe:
+     # depmod -a
+
+''Installing driver from RPM package''
+
+1. New install:
+     # rpm -ivh vxge-<version>.<arch>-<distro>.rpm
+     where <arch> is the architecture of the linux distribution, 
+       e.g.
+     # rpm -ivh vxge-1.0.7.15446.x86_64-r5.2.rpm
+
+   The driver will be installed in:
+     - For SLES:
+       /lib/modules/<kernel_version>/updates/drivers/net/
+     - For RHEL:
+       /lib/modules/<kernel_version>/kernel/drivers/net/
+
+   The following supporting files will also be installed:
+       vquery.sh and sysctl_neterion.conf will be installed in /usr/local/vxge/
+
+      README
+        For SLES, will be installed in /usr/share/doc/packages/vxge
+        For RHEL, will be installed in /usr/share/doc/vxge-<version>
+
+2. Install over the same or newer package:
+     # rpm -ivh --force vxge-<version>.<arch>-<distro>.rpm
+
+3. Upgrade an older package:
+     # rpm -Uvh vxge-<version>.<arch>-<distro>.rpm
+
+4. Create a symbol dependency file to load driver using modprobe -
+     # depmod -a
+
+''Load/Unload Neterion driver''
+
+1. Load driver
+     For 2.4 kernel
+       # insmod /lib/modules/<kernel_version>/kernel/drivers/net/vxge.o
+     For 2.6 kernel
+       # insmod /lib/modules/<kernel_version>/kernel/drivers/net/vxge.ko
+     Verify driver loaded using lsmod
+       # lsmod |grep vxge
+
+2. Configure IP address
+     ifconfig eth# <IP_address> up
+       # ifconfig eth1 17.1.1.100 up
+
+3. Modify MTU
+     ifconfig eth# mtu <new_mtu>
+       # ifconfig eth1 mtu 9000
+
+4. Unload driver
+       # ifconfig eth# down
+       # rmmod vxge
+
+''Identifying the adapter/interface''
+
+1. Insert the adapter(s) in your system.
+
+2. Load driver 
+     # insmod  /lib/modules/<kernel_version>/kernel/drivers/net/vxge.ko
+
+3. View log messages
+     # dmesg | tail -40
+
+   Messages similar to the following will output which identify the adapter
+   type, adapter revision, driver version, interface number, and interrupt type:
+
+   eth2: Neterion 10 Gigabit Ethernet X3110 Rev (2)
+   eth2: MAC ADDR: 00:0C:FC:00:B2:53 SERIAL NUMBER: SXJ0839036
+   eth2: Firmware version: 0.0.34 Date : 12/02/2008
+   eth2: Driver version: v.1.0.0 kernel version 2.6.16
+   eth2: Build time: Nov 25 2008, 23:19:49
+   eth2: 8 Vpath(s) enabled
+   eth2: Interrupt type MSI-X
+   eth2: RTH steering enabled for TCP_IPV4
+   eth2: Tx port steering enabled
+   eth2: Large receive offload enabled
+   eth2: Multiqueue support disabled
+   eth2: VLAN tag stripping disabled
+   eth2: NAPI disabled
+   eth2: Ring blocks : 2
+   eth2: Fifo blocks : 12
+
+4. To associate an interface with a physical adapter use "ethtool -p eth#".
+   The corresponding adapter's LED will blink until canceled (ctrl+c).
+
+''Features supported''
+
+  I/O Virtualization Offloads 
+     Driver Configurations for the following function modes:
+
+     Single function mode
+     	1 function with 17 VPaths  
+
+     Multi function mode
+ 	8 functions with 2 VPaths per function  
+	17 functions, 1 VPath/Function with PCIe ARI  
+	2 functions, 8 VPaths/Function  
+	4 Functions, 4 VPaths/Function  
+
+  PCI-SIG's I/O Virtualization: 
+     Single Root mode: v1.0 
+        	17 VFs with 1 VPath per VF  
+	1PF + 7VF, 2 VPaths/Function  
+	1PF+ 3VF, 4 VPaths/Function  
+
+     Multi-Root mode: v1.0   
+	17 Virtual Hierarchies, 1 VPath/Function/Hierarchy  
+	8 Virtual Hierarchies, 2 VPath/Function/Hierarchy  
+	4 Virtual Hierarchies, 4 VPath/Function/Hierarchy  
+
+  Device management  
+     Management of all functions and device from privileged function.     
+
+  Service level configurations  
+     Independent configuration of bandwidth and priority per function.  
+
+  Virtual ethernet bridge (VEB)  
+     Embedded layer 2 switch segmented per function for inter function   
+     communication.  
+
+  IEEE 802.3ad Link aggregation and fail over  
+     The standard link aggregation can be offloaded with the dual   
+     port X3120, adapter.  
+
+  IEEE 802.3X pause frame and 802.3P/Q VLAN tag support  
+     Features can be enabled and disabled through the driver.  
+
+  MAC address filtering  
+     Hardware address filter with learning and ageing for up to 512  
+     entries/ranges.  Dynamically enable a VPath per function  to recieve 
+     traffic if the hardware DA filter is full.  
+
+  Port configuration  
+     Configurable hardware-based fail over and link aggregation modes.  
+
+   Video streaming  
+     Allow UDP segmentation offload for UDP packets which would  
+     otherwise be fragmented and configurable inter-packet pacing for video   
+     streaming applications.  
+
+  Jumbo frames 
+     X3100 Series supports MTU up to 9600 bytes, modifiable using       
+     ifconfig command.
+
+  Offloads supported
+     Checksum offload (TCP/UDP/IP) on transmit and receive paths
+     TCP Segmentation Offload (TSO) on transmit path
+     Large Receive Offload (LRO, TCP aggregation) on receive path
+
+  MTU  
+     Independent MTU configuration for functions with a maximum of 9600  
+     Bytes.  
+
+  MSI-X 
+     Can be enabled on platforms which support it, resulting in noticeable
+     performance improvement (up to 7% on certain platforms).
+
+  NAPI
+     For better Rx interrupt moderation.
+
+  RTH (Receive Traffic Hash)
+     Receive side steering for better scaling.
+
+  Statistics 
+     Comprehensive MAC-level and software statistics displayed using
+     "ethtool -S" option.
+
+  Multi-Vpaths
+     Up to 17 hardware based transmit and receive data channels, with 
+     multiple steering options.
+
+'' Driver configurable parameters ''
+       The following loadable options can be specified on the command line during  
+       driver load.  See bottom of this section for automatically setting at boot.  
+       Usage: insmod vxge.ko <option1>=<value> <option2>=<value> .. <optionN>=<value>  
+
+  exec_mode:  
+         Enables debug mode.
+	0 - disabled (default)
+	1 - enabled
+
+  func_mode:  
+         Changes the PCI function mode.  
+         0  - SF1_VP17 (1 function, 17 Vpaths)  
+         1  - MF8_VP2  (8 functions, 2 Vpaths each)  
+         2  - SR17_VP1 (17 VFs with 1 Vpath each)  
+         3  - MR17_VP1 (17 Virtual Hierarchies, 1 Vpath/Function/Hierarchy)  
+         4  - MR8_VP2  (8 Virtual Hierarchies, 2 Vpath/Function/Hierarchy)  
+         5  - MF17_VP1 (17 functions, 1 vpath each (PCIe ARI))  
+         6  - SR8_VP2  (1PF, 7VF, 2 Vpaths each)  
+         7  - SR4_VP4  (1PF, 3VF, 4 Vpaths each)  
+         8  - MF2_VP8  (2 functions, 8 Vpaths each)  
+         9  - MF4_VP4  (4 Functions, 4 Vpaths each)  
+         10 - MR4_VP4  (4 Virtual Hierarchies, 4 Vpaths/Function/Hierarchy)  
+
+  fw_upgrade:  
+         Upgrades adapter firmware or firmware and boot ROM.   
+         1 - Upgrade firmware for all adapters (default)
+         2 - Upgrade firmware   
+         2 Upgrade firmware and boot ROM for all adapters.  Forces upgrade even if current 
+            fw version is same as the certified fw version.  .
+
+  intr_adapt:  
+         Enables adaptive interrupt coalescing.  
+	 0 - disabled  
+	 1 - enabled (default)  
+
+  intr_type:  
+        Specifies interrupt type.  
+	 0 - INTA  
+	 2 - MSI-X (default)  
+        Note: This default can be overridden by specifying "intr_type=0" on the command line.  
+	#vmkload_mod vxge intr_type=0  
+
+  lro:  
+        Enables/disables Large Receive Offload (LRO).  
+	 0 - disabled  
+	 1 - enabled (default)  
+
+  max_config_dev:  
+        Specifies maximum device functions to be enabled.  
+	Valid range: 1-8  
+	Default: Optimized by driver  
+
+  max_config_vpath:  
+       Specifies maximum VPATH(s) configured for each device function.  
+	Valid range: 1-17  
+	Default: Optimized by driver  
+
+  napi: (ESX 4 only)  
+       Enables/disables NAPI support.  
+       Automatically disabled when intr_type is set to MSI-X on kernels below  
+       2.6.24.  
+	0 - disabled  
+	1 - enabled (default)  
+
+  netq:  
+      Enables/disables support for ESX Netqueue.  
+	0 - disabled  
+	1 - enabled (default)  
+
+  promisc_en:  
+       Enable promisous mode for privileged function.  
+	0 - disabled (default)  
+	1 - enabled  
+
+  promisc_all_en:  
+        Enable promisous mode for all functions.  
+ 	 0 - disabled (default)  
+	 1 - enabled  
+
+  rx_pause_enable:  
+       Enables response to received pause frames.  
+	0 - disabled  
+	1 - enabled (default)  
+
+  rx_steering_type:  
+       Specifies criteria for steering received packets.  
+	0 - disabled  
+	1 - L4 port  
+	2 - RTH (default; when system supports MSI-X and has more than 4 CPUs)  
+	3 - priority  
+	4 - VLAN ID  
+
+  stats_read_method:  
+      Specifies the stats read method.  
+	 0 - PIO (default)  
+	1 - DMA  
+
+  tx_pause_enable:  
+       Enables pause frame generation.  
+	0 - disabled  
+	1 - enabled (default)  
+
+  tx_steering_type  
+       Specifies criteria for steering transmitted packets.  
+	0 - disabled  
+	1 - priority  
+	 2 - VLAN ID  
+	3 - multiq  
+	4 - L4 Port (default)  
+
+  udp_stream:  
+       Enables/disables UDP segmentation offload for UDP packets which would  
+       otherwise be fragmented.  Enabling this means that large UDP packets will  
+       be split into multiple UDP packets. This feature can be used for UDP  
+       video streaming.  
+	0 - disabled (default)  
+	1 - enabled  
+
+  L2 Configurable Options  
+
+  catch_basin_mode:  
+       Allow incoming traffic even if a destination MAC address 'hit' does not  
+       occur in the DA MAC filter table.  
+	0 - disable always  
+	1 - enable always  
+	2 - enable/disable dynamically (default)  
+
+  l2_switch:  
+       Enables/disables inter-function traffic through the VEB, virtual ethernet  
+       bridge or L2 switch.  
+	0 - Disallow inter-function traffic  
+	1 - Allow inter-function traffic  
+
+  max_mac_vpath:  
+       Number of entries reserved in the hardware DA MAC table filter per vpath.  
+ 	Valid range: 30-512  
+	Default: 30  
+
+  vlan_tag_strip:  
+        Enables/disables vlan tag stripping from all received tagged frames that  
+        are not replicated at the internal L2 switch.  
+	 0 - disabled  
+	1 - enabled (default)  
+
+  Hardware Traffic Shaping Options  
+
+  bw:  
+       Specifies the max transmit and receive bandwidth per function in Mbps.  
+       Applies the same value to tx and rx.   
+       Minimum value is 100 Mbps for 1.5k MTU and 300 Mbps for 9k MTU.  
+       Note: This configuration overrides the value present in tx_bw and rx_bw.  
+
+  priority:  
+       Specifies the priority level for a function  
+       Minimum value is 0 (highest priority), max value is 3 (lowest priority)  
+
+  rx_bw:  
+      Specifies the max receive bandwidth per function in Mbps.  
+      Minimum value is 100 Mbps for 1.5k MTU and 300 Mbps for 9k MTU.  
+
+  tx_bw:  
+       Specifies the max transmit bandwidth per function in Mbps.  
+       Minimum value is 100 Mbps for 1.5k MTU and 300 Mbps for 9k MTU.  
+
+  Dual-port Adapter Options  
+
+  port_mode:  
+      Changes the default dual port mode  
+         0 - Default  
+         1 - Reserved
+         2 - Active/Passive  
+         3 - Single Port (2nd Port offline for dual port adapter) 
+         4 - Active/Active
+
+  Boot time configuration
+         To load option(s) at boot time, add the option(s) to
+         /etc/modprobe.conf.
+         Example:
+           alias eth# vxge
+           options vxge rx_steering_type=2
+
+'' Service level configurations - Bandwidth and priority'' 
+
+     e.g.  To configure lets say 3 functions with the following settings -  
+        Function #       Priority        Receive Bandwidth  
+                1                0 (highest)     1000  
+                2                3 (lowest)      2000  
+                3                3 (lowest)      Remaining  
+
+     The driver parameter settings will be -   
+     #vmkload_mod vxge max_config_dev=3 rx_bw=1000,2000 priority=0,3,3   
+
+=== Performance Suggestions ===
+
+1. Set MTU to maximum - 9000 for switch setup, 9600 for back-to-back.
+
+2. Set TCP windows size to optimal value. 
+     For example
+       For MTU=1500, TCP window size of 210K is recommended:
+	 # sysctl -w net.ipv4.tcp_rmem="210000 210000 210000"
+	 # sysctl -w net.ipv4.tcp_wmem="210000 210000 210000"
+
+       or apply sysctl.conf file from driver package
+         # sysctl -p sysctl_neterion_1500.conf
+
+       For MTU=9000, TCP window size of 10 MB is recommended:
+	 # sysctl -w net.ipv4.tcp_rmem="10000000 10000000 10000000"
+	 # sysctl -w net.ipv4.tcp_wmem="10000000 10000000 10000000"
+
+       or apply sysctl.conf file from driver package
+         # sysctl -p sysctl_neterion_9000.conf
+
+''Transmit performance''
+
+   Ensure Transmit Checksum offload and TSO are enabled. 
+   Use ethtool to verify/set these parameters.
+
+     # ethtool -k eth#
+     Offload parameters for eth0:
+     rx-checksumming: on
+     tx-checksumming: on
+     scatter-gather: on
+     tcp segmentation offload: off
+
+   Turn on Transmit Checksum offload and TSO:
+     # ethtool -K eth# tx on
+     # ethtool -K eth# tso on (for 2.6 kernels)
+
+''Receive performance''
+
+1. Ensure Receive Checksum offload is enabled. Use ethtool to verify/set.
+     # ethtool -k eth#
+     # ethtool -K eth# rx on
+
+2. If MTU is set to 1500, receive performance can be improved by increasing
+   the default TCP window size and enabling LRO (see "Configurable driver
+   parameters" section). 
+     # sysctl -p sysctl_neterion_1500.conf
+
+3. Enable NAPI to bring down CPU utilization.
+
+''Troubleshooting''
+
+For X3100 adapter assigned eth2
+
+Statistics Dump:
+     # ethtool –S eth2 
+
+Register Dump:
+     # ethtool –d eth2
+
+''Before Contacting Neterion for Support...''
+
+1. Please contact your network adapter provider (i.e. OEM or reseller) for
+   initial support.
+
+2. Run the vquery utility which is included in the linux driver package on
+   our driver downloads page.
+     # vquery eth#
+
+  When contacting Neterion for support, please include the following in your email
+  to support@neterion.com:
+  - The Neterion_query.log.gz file resulting from step 2 above
+  - Brief description of your setup and how you are using your X3100 series adapter
+
+'' Ethtool Support ''
+
+Ethtool is useful for driver configuration, diagnostics and displaying
+statistical information.  The latest version of Ethtool is available at
+http://sourceforge.net/projects/gkernel/
+
+     ethtool eth#
+       Displays current device settings
+
+     ethtool -a eth#
+       Displays pause parameter information.
+
+     ethtool -A eth#
+       Changes pause parameters.
+
+     ethtool -d eth#
+       Retrieves and prints a register dump for the specified ethernet device.
+
+      ethtool -g ethx
+       Queries the specified ethernet device for rx/tx ring parameter information.
+
+     ethtool -i eth#
+       Displays device driver information
+
+     ethtool -k eth#
+       Displays offload parameters information.
+
+     ethtool -K eth# [rx on|off] [tx on|off] [sg on|off] [tso on|off]
+       Changes offload parameters.
+
+         rx - RX checksum offload
+         tx - TX checksum offload
+         sg - scatter-gather
+         tso - TCP Segmentation Offload
+
+     ethtool -p eth# [N]
+       Initiates adapter-specific action intended to enable an operator to
+       easily identify the physical adapter by sight.  Typically this involves
+       blinking one or more LEDs on the specified ethernet port.
+
+         N - Length of time to perform phys-id, in seconds.
+
+     ethtool -S eth#
+       Displays adapter and driver statistics.
+
+     ethtool -t eth# [offline|online]
+       Executes adapter selftest on the specified ethernet device. Possible
+       test modes are:
+
+         offline (default) - performs full set of tests, possibly interrupting
+           normal adapter operation during the tests.
+         online - performs limited set of tests, not interrupting normal
+           adapter operation.
+
+=== Known Issues ===
+
+TSO disabled in SUSE 9:
+     TSO is disabled by default in SuSE 9. It may be manually enabled 
+     using the ethtool command.
+       # ethtool -K eth# tso on
+
+''Common Problems''
+
+Symbolic link:
+     Before debugging any compilation related problems, ensure that the    
+     following symbolic link/directory points to the correct kernel source
+     tree.    
+       For 2.4, /usr/src/linux-2.4
+       For 2.6, /usr/src/linux-2.6
+
+Version Mismatch:
+     One of the common problems encountered on trying to load the driver is
+     related to a version mismatch between current kernel and the kernel for
+     which the driver was built. Typical error message is as follows:
+
+     Using /lib/modules/2.x.y-SMP/kernel/drivers/net/vxge.o 
+     /lib/modules/2.x.y-SMP/kernel/drivers/net/vxge.o: kernel-module               
+     version mismatch /lib/modules/2.x.y-SMP/kernel/drivers/net/vxge.o 
+     was compiled for kernel version 2.x.y while this kernel is version 
+     2.x.y-SMP. 
+
+     To fix this problem, ensure the kernel is enabled for SMP by following
+     these steps:
+
+     1.  Go to the directory where kernel sources are located.
+	  (e.g. /usr/src/linux-2.4.19.SuSE) 
+
+     2. Execute "make menuconfig". This will bring up the "Linux
+          Kernel Configuration" menu. Select "Processor type and features".
+	  Ensure that "Symmetric multi-processing support" is enabled.
+	  Save this configuration and exit.
+
+     3. This will compile the kernel with SMP support. 
+
+=== Available Downloads ===
+
+   For latest available Neterion drivers or further support please contact your 
+   network adapter provider or check the Neterion support download site at  
+   http://www.neterion.com/support/xframe_customers.html 
+
+   This readme applies to the Neterion Linux driver available from our website.
+   Although the Neterion Linux drivers are included in the mainline kernel and 
+   major Linux distribution09(i.e. Red Hat, Suse, etc), and are similar, each 
+   distribution accepts or rejects our driver changes at their own discretion.  
+   Therefore, some features may be enabled or disabled in different releases. 
+
+===================================================================
+ Neterion Inc. Proprietary
+ COPYRIGHT (c) 2002-2010 Neterion Inc, ALL RIGHTS RESERVED

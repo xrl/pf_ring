@@ -1,0 +1,677 @@
+-- ****************************************************************************
+-- Neterion Inc SNMP MIB for x3100 series 10Gb ethernet adapters
+--
+-- Copyright(c) 2002-2010 Exar Inc.
+-- All rights reserved.
+-- ****************************************************************************
+
+Neterion-vxge-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE,
+    NOTIFICATION-TYPE,
+    Counter32, Integer32, Unsigned32
+        FROM SNMPv2-SMI
+    DisplayString
+        FROM SNMPv2-TC
+    InterfaceIndex
+        FROM IF-MIB
+    neterionProducts
+        FROM Neterion-MIB;
+
+-- Root OID for vxge
+vxge  MODULE-IDENTITY
+
+    LAST-UPDATED "200907070430Z"
+    ORGANIZATION "Neterion, Inc."
+    CONTACT-INFO
+        "       Neterion, Inc.
+        Postal: 20230 Stevens Creek Blvd, Suite C
+                Cupertino, CA 95014
+                USA
+        Tel:    +1 408 366 4600
+        E-mail: support@neterion.com"
+    DESCRIPTION
+        "MIB Objects for managing Neterion x3100 series
+        10Gb ethernet adapters."
+    -- Revision History
+    
+    REVISION    "200907070430Z"
+    DESCRIPTION
+        "The initial release of this information module."
+    ::= { neterionProducts 2 }
+
+-- vxge mib objects
+vxgeInfo            OBJECT IDENTIFIER ::= { vxge 1 }
+vxgeFaultMgmt       OBJECT IDENTIFIER ::= { vxge 2 }
+
+-- vxge information objects
+vxgeGeneral         OBJECT IDENTIFIER ::= { vxgeInfo 1 }
+vxgeBaseDriver      OBJECT IDENTIFIER ::= { vxgeInfo 2 }
+vxgeDevice          OBJECT IDENTIFIER ::= { vxgeInfo 3 }
+
+
+-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-- vxge general information
+-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+vxgeGenVendorName  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..127))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Neterion, Inc"
+    ::= { vxgeGeneral 1}
+
+vxgeGenProductDesc  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..255))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "X3100 Series 10Gb Ethernet Adapter"
+    ::= { vxgeGeneral 2}
+
+vxgeGenHostName  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..255))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Host machine name on which vxge SNMP agent is running on "
+    ::= { vxgeGeneral 3 }
+
+vxgeGenHostOS  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..127))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Host Operating system on which the SNMP agent is running on"
+    ::= { vxgeGeneral 4 }
+
+vxgeGenMIBversion  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..127))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "MIB version supported by the vxge SNMP agent"
+    ::= { vxgeGeneral 5 }
+
+vxgeGenVersion  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..127))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "The version of the vxge SNMP agent extension"
+    ::= { vxgeGeneral 6 }
+
+vxgeGenDriverStatus  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    notLoaded(0),
+                    loaded(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION	
+        "The Status of the Base Driver. Strictly speaking,
+         it says whether a driver with SNMP support is loaded."
+    ::= { vxgeGeneral 7 }
+
+-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-- vxge base driver information
+-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+vxgeBDName  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..63))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION	
+        "Name of the Neterion 10G Ethernet Driver "
+    ::= { vxgeBaseDriver 1 }
+
+vxgeBDVersion  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..63))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Base Driver Version"
+    ::= { vxgeBaseDriver 2 }
+
+vxgeBDDate  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..127))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Build date of the base driver"
+    ::= { vxgeBaseDriver 3 }
+
+vxgeBDSpeed  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..127))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Signal speed of Adapter in bits per second.
+        This is 10Gbps for all Neterion adapters"
+    ::= { vxgeBaseDriver 4 }
+
+vxgeBDIntrType  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    inta(0),
+                    reserved(1),
+                    msix(2) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Interrupt type used by the PCI adapter
+            INTA - interrupt line A
+            MSIX - extended message signaled interrupt"
+    ::= { vxgeBaseDriver 5 }
+
+vxgeBDDoorbell  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    disabled(0),
+                    enabled(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Doorbell receiving mode status for hardware "
+    ::= { vxgeBaseDriver 7 }
+
+
+vxgeBDlro  OBJECT-TYPE
+    SYNTAX      INTEGER (0..127)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Large Receive Offload feature status 
+            0 - do not aggregate
+            1 - always aggregate
+            2 - do not aggregate forward packets
+            3 - enable GRO "
+    ::= { vxgeBaseDriver 10 }
+
+vxgeBDlroMaxPkt  OBJECT-TYPE
+    SYNTAX      INTEGER (0..255)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Maximum aggregatable packets per session 
+        for Large Receive Offload"
+    ::= { vxgeBaseDriver 11 }
+
+vxgeBDnapi  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    disabled(0),
+                    enabled(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "NAPI feature status "
+    ::= { vxgeBaseDriver 12 }
+
+vxgeBDVlanTagStrip  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    donotStrip(0),
+                    strip(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "VLAN Tag stripping setting "
+    ::= { vxgeBaseDriver 13 }
+
+vxgeBDRxSteering  OBJECT-TYPE
+    SYNTAX      INTEGER (0..127)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Receiving Packet steering logic:
+            0 - no steering logic
+            1 - reserved 
+            2 - RTH hashing algorithm "
+    ::= { vxgeBaseDriver 14 }
+
+vxgeBDTxSteering  OBJECT-TYPE
+    SYNTAX      INTEGER (0..127)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Transmitting Packet steering logic:
+            0 - No steering logic
+            1 - Priority steering
+            2 - VLAN steering
+            3 - Multiqueue steering
+            4 - Port steering"
+    ::= { vxgeBaseDriver 15 }
+
+
+-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-- vxge network interface specific information
+-- ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+vxgeDeviceIfaceCount  OBJECT-TYPE
+    SYNTAX      INTEGER (0..255)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "The total number of vxge network interfaces"
+    ::= { vxgeDevice 1}
+
+vxgeDeviceTable  OBJECT-TYPE
+    SYNTAX      SEQUENCE OF VxgeDTEntrySyntax
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION 
+        "Table of device interface information"
+    ::= { vxgeDevice 2 }
+
+vxgeDTEntry  OBJECT-TYPE
+    SYNTAX      VxgeDTEntrySyntax
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION 
+        "A table entry describing the interface attributes"
+    INDEX       { vxgeDEIndex }
+    ::= { vxgeDeviceTable 1 }
+
+VxgeDTEntrySyntax ::= SEQUENCE {
+    -- general
+    vxgeDEIndex             Unsigned32,
+    vxgeDEDesc              DisplayString,
+    
+    -- pci specific
+    vxgeDEPCIBDF            DisplayString,
+    vxgeDEVendorId          INTEGER,
+    vxgeDEDeviceId          INTEGER,
+    vxgeDEIrq               Unsigned32,
+    vxgeDEFuncMode          INTEGER,
+    vxgeDEPermMAC           DisplayString,
+    
+    -- vxge hw specific
+    vxgeDEAccessRight       INTEGER,
+    vxgeDEBandwidth         INTEGER,
+    vxgeDEVpathCount        INTEGER,
+    vxgeDELinkMode          INTEGER,
+    vxgeDEActiveLink        INTEGER,
+    
+    -- network interface
+    vxgeDECurrentMAC        DisplayString,
+    vxgeDEActiveLinkState   INTEGER,
+    vxgeDEmtu               Unsigned32,
+    vxgeDErxCSum            INTEGER,
+    vxgeDEtxCSum            INTEGER,
+    vxgeDEtso               INTEGER,
+    vxgeDEufo               INTEGER,
+    vxgeDEsg                INTEGER,
+    
+    -- netdwork interface statistics
+    vxgeDETXIntrCount       Counter32,
+    vxgeDERXIntrCount       Counter32,
+    vxgeDECollision         Counter32,
+    vxgeDERxMulticast       Counter32,
+    vxgeDERxBytes           Counter32,
+    vxgeDERxDropped         Counter32,
+    vxgeDERxErrors          Counter32,
+    vxgeDERxPackets         Counter32,
+    vxgeDETxBytes           Counter32,
+    vxgeDETxDropped         Counter32,
+    vxgeDETxErrors          Counter32,
+    vxgeDETxPackets         Counter32 }
+
+vxgeDEIndex  OBJECT-TYPE
+    SYNTAX      Unsigned32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "network interface index "
+    ::= { vxgeDTEntry 1 }
+
+vxgeDEDesc  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..31))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+        "Network interface name"
+    ::= { vxgeDTEntry 2 }
+
+vxgeDEPCIBDF  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..63))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "PCI bus:device.function on which the network interface is installed
+        the string will be in the format of yy:zz.n, where
+            yy   is bus number
+            zz   is device number
+            n    is function number"
+    ::= { vxgeDTEntry 10 }
+
+vxgeDEVendorId  OBJECT-TYPE
+    SYNTAX      Integer32 (0..65535)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "PCI Vendor Identification number"
+    ::= { vxgeDTEntry 11 }
+
+vxgeDEDeviceId  OBJECT-TYPE
+    SYNTAX      Integer32 (0..65535)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "PCI Device Identification number"
+    ::= { vxgeDTEntry 12 }
+
+vxgeDEIrq  OBJECT-TYPE
+    SYNTAX      Unsigned32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "IRQ number for the network interface"
+    ::= { vxgeDTEntry 13 }
+
+vxgeDEFuncMode  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    singleFunc(0),
+                    multiFunc(1),
+                    sriov(2),
+                    mriov(3) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "PCI function mode for the network interface:
+            singleFunc  one normal pci function per adapter
+            multiFunc   two or more normal pci function per adapter
+            sriov       single root io virtualization mode
+            mriov       multi root io virtualization mode"
+    ::= { vxgeDTEntry 14 }
+
+vxgeDEAccessRight  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    nonPrivileged(0),
+                    privileged(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Privilege mode of the the interface:
+             nonPrivileged   privileged operations are not permitted
+             Privileged      capable of doing privilege operations"
+    ::= { vxgeDTEntry 20 }
+
+vxgeDEBandwidth  OBJECT-TYPE
+    SYNTAX      INTEGER (0..100)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Bandwidth allocation percentage for the network interface"
+    ::= { vxgeDTEntry 21 }
+
+vxgeDEVpathCount  OBJECT-TYPE
+    SYNTAX      INTEGER (1..17)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total number of virtual path assigned to the interface"
+    ::= { vxgeDTEntry 22 }
+
+vxgeDELinkMode  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    singleLink(0),
+                    dualPassiveActive(1),
+                    dualLoadDistribution(2) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Physical link setting for the interface:
+            singleLink              only one port is enabled
+            dualPassiveActive       two links enabled in hot-standby mode
+            dualLoadDistribution    two links enabled in load distribution 
+                                    mode"
+    ::= { vxgeDTEntry 23 }
+
+vxgeDEActiveLink  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    port1(1),
+                    port2(2) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Physical port index of the active link"
+    ::= { vxgeDTEntry 24 }
+
+vxgeDEPermMAC  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..31))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Permanent hw address for the interface"
+    ::= { vxgeDTEntry 25 }
+
+vxgeDECurrentMAC  OBJECT-TYPE
+    SYNTAX      DisplayString (SIZE(0..31))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "The current active hw address for the interface"
+    ::= { vxgeDTEntry 30 }
+
+vxgeDEActiveLinkState  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    off(0),
+                    on(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Link carrier state of the active port"
+    ::= { vxgeDTEntry 31 }
+
+vxgeDEmtu  OBJECT-TYPE
+    SYNTAX      Unsigned32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "maximum transmission unit of the interface"
+    ::= { vxgeDTEntry 32 }
+
+vxgeDErxCSum  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    off(0),
+                    on(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "receive check sum offload:
+            off  checksum not handled to hardware
+            on   checksum offloaded to hardware"
+    ::= { vxgeDTEntry 33 }
+
+vxgeDEtxCSum  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    off(0),
+                    on(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "transmission check sum offload:
+            off  checksum not handled to hardware
+            on   checksum offloaded to hardware"
+    ::= { vxgeDTEntry 34 }
+
+vxgeDEtso  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    off(0),
+                    on(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "tcp segmentation offload:
+            off  segmentation  not handled to hardware
+            on   segmentaion offloaded to hardware"
+    ::= { vxgeDTEntry 35 }
+
+vxgeDEufo  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    off(0),
+                    on(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "udp fragmentation offload:
+            off  fragmentation  not handled to hardware
+            on   fragmentation offloaded to hardware"
+    ::= { vxgeDTEntry 36 }
+
+vxgeDEsg  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    off(0),
+                    on(1) }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "packet scatter gather :
+            off  disabled
+            on   enabled"
+    ::= { vxgeDTEntry 37 }
+
+vxgeDETXIntrCount  OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total number of transmission interrupts"
+    ::= { vxgeDTEntry 50 }
+
+vxgeDERXIntrCount  OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total number of receiving interrupts"
+    ::= { vxgeDTEntry 51 }
+
+vxgeDECollision  OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Single Collisions for the interface"
+    ::= { vxgeDTEntry 52 }
+
+vxgeDERxMulticast  OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of Multicast Packets Received for the interface"
+    ::= { vxgeDTEntry 53 }
+
+vxgeDERxBytes  OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of Bytes Received for the interface"
+    ::= { vxgeDTEntry 54 }
+
+vxgeDERxPackets OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of received packets for the interface"
+    ::= { vxgeDTEntry 55 }
+
+vxgeDERxDropped OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of Packets dropped at receiving side"
+    ::= { vxgeDTEntry 56 }
+
+vxgeDERxErrors OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of Packets which failed to reach the protocol"
+    ::= { vxgeDTEntry 57 }
+
+vxgeDETxBytes  OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of Bytes tranmitted for the interface"
+    ::= { vxgeDTEntry 58 }
+
+vxgeDETxPackets OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of tranmitted packets for the interface"
+    ::= { vxgeDTEntry 59 }
+
+vxgeDETxDropped OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of transmission packets dropped for the interface"
+    ::= { vxgeDTEntry 60 }
+
+vxgeDETxErrors OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION 
+        "Total Number of Packets failed to transmit"
+    ::= { vxgeDTEntry 61 }
+
+
+-- ********************************************************
+-- vxge trap objects
+-- ********************************************************
+
+-- vxge traps structure
+vxgeDeviceEvents    OBJECT IDENTIFIER ::= { vxgeFaultMgmt 1 }
+
+vxgeDeviceTraps     OBJECT IDENTIFIER ::= { vxgeDeviceEvents 1 }
+
+vxgeDTIFaceAdd  NOTIFICATION-TYPE
+    OBJECTS     { vxgeDEDesc }
+    STATUS      current
+    DESCRIPTION
+        "A new network interface has been plugged in"
+    ::= { vxgeDeviceTraps 1 }
+
+vxgeDTIFaceRemove  NOTIFICATION-TYPE
+    OBJECTS     { vxgeDEDesc }
+    STATUS      current
+    DESCRIPTION
+        "A network interface has been plugged out"
+    ::= { vxgeDeviceTraps 2 }
+
+vxgeDTLinkUp  NOTIFICATION-TYPE
+    OBJECTS     { vxgeDEDesc }
+    STATUS      current
+    DESCRIPTION
+        "An Adapter has reached a link UP State"
+    ::= { vxgeDeviceTraps  3 }
+
+vxgeDTLinkDown  NOTIFICATION-TYPE
+    OBJECTS     { vxgeDEDesc }
+    STATUS      current
+    DESCRIPTION
+        "An Adapter has reached a link DOWN State"
+    ::= { vxgeDeviceTraps  4 }
+
+vxgeDTEnable  OBJECT-TYPE
+    SYNTAX      INTEGER {
+                    disabled(0),
+                    enabled(1) }
+    MAX-ACCESS  read-write
+    STATUS      current
+    DESCRIPTION 
+        "Enable or Disable Traps for the network interface"
+    ::= { vxgeDeviceEvents 2  }
+
+END
+

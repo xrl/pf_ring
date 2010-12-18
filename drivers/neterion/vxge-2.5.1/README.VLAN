@@ -1,0 +1,1 @@
+By default the driver configures the adapter to strip the vlan tag. If you need to see the vlan tag this behavior can be changed by setting the param, vlan_tag_strip=0, on load.

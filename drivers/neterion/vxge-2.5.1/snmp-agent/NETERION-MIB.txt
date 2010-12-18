@@ -1,0 +1,40 @@
+-- ****************************************************************************
+-- Neterion Inc SNMP Management Identifiers
+--
+-- Copyright(c) 2002-2010 Exar Inc.
+-- All rights reserved.
+-- ****************************************************************************
+
+Neterion-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY,
+    enterprises
+        FROM SNMPv2-SMI;
+
+neterion  MODULE-IDENTITY
+
+    LAST-UPDATED "200907070430Z"
+    ORGANIZATION "Neterion, Inc."
+    CONTACT-INFO
+        "       Neterion, Inc.
+        Postal: 20230 Stevens Creek Blvd, Suite C
+                Cupertino, CA 95014
+                USA
+        Tel:    +1 408 366 4600
+        E-mail: support@neterion.com"
+    DESCRIPTION
+        "This is the top-level registry for object identifiers 
+        for SNMP managed products that are manufactured or 
+        distibuted by Neterion."
+    -- Revision History
+    
+    REVISION    "200907070430Z"
+    DESCRIPTION
+        "The initial release of this information module."
+    ::= { enterprises 12808 }      -- Assigned by IANA
+
+neterionProducts  OBJECT IDENTIFIER
+    ::= { neterion 1 }
+
+END

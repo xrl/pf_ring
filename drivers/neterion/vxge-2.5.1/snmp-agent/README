@@ -1,0 +1,96 @@
+		README for vxge net-snmp agent module
+		=====================================
+
+1. GENERAL:
+   --------
+	This document covers the installation and configuration of Neterion's
+	vxge agent for net-snmp.
+
+2. INSTALLATION:
+   -------------
+	2.1 Dependency:
+		1) A latest version of net-snmp library and user command-tools 
+                   are need to be installed.
+                2) SNMP supported vxge linux device driver. The driver has to 
+                   be compiled with VXGE_SNMP macro for enabling it. On loading
+                   the driver, it will create two proc files, 'base' and 
+                   'dev_table' in /proc/net/vxge/ directory.
+
+        2.2 Build:
+                The agent can be compiled and installed by,
+                        cd agent;
+                        make clean all; 
+                        make install;
+                Please note the installed directories of mib files and agent
+                module.
+		
+3. CONFIGURATION:
+   --------------
+        Mainly net-snmp module has 3 configuration files, snmp.conf, snmpd.conf
+        and snmptrapd.conf. If any of these files are not yet created, 
+        'snmpconf' cammand tool can assist you to set up these file using an 
+        interactive session. The following modification is required,
+
+        3.1 mib file configuration:
+                1) Add the following lines to snmp.conf file
+                        mibs +Neterion-MIB
+                        mibs +Neterion-vxge-MIB
+
+        3.2 agent configuration:
+                1) vxge agent has to be configured for dynamic loading. Add the
+                   below lines to snmpd.conf
+                        view systemview included .1.3.6.1.4.1.12808.1.2
+                        dlmod vxge /usr/local/vxge/vxge.so
+
+        3.3 trap configuration:
+                vxge agent supports notification of traps. We need to configure
+                the traphandle in file snmptrapd.conf. An example is given,
+
+                traphandle 1.3.6.1.4.1.12808.1.2.2.1.1.3 /usr/local/vxge/up.sh
+                traphandle 1.3.6.1.4.1.12808.1.2.2.1.1.4 /usr/local/vxge/down.sh
+                
+		The scripts up.sh and down.sh will be executed whenever a trap 
+                is received for link up or link down state respectively. The 
+                scripts can be written for logging a message to a temporary 
+                file.
+
+4. TESTING:
+   --------
+        The below are some hands-on commands to verify the configuration and 
+        run the snmp commands. We should start the daemons 'snmpd' and 
+        'snmptrapd' before executing the below commands.
+        
+        1) mib verification:
+                snmp command 'snmptranslate' can read the vxge mib objects, 
+                if the mib files are properly loaded. For eg:
+		#for listing the OID of vxge object
+                >>snmptranslate -IR -Td vxge
+                #list all the objects in a tree 
+                >>snmptranslate -IR -Tp vxge
+
+        2) snmp get and set operations:
+                These commands require the community string to be configured.
+
+                A sample configuration to be modified in snmpd.conf file.
+                        #configure community string 'public' for read ops
+                        #with local host address
+                        rocommunity public 127.0.0.1
+                        #configure community string 'private' write  read ops
+                        #with local host address
+                        rocommunity private 127.0.0.1
+
+                From command prompt, execute the following commands,
+                #get the value for object vxge base driver name.
+                snmpget -v 2c -c public 127.0.0.1 vxgeBDName.0
+                #set the object 'trap enable' for enabling traps
+                snmpget -v 2c -c private 127.0.0.1 vxgeDTEnable.0 i 1
+
+        3) Dump all the vxge objects:
+                snmpwalk -v 2c -c public 127.0.0.1 vxge
+
+5. TROUBLE-SHOOTING:
+   -----------------
+        net-snmp will log all error messages normally to /var/log/net-snmpd.log.
+        It is recommended to monitor this file from a terminal while setting up
+        the vxge agent for the first time
+                >>tail -f /var/log/net-snmpd.log     

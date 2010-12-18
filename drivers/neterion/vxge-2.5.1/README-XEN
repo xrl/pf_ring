@@ -1,0 +1,688 @@
+''' __Readme for X3100 Xen Driver__ '''
+
+=== Introduction ===
+Xen Driver for X3100 Series 10GbE Server/Storage Adapters
+ * This driver supports X3100 Series 10GbE adapters for Xenserver 5.5 and Xenserver 5.6 
+ * Supports several features such as jumbo frames, MSI-X, checksum offloads, TSO, UFO and so on.
+
+=== Features supported ===
+
+     I/O Virtualization Offloads 
+       Driver configurations for the following function modes -
+
+       Single function mode
+         1 function with 17 VPaths
+
+       Multi function mode
+         8 functions with 2 VPaths per function
+         17 functions, 1 VPath/Function with PCIe ARI
+         2 functions, 8 VPaths/Function
+         4 Functions, 4 VPaths/Function
+
+       PCI-SIG's I/O Virtualization: 
+         Single Root mode: v1.0 
+           17 VFs with 1 VPath per VF
+           1PF + 7VF, 2 VPaths/Function
+           1PF + 3VF, 4 VPaths/Function
+
+         Multi-Root mode: v1.0 
+           17 Virtual Hierarchies, 1 VPath/Function/Hierarchy
+           8 Virtual Hierarchies, 2 VPaths/Function/Hierarchy
+           4 Virtual Hierarchies, 4 VPaths/Function/Hierarchy
+
+     Device management
+       Management of all functions and device from privileged function.
+
+     Service level configurations
+       Independent configuration of bandwidth and priority per function.
+
+     Virtual ethernet bridge (VEB)
+       Embedded layer 2 switch segmented per function for inter function 
+       communication.
+
+     IEEE 802.3ad Link aggregation and fail over
+       The standard link aggregation can be offloaded with the dual 
+       port X3120 adapter.
+
+     IEEE 802.3X pause frame and 802.3P/Q VLAN tag support
+       Features can be enabled and disabled through the driver.
+
+     MAC address filtering
+       Hardware address filter with learning and ageing for up to 512
+       entries/ranges.  Dynamically enable a VPath per function to receive
+       traffic if the hardware DA filter is full.
+
+     Port configuration
+       Configurable hardware-based fail over and link aggregation modes.
+
+     Video streaming
+       Allow UDP segmentation offload for UDP packets which would
+       otherwise be fragmented and configurable inter-packet pacing for video
+       streaming applications.
+
+     Jumbo frames 
+       X3100 Series supports MTU up to 9600 bytes, modifiable using ifconfig
+       command.
+
+     Offloads supported
+       Checksum offload (TCP/UDP/IP) on transmit and receive paths
+       TCP Segmentation Offload (TSO) on transmit path
+       Large Receive Offload (LRO, TCP aggregation) on receive path
+
+     MTU
+       Independent MTU configuration for functions with a maximum of 9600
+       Bytes.
+
+     MSI-X 
+       Can be enabled on platforms which support it, resulting in noticeable
+       performance improvement (up to 7% on certain platforms).
+
+     NAPI
+       For better Rx interrupt moderation.
+
+     RTH (Receive Traffic Hash)
+       Receive side steering for better scaling.
+
+     Statistics 
+       Comprehensive MAC-level and software statistics displayed using
+       "ethtool -S" option.
+
+     Multi-Vpaths
+       Up to 17 hardware based transmit and receive data channels, with 
+       multiple steering options.
+
+=== Driver installation, load and unload instructions ===
+
+* Drivers for Xenservers can be installed from the rpm packages.
+
+   a) New install:
+     # rpm -ivh vxge-<version>.<arch>-<distro>.rpm
+     where <arch> is the architecture of the linux distribution, 
+       e.g.
+     # rpm -ivh vxge-2.0.18.19393-1.i386-xen5.5.rpm
+
+   The driver will be installed in:     
+       /lib/modules/<kernel_version>/kernel/drivers/net/
+
+   The following supporting files will also be installed:
+       vquery.sh, sysctl_neterion_1500.conf,
+       sysctl_neterion_9000.conf will be installed in /usr/local/vxge/
+
+       README will be installed in /usr/share/doc/vxge-<version>
+
+   b) Install over the same or newer package:
+     # rpm -ivh --force vxge-<version>.<arch>-<distro>.rpm
+
+   c) Upgrade an older package:
+     # rpm -Uvh vxge-<version>.<arch>-<distro>.rpm
+
+* Loading the driver.
+  $modprobe vxge
+  NOTE: vxge driver may have module dependency and hence loading 
+        the driver using 'insmod' can cause 'Unknown symbol' error. 
+
+* Unloading the driver, 
+  $rmmod vxge
+
+=== Driver configurable options ===
+
+  The following loadable options can be specified on the command line during
+  driver load.  See bottom of this section for automatically setting at boot.
+     Usage: modprobe vxge <option1>=<value> <option2>=<value> .. <optionN>=<value>
+
+     exec_mode:
+       Enables debug mode.
+       0 - disabled (default)
+       1 - enabled
+
+     func_mode:
+       Changes the PCI function mode.
+       0  - SF1_VP17 (1 function, 17 Vpaths)
+       1  - MF8_VP2  (8 functions, 2 Vpaths per function)
+       2  - SR17_VP1 (17 VFs, 1 Vpath per VF)
+       3  - MR17_VP1 (17 Virtual Hierarchies, 1 Path/Function/Hierarchy)
+       4  - MR8_VP2  (8 Virtual Hierarchies, 2 Path/Function/Hierarchy)
+       5  - MF17_VP1 (17 functions, 1 Path/Function (PCIe ARI))
+       6  - SR8_VP2  (1PF, 7VF, 2 Paths/Function)
+       7  - SR4_VP4  (1PF, 3VF, 4 Paths/Function)
+       8  - MF2_VP8  (2 functions, 8 Paths/Function)
+       9  - MF4_VP4  (4 Functions, 4 Paths/Function)
+       10 - MR4_VP4  (4 Virtual Hierarchies, 4 Paths/Function/Hierarchy)
+
+     fw_upgrade:
+       Upgrades adapter firmware or firmware and boot ROM.
+       1 - Upgrade firmware for all adapters (default)
+       2 - Upgrade firmware and boot ROM for all adapters. Forces upgrade even
+           if current fw version is same as the certified fw version.
+
+     intr_adapt:
+       Enables adaptive interrupt coalescing.
+       0 - disabled
+       1 - enabled (default)
+
+     intr_type:
+       Specifies interrupt type.
+       0 - INTA
+       2 - MSI-X (default)
+       Note: This default can be overridden by specifying "intr_type=0" on the
+       command line.
+
+     lro:
+       Enables/disables Large Receive Offload (LRO).
+       0 - disabled
+       1 - enabled (default)
+
+     max_config_dev:
+       Specifies maximum device functions to be enabled.
+       Valid range: 1-8
+       Default: Optimized by driver
+
+     max_config_vpath:
+       Specifies maximum VPATH(s) configured for each device function.
+       Valid range: 1-17
+       Default: Optimized by driver
+
+     napi: (ESX 4 only)
+       Enables/disables NAPI support.
+       Automatically disabled when intr_type is set to MSI-X on kernels below
+       2.6.24.
+       0 - disabled
+       1 - enabled (default)
+
+     promisc_en:
+       Enable promisous mode for privileged function.
+       0 - disabled (default)
+       1 - enabled
+
+     promisc_all_en:
+       Enable promisous mode for all functions.
+       0 - disabled (default)
+       1 - enabled
+
+     rx_pause_enable:
+       Enables response to received pause frames.
+       0 - disabled
+       1 - enabled (default)
+
+     rx_steering_type:
+       Specifies criteria for steering received packets.
+       0 - disabled
+       1 - L4 port
+       2 - RTH (default; when system supports MSI-X and has more than 4 CPUs)
+       3 - priority
+       4 - VLAN ID
+
+     stats_read_method:
+       Specifies the stats read method.
+       0 - PIO (default)
+       1 - DMA
+
+     tx_pause_enable:
+       Enables pause frame generation.
+       0 - disabled
+       1 - enabled (default)
+
+     tx_steering_type
+       Specifies criteria for steering transmitted packets.
+       0 - disabled
+       1 - priority
+       2 - VLAN ID
+       3 - multiq
+       4 - L4 Port (default)
+
+     udp_stream:
+       Enables/disables UDP segmentation offload for UDP packets which would
+       otherwise be fragmented.  Enabling this means that large UDP packets will
+       be split into multiple UDP packets. This feature can be used for UDP
+       video streaming.
+       0 - disabled (default)
+       1 - enabled
+
+  L2 Configurable Options
+
+     catch_basin_mode:
+       Allow incoming traffic even if a destination MAC address 'hit' does not
+       occur in the DA MAC filter table.
+       0 - disable always
+       1 - enable always
+       2 - enable/disable dynamically (default)
+
+     l2_switch:
+       Enables/disables inter-function traffic through the VEB, virtual ethernet
+       bridge or L2 switch.
+       0 - Disallow inter-function traffic
+       1 - Allow inter-function traffic
+
+     max_mac_vpath:
+       Number of entries reserved in the hardware DA MAC table filter per vpath.
+       Valid range: 30-512
+       Default: 30
+
+     vlan_tag_strip:
+       Enables/disables vlan tag stripping from all received tagged frames that
+       are not replicated at the internal L2 switch.
+       0 - disabled
+       1 - enabled (default)
+
+  Hardware Traffic Shaping Options
+
+     bw:
+       Specifies the max transmit and receive bandwidth per function in Mbps.
+       Applies the same value to tx and rx. 
+       Minimum value is 100 Mbps for 1.5k MTU and 300 Mbps for 9k MTU.
+       Note: This configuration overrides the value present in tx_bw and rx_bw.
+
+     priority:
+       Specifies the priority level for a function
+       Minimum value is 0 (highest priority), max value is 3 (lowest priority)
+
+     rx_bw:
+       Specifies the max receive bandwidth per function in Mbps.
+       Minimum value is 100 Mbps for 1.5k MTU and 300 Mbps for 9k MTU.
+
+     tx_bw:
+       Specifies the max transmit bandwidth per function in Mbps.
+       Minimum value is 100 Mbps for 1.5k MTU and 300 Mbps for 9k MTU.
+
+  Dual-port Adapter Options
+
+     port_mode:
+       Changes the default dual port mode
+       0 - Default
+       1 - Reserved
+       2 - Active/Passive
+       3 - Single Port (2nd port offline for dual port adapter)
+       4 - Active/Active
+
+  Boot time configuration
+     To load option(s) at boot time, add the option(s) to /etc/modprobe.conf.
+       Example:
+         alias eth# vxge
+         options vxge rx_steering_type=2
+
+'' Adapter/interface identification ''
+
+1. Insert the adapter(s) in your system.
+
+2. Load driver 
+     #modprobe vxge
+
+3. View log messages
+     # cat /var/log/messages | tail -n 40
+
+     Output similar to the following will be displayed which identifies the
+     adapter name, adapter revision, driver version, interface number, and
+     interrupt type:
+
+     eth3: Neterion X3110 Single-Port SR 10GbE Server Adapter
+     eth3: SERIAL NUMBER: XXXXXXXXXX
+     eth3: PART NUMBER: X3110SR0003
+     eth3: MAC ADDR: 00:0C:FC:XX:XX:XX
+     eth3: Link Width x8
+     eth3: Firmware version : 1.5.2 Date : 11/04/2009
+     eth3: Single Function - 1 func, 17 vpath Enabled
+     eth3: 1 Vpath(s) opened
+     eth3: Interrupt type MSI-X
+     eth3: RTH steering disabled
+     eth3: Tx steering disabled
+     eth3: Large receive offload enabled
+     eth3: NAPI enabled
+     eth3: Adaptive interrupt coalescing enabled
+     eth3: VLAN tag stripping enabled
+     eth3: Network port mode : Single Port
+
+     To associate an interface with a physical adapter use "ethtool -p <eth#>".
+     The corresponding adapter's link LED will blink for ~1 minute.
+
+=== Adapter management ===
+
+ The driver ships with a management utility to configure the adapter through the 
+     previlaged function i.e Function 0.
+     You can run ./vxge-manage to get a list of supported operations
+     # ./vxge-manage
+     vxge-manage -i <privilaged interface name>  <OPTIONS>
+
+     OPTIONS
+         -a mrpcim
+                MRPCIM stats for privilege operations
+         ...
+         ...
+         -q promisc_config -v <0/1> (disable/enable)
+                Promiscuous mode config
+
+     For eg. Below is an example to get the total number of configured mac address 
+           for the entire device
+     # ./vxge-manage -i vmnic3  -b no_dev_macaddr
+     Num of MAC Addresses = 17
+
+     Assuming eth1 is the PF,
+     1. Display MRPCIM statistics
+        ./vxge-manage -i eth1 -a mrpcim
+
+     2. Display Virtual Function 1 vpath statistics
+        ./vxge-manage -i eth1 -a VFStats -p 1
+
+     3. Display total number of MAC address for the entire device
+        ./vxge-manage -i eth1 -b no_dev_macaddr
+     eg output:
+        Num of MAC Addresses = 22
+
+     4. Display all the MAC addresses of the entire device
+        ./vxge-manage -i eth1 -b dev_macaddr
+     eg output:
+	Num of MAC Addresses = 22
+	VP: 0 UCAST ADDR-00:0c:29:b4:53:9e
+	VP: 0 UCAST ADDR-00:0c:fc:00:ba:5c
+	VP: 0 UCAST ADDR-00:50:56:4e:32:34
+	VP: 8 UCAST ADDR-00:0c:fc:00:ba:5c
+	VP:16 UCAST ADDR-00:0c:fc:00:ba:5c
+	VP: 1 UCAST ADDR-00:0c:29:e2:29:92
+	VP: 1 UCAST ADDR-00:0c:fc:00:ba:5d
+	VP: 1 UCAST ADDR-00:50:56:47:6e:70
+	VP: 1 UCAST ADDR-00:50:56:4d:e8:42
+	VP: 9 UCAST ADDR-00:0c:fc:00:ba:5d
+	VP: 2 UCAST ADDR-00:0c:fc:00:ba:5e
+	VP:10 UCAST ADDR-00:0c:fc:00:ba:5e
+	VP: 3 UCAST ADDR-00:0c:fc:00:ba:5f
+	VP:11 UCAST ADDR-00:0c:fc:00:ba:5f
+	VP: 4 UCAST ADDR-00:0c:fc:00:ba:60
+	VP:12 UCAST ADDR-00:0c:fc:00:ba:60
+	VP: 5 UCAST ADDR-00:0c:fc:00:ba:61
+	VP:13 UCAST ADDR-00:0c:fc:00:ba:61
+	VP: 6 UCAST ADDR-00:0c:fc:00:ba:62
+	VP:14 UCAST ADDR-00:0c:fc:00:ba:62
+	VP: 7 UCAST ADDR-00:0c:fc:00:ba:63
+	VP:15 UCAST ADDR-00:0c:fc:00:ba:63
+
+     5. Display total number of MAC address for Virtual Function 2
+        ./vxge-manage -i eth1 -b no_vp_macaddr -p 2
+     eg output:
+	MAC Addresses for VF 2 = 2
+
+     6. Display all the MAC addresses of Virtual Function 2
+        ./vxge-manage -i eth1 -b vp_macaddr -p 2
+     eg output:
+	MAC Addresses for VF 2 = 2
+	VP: 2 UCAST ADDR-00:0c:fc:00:ba:5e
+	VP:10 UCAST ADDR-00:0c:fc:00:ba:5e
+
+     7. Add 00:01:02:03:04:05 to Virtual Function 3
+        ./vxge-manage -i eth1 -e add_vp_macaddr -p 3 -m 000102030405 -n 0
+     eg output:
+	Adding of Mac addr Passed
+
+     8. Delete 00:01:02:03:04:05 to Virtual Function 3
+        ./vxge-manage -i eth1 -e del_vp_macaddr -p 3 -m 000102030405 -n 0
+     eg output:
+	Deleting of Mac addr Passed
+
+     9. Display total number of VLANs configured on the entire device
+        ./vxge-manage -i eth1 -f no_dev_vlans
+     eg output:
+	Number of VLANs for the device = 7
+
+     10. Display all the VLANs of the entire device
+        ./vxge-manage -i eth1 -f dev_vlans
+     eg output:
+	Number of VLANs for the device = 7
+	VP:0 VLAN :2 
+	VP:8 VLAN :2 
+	VP:16 VLAN :2 
+	VP:1 VLAN :5 
+	VP:1 VLAN :6 
+	VP:9 VLAN :5 
+	VP:9 VLAN :6 
+
+     11. Display total number of VLANs for Virtual Function 4
+        ./vxge-manage -i eth1 -f no_vp_vlans -p 4
+     eg output:
+	Number of VLANs = 2
+
+     12. Display all the VLANs of Virtual Function 4
+        ./vxge-manage -i eth1 -b vp_macaddr -p 4
+     eg output:
+	Number of VLANs = 2
+	VP:4 VLAN :10 
+	VP:12 VLAN :10 
+
+     13. Add VLAN 100 to Virtual Function 5
+        ./vxge-manage -i eth1 -j add_vp_vlans -p 5 -l 100
+     eg output:
+	vlan id = 100
+	Adding of VLAN ID Passed
+
+     14. Delete VLAN 100 to Virtual Function 5
+        ./vxge-manage -i eth1 -j del_vp_vlans -p 5 -l 100
+     eg output:
+	Deleting of VLAN ID Passed
+
+     15. Set the Tx/Rx Bandwidth of Virtual Function 6 to 1000/2000 Mbps
+        ./vxge-manage -i eth1 -q bw_config -p 6 -t 1000 -r 2000 -o 1
+     eg output:
+	Setting RX & TX Bandwidth for VF 6 to 2000 1000
+	Rx Bandwidth limit for VF 6 is 2000 Mbps
+	Tx Bandwidth limit for VF 6 is 1000 Mbps
+
+     16. Get the Tx/Rx Bandwidth of Virtual Function 6
+        ./vxge-manage -i eth1 -q bw_config -p 6 -o 0
+     eg output:
+	Rx Bandwidth limit for VF 6 is 2000 Mbps
+	Tx Bandwidth limit for VF 6 is 1000 Mbps
+
+     17. Set Virtual Function 6 Rx bandwidth to 3 Gbps
+        ./vxge-manage -i eth1 -q rx_bw_config -p 6 -r 3000 -o 1
+     eg output:
+	Rx Bandwidth limit for VF 6 is 3000 Mbps
+
+     18. Get Virtual Function 6 Tx bandwidth 
+        ./vxge-manage -i eth1 -q tx_bw_config -p 6 -o 0
+     eg output:
+	Tx Bandwidth limit for VF 6 is 1000 Mbps
+
+     19. Set Virtual Function 6 Rx Priority to 2
+        ./vxge-manage -q prio_config -p 6 -v 2 -o 1
+     eg output:
+	Priority for VF 6 is 2 
+
+     20. Enable Tx pause frame generation and disable Rx pause frames
+        ./vxge-manage -i eth1 -q flow_ctrl -t 1 -r 0 -o 1
+     eg output:
+	Pause parameters:
+	Tx: 1 Rx 0
+
+     21. Get flow control information for the device
+        ./vxge-manage -i eth1 -q flow_ctrl -o 0
+     eg output:
+	Pause parameters:
+	Tx: 1 Rx 0
+
+     22. Enable stripping of vlan tag from the packet for Virtual Function 7
+        ./vxge-manage -i eth1 -q vlan_config -p 7 -v 1 -o 1
+     eg output:
+	VLAN tag strip for VF 7 is Enabled
+
+     23. Get vlan tag strip flag control information for Virtual Function 7
+        ./vxge-manage -i eth1 -q vlan_config -p 7 -o 0
+     eg output:
+	VLAN tag strip for VF 7 is Enabled
+
+     24. Enable/Disable promiscuous mode on privilaged function 1st physical port
+        ./vxge-manage -i eth1 -q promisc_on_port0 -v <0/1> (disable/enable)
+     eg output:
+        Enabled/Disabled Promisc mode on PF's port0
+
+     25. Enable/Disable promiscuous mode on privilaged function 2nd physical port
+        ./vxge-manage -i eth1 -q promisc_on_port1 -v <0/1> (disable/enable)
+     eg output:
+        Enabled/Disabled Promisc mode on PF's port1
+
+     26. Enable/Disable mirror VEB on privilaged function 1st physical port
+        ./vxge-manage -i eth1 -q mirror_veb_on_port0 -v <0/1> (disable/enable)
+     eg output:
+        Enabled/Disabled Mirror VEB on PF's port0
+
+     27. Enable/Disable mirror VEB on privilaged function 2nd physical port
+        ./vxge-manage -i eth1 -q mirror_veb_on_port1 -v <0/1> (disable/enable)
+     eg output:
+        Enabled/Disabled Mirror VEB on PF's port1
+
+Note: 
+     - Virtual function range is from 0 to 7
+     - Priority range is from 0 to 3
+     - BW range is from 10 to 10000 Mbps
+
+=== Performance Suggestions ===
+
+1. Set MTU to maximum(9000 for switch setup, 9600 in back-to-back 
+     configuration)
+
+2. Set TCP windows size to optimal value. 
+     For instance
+        For MTU=1500 a value of 210K has been observed to result in 
+        good performance.
+	  # sysctl -w net.ipv4.tcp_rmem="210000 210000 210000"
+	  # sysctl -w net.ipv4.tcp_wmem="210000 210000 210000"
+       or apply sysctl.conf file from driver tarball
+         # sysctl -p sysctl_xframe1500.conf
+
+        For MTU=9000, TCP window size of 10 MB is recommended.
+	  # sysctl -w net.ipv4.tcp_rmem="10000000 10000000 10000000"
+	  # sysctl -w net.ipv4.tcp_wmem="10000000 10000000 10000000"
+       or apply sysctl.conf file from driver tarball
+         # sysctl -p sysctl_xframe9000.conf
+
+''Transmit performance:''
+
+1. Ensure Transmit Checksum offload and TSO are enabled. 
+   Use ethtool to verify/set these parameters.
+
+     # ethtool -k eth#
+     Offload parameters for eth0:
+     rx-checksumming: on
+     tx-checksumming: on
+     scatter-gather: on
+     tcp segmentation offload: off
+
+   Turn on Transmit Checksum offload and TSO:
+     # ethtool -K eth# tx on
+     # ethtool -K eth# tso on (for 2.6 kernels)
+
+2. Enable Jumbo Frames
+   Jumbo Frames allows the host to send larger frames out onto the physical
+   network.  The network must support Jumbo Frames end to end for Jumbo Frames
+   to be effective.  Jumbo Frames up to 9kB (9000 Bytes) are supported.
+
+   Jumbo Frames must be enabled for each pif and vif
+   # ifconfig ethX mtu 9000 up
+   # ifconfig vifX.Y mtu 9000 up
+   You can see that xenbrX will also have 9000 mtu.    
+
+   Now change the mtu of the guest interface ethX within the VM.
+   # ifconfig ethX mtu 9000 up
+
+''Receive performance:''
+
+1. Ensure Receive Checksum offload is enabled. Use ethtool to verify/set.
+     # ethtool -k eth#
+     # ethtool -K eth# rx on
+
+2. If MTU is set to 1500, receive performance can be improved by increasing
+   the default TCP window size and enabling LRO (see "Configurable driver
+   parameters" section). 
+     # sysctl -p sysctl_neterion_1500.conf
+
+3. Enable NAPI to bring down CPU utilization.
+
+'' Ethtool Support ''
+
+Ethtool is useful for driver configuration, diagnostics and displaying
+statistical information.  The latest version of Ethtool is available on the 
+SourceForge site at http://sourceforge.net/projects/gkernel/
+
+     ethtool eth#
+       Displays current device settings
+
+     ethtool -a eth#
+       Displays pause parameter information.
+
+     ethtool -A eth#
+       Changes pause parameters.
+
+     ethtool -d eth#
+       Retrieves and prints a register dump for the specified ethernet device.
+
+     ethtool -e eth# [raw on|off] [offset N] [length N]
+       Retrieves and prints an EEPROM dump for the specified ethernet device.
+       When raw is enabled, then it dumps the raw EEPROM data to stdout. The
+       length and offset parameters allow  dumping certain portions of the
+       EEPROM.  Default is to dump the entire EEPROM.
+
+     ethtool -E eth# [magic N] [offset N] [value N]
+       Changes  EEPROM  byte for the specified ethernet device.  Offset and
+       value specify which byte and its new value.  Because of the persistent
+       nature of writing to the EEPROM, a device-specific magic key must be
+       specified to prevent the accidental writing to the EEPROM.
+
+     ethtool -g ethx
+       Displays rx/tx ring parameter information.
+
+     ethtool -i eth#
+       Displays device driver information
+
+     ethtool -k eth#
+       Displays offload parameters information.
+
+     ethtool -K eth# [rx on|off] [tx on|off] [sg on|off] [tso on|off]
+       Changes offload parameters.
+
+         rx - RX checksum offload
+         tx - TX checksum offload
+         sg - scatter-gather
+         tso - TCP Segmentation Offload
+
+     ethtool -p eth# [N]
+       Initiates adapter-specific action intended to enable an operator to
+       easily identify the physical adapter by sight.  Typically this involves
+       blinking one or more LEDs on the specified ethernet port.
+
+         N - Length of time to perform phys-id, in seconds.
+
+     ethtool -S eth#
+       Displays adapter and driver statistics.
+
+     ethtool -t eth# [offline|online]
+       Executes adapter selftest on the specified ethernet device. Possible
+       test modes are:
+
+         offline (default) - performs full set of tests, possibly interrupting
+           normal adapter operation during the tests.
+         online - performs limited set of tests, not interrupting normal
+           adapter operation.
+
+'' Troubleshooting '' 
+
+For X3100 adapter assigned eth2
+
+Statistics Dump:
+     # ethtool –S eth2 
+
+Register Dump:
+     # ethtool –d eth2
+
+=== Known Issues ===
+
+X3120 SF mode mapped to port 0:
+
+     Until hw failover modifications are complete for X3120, SF mode is supported 
+     with the function permanently mapped to port 0 
+     (port 1 is effectively not in use). 
+
+=== Available Downloads ===
+
+   For latest available Xen drivers or further support please 
+   contact your network adapter provider or email neterionsupport@exar.com. 
+
+===================================================================
+ Exar Inc./Neterion Inc. Proprietary
+ COPYRIGHT (c) 2010- Exar Inc., 
+ COPYRIGHT (c) 2002-2010 Neterion Inc, ALL RIGHTS RESERVED
