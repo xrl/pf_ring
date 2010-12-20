@@ -90,7 +90,10 @@
 #endif
 #include <net/ip.h>
 #include <net/ipv6.h>
+
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
 #include <linux/eventfd.h> /* needed by vPFRing */
+#endif
 
 #include <linux/pf_ring.h>
 
@@ -1683,11 +1686,12 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
     wake_up_interruptible(&pfr->ring_slots_waitqueue);
 
-  /* signaling on vPFRing's eventfd ctx when needed */
-  if (pfr->vpfring_ctx && !(pfr->slots_info->vpfring_guest_flags & VPFRING_GUEST_NO_INTERRUPT)) {
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
+  /* Signaling on vPFRing's eventfd ctx when needed */
+  if(pfr->vpfring_ctx && (!(pfr->slots_info->vpfring_guest_flags & VPFRING_GUEST_NO_INTERRUPT))) {
      eventfd_signal(pfr->vpfring_ctx, 1);
   }
-
+#endif
 }
 
 /* ********************************** */
@@ -3015,9 +3019,11 @@ static int ring_release(struct socket *sock)
   sock_put(sk);
   write_unlock_bh(&ring_mgmt_lock);
 
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
   /* Release the vPFRing eventfd */
   if (pfr->vpfring_ctx)
     eventfd_ctx_put(pfr->vpfring_ctx);
+#endif
 
   if(pfr->appl_name != NULL)
     kfree(pfr->appl_name);
@@ -3832,8 +3838,10 @@ static int ring_setsockopt(struct socket *sock,
   u_int16_t rule_id, rule_inactivity;
   packet_direction direction;
   hw_filtering_rule hw_rule;
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
   struct vpfring_eventfd_info eventfd_i;
   struct file *eventfp;
+#endif
 
   if(pfr == NULL)
     return(-EINVAL);
@@ -4449,6 +4457,7 @@ static int ring_setsockopt(struct socket *sock,
     }
     break;
 
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
     case SO_SET_VPFRING_EVENTFD:
       if(optlen != sizeof(eventfd_i))
         return -EINVAL;
@@ -4462,6 +4471,7 @@ static int ring_setsockopt(struct socket *sock,
     
       pfr->vpfring_ctx = eventfd_ctx_fileget(eventfp);
     break;
+#endif
 
   default:
     found = 0;
