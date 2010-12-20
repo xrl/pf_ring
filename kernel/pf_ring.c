@@ -280,7 +280,7 @@ MODULE_PARM_DESC(enable_ip_defrag,
 /* Redhat backports these functions to 2.6.18 so do nothing */
 #else
 
-#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24))
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,23))
 static inline void skb_reset_network_header(struct sk_buff *skb) {
   /* skb->network_header = skb->data - skb->head; */
 }
@@ -1686,7 +1686,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
     wake_up_interruptible(&pfr->ring_slots_waitqueue);
 
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
   /* Signaling on vPFRing's eventfd ctx when needed */
   if(pfr->vpfring_ctx && (!(pfr->slots_info->vpfring_guest_flags & VPFRING_GUEST_NO_INTERRUPT))) {
      eventfd_signal(pfr->vpfring_ctx, 1);
@@ -3019,7 +3019,7 @@ static int ring_release(struct socket *sock)
   sock_put(sk);
   write_unlock_bh(&ring_mgmt_lock);
 
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
   /* Release the vPFRing eventfd */
   if (pfr->vpfring_ctx)
     eventfd_ctx_put(pfr->vpfring_ctx);
@@ -3404,19 +3404,24 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
   skb_reset_network_header(skb);
 
   /* Try to align data part correctly */
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18))
-  if (pfr->ring_netdev->header_ops) {
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
+  if(pfr->ring_netdev->header_ops) {
     skb->data -= pfr->ring_netdev->hard_header_len;
     skb->tail -= pfr->ring_netdev->hard_header_len;
     if (len < pfr->ring_netdev->hard_header_len)
       skb_reset_network_header(skb);
   }
 #else
-  if (pfr->ring_netdev->hard_header) {
+  if(pfr->ring_netdev->hard_header) {
     skb->data -= pfr->ring_netdev->hard_header_len;
     skb->tail -= pfr->ring_netdev->hard_header_len;
-    if (len < pfr->ring_netdev->hard_header_len)
+    if (len < pfr->ring_netdev->hard_header_len) {
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18))
+      skb_reset_network_header(skb);
+#else
       skb->nh.raw = skb->data;
+#endif
+    }
   }
 #endif
 
@@ -3838,7 +3843,7 @@ static int ring_setsockopt(struct socket *sock,
   u_int16_t rule_id, rule_inactivity;
   packet_direction direction;
   hw_filtering_rule hw_rule;
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
   struct vpfring_eventfd_info eventfd_i;
   struct file *eventfp;
 #endif
@@ -4457,7 +4462,7 @@ static int ring_setsockopt(struct socket *sock,
     }
     break;
 
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,22))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
     case SO_SET_VPFRING_EVENTFD:
       if(optlen != sizeof(eventfd_i))
         return -EINVAL;
