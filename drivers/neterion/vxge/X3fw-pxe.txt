@@ -1,6 +1,0 @@
-FILE QUARANTINED
-
-The original contents of this file have been replaced with
-this message because of its characteristics.
-File name: 'winmail.dat->REL_2.5.1.22066_LX_PF_RING_SRC-vxge.tar.gz->Unknown->REL_2.5.1.22066_LX_PF_RING_SRC-vxge/X3fw-pxe.ncf'
-Virus name: 'Large uncompressed size'
