@@ -36,6 +36,7 @@ install:
 	mkdir -p $(INSTDIR)
 	cp *.ko $(INSTDIR)
 	cp linux/pf_ring.h $(DESTDIR)/usr/include/linux
+	cp linux/pf_ring.h /usr/src/$(uname -r)/include/linux/
 ifeq (,$(DESTDIR))
 	/sbin/depmod $(BUILD_KERNEL)
 endif
