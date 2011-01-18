@@ -35,6 +35,7 @@
  * - Dan Kruchinin <dkruchinin@acm.org>
  * - Andreas Tsopelas <tsopelas@kth.se>
  * - Alfredo Cardigliano <cardigliano@ntop.org>
+ * - Alex Aronson <alexa@silicom.co.il>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -939,7 +940,8 @@ static int ring_alloc_mem(struct sock *sk)
     printk("[PF_RING] successfully allocated %lu bytes at 0x%08lx\n",
 	   (unsigned long)tot_mem, (unsigned long)pfr->ring_memory);
 #endif
-    memset(pfr->ring_memory, 0, tot_mem);
+    /* Memory is already zeroed */
+    /* memset(pfr->ring_memory, 0, tot_mem); */
   } else {
     printk("[PF_RING] ERROR: not enough memory for ring\n");
     return(-1);
