@@ -16,6 +16,7 @@ HERE=$(PWD)
 
 # set the install path
 INSTDIR := $(DESTDIR)/lib/modules/$(BUILD_KERNEL)/kernel/net/pf_ring
+TARGETDIR := /usr/src/$(BUILD_KERNEL)/include/linux/
 
 all: Makefile pf_ring.c linux/pf_ring.h
 	@if test "$(USER)" = "root"; then \
@@ -36,7 +37,9 @@ install:
 	mkdir -p $(INSTDIR)
 	cp *.ko $(INSTDIR)
 	cp linux/pf_ring.h $(DESTDIR)/usr/include/linux
-	cp linux/pf_ring.h /usr/src/$(uname -r)/include/linux/
+	@if test -d ${TARGETDIR}; then \
+		cp linux/pf_ring.h ${TARGETDIR}; \
+	fi
 ifeq (,$(DESTDIR))
 	/sbin/depmod $(BUILD_KERNEL)
 endif
