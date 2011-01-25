@@ -1027,28 +1027,32 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	if(num_loops % YIELD_MULTIPLIER) {
 	  sched_yield();
 	}
-      }
+      } else {
 #endif
 
-      /* Sleep when nothing is happening */
-      pfd.fd      = ring->fd;
-      pfd.events  = POLLIN /* |POLLERR */;
-      pfd.revents = 0;
+	/* Sleep when nothing is happening */
+	pfd.fd      = ring->fd;
+	pfd.events  = POLLIN /* |POLLERR */;
+	pfd.revents = 0;
 
 #ifdef RING_DEBUG
-      printf("==>> poll [remove_off=%u][insert_off=%u][loss=%llu][tot_insert=%llu][tot_read=%llu]\n",
-	     ring->slots_info->remove_off,
-	     ring->slots_info->insert_off,
-	     ring->slots_info->tot_lost,
-	     ring->slots_info->tot_insert,
-	     ring->slots_info->tot_read);
+	printf("==>> poll [remove_off=%u][insert_off=%u][loss=%llu][tot_insert=%llu][tot_read=%llu]\n",
+	       ring->slots_info->remove_off,
+	       ring->slots_info->insert_off,
+	       ring->slots_info->tot_lost,
+	       ring->slots_info->tot_insert,
+	       ring->slots_info->tot_read);
 #endif
 
-      errno = 0;
+	errno = 0;
 
-      rc = poll(&pfd, 1, 500);
+	rc = poll(&pfd, 1, 500);
 
-      ring->num_poll_calls++;
+	ring->num_poll_calls++;
+
+#ifdef USE_ADAPTIVE_WAIT
+      }
+#endif
 
       if(rc == -1)
 	return(-1);
