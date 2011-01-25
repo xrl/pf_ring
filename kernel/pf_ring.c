@@ -1022,7 +1022,7 @@ static inline void ring_remove(struct sock *sk)
   struct list_head *ptr, *tmp_ptr;
   struct ring_element *entry, *to_delete = NULL;
   struct ring_opt *pfr_to_delete = ring_sk(sk);
-
+  u_int8_t master_found = 0, socket_found = 0;
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_remove()\n");
 #endif
@@ -1037,15 +1037,17 @@ static inline void ring_remove(struct sock *sk)
 #if defined(RING_DEBUG)
       printk("[PF_RING] Removing master ring\n");
 #endif
-      pfr->master_ring = NULL;
+      pfr->master_ring = NULL, master_found = 1;      
     } else if(entry->sk == sk) {
 #if defined(RING_DEBUG)
       printk("[PF_RING] Found socket to remove\n");
 #endif
       list_del(ptr);
       to_delete = entry;
-      ring_table_size--;
+      ring_table_size--, socket_found = 1;
     }
+
+    if(master_found && socket_found) break;
   }
 
   if(to_delete) kfree(to_delete);
@@ -2827,7 +2829,7 @@ static int ring_create(
 {
   struct sock *sk;
   struct ring_opt *pfr;
-  int err;
+  int err = -ENOMEM;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_create()\n");
@@ -2842,8 +2844,6 @@ static int ring_create(
 
   if(protocol != htons(ETH_P_ALL))
     return -EPROTONOSUPPORT;
-
-  err = -ENOMEM;
 
 #if(LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,11))
   sk = sk_alloc(PF_RING, GFP_KERNEL, 1, NULL);
@@ -2866,7 +2866,6 @@ static int ring_create(
   sk_set_owner(sk, THIS_MODULE);
 #endif
 
-  err = -ENOMEM;
   ring_sk(sk) = ring_sk_datatype(kmalloc(sizeof(*pfr), GFP_KERNEL));
 
   if(!(pfr = ring_sk(sk))) {
@@ -2893,7 +2892,6 @@ static int ring_create(
   pfr->master_ring = NULL;
   pfr->ring_netdev = &none_dev; /* Unbound socket */
   pfr->sample_rate = 1;	/* No sampling */
-  pfr->ring_pid = current->pid;
   pfr->ring_id = ring_id_serial++;
 
   ring_proc_add(pfr);
@@ -3267,8 +3265,6 @@ static int ring_mmap(struct file *file,
   } else {
     int count = pfr->mmap_count;
     /* DNA Device */
-    if(pfr->dna_device == NULL)
-      return(-EAGAIN);
 
     printk("[PF_RING] mmap count(%d)\n", count);
 
@@ -5025,7 +5021,9 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 
     if(dev->pfring_ptr == NULL) {
       dev->pfring_ptr = &ring_hooks;
-      add_device_to_ring_list(dev);
+      if(add_device_to_ring_list(dev) != 0) {
+	printk("[PF_RING] Error in add_device_to_ring_list(%s)\n", dev->name);
+      }
     }
     break;
 
