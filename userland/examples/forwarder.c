@@ -224,10 +224,12 @@ int main(int argc, char* argv[])
   char *in_dev = NULL, *out_dev = NULL, c;
   int promisc = 1;
   filtering_rule rule;
+  hash_filtering_rule hash_rule;
+  int	filter_only_one_type = 0;
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv, "hi:o:c:nv")) != -1) 
+  while((c = getopt(argc,argv, "hi:o:c:fnv")) != -1) 
   {
     switch(c) 
     {
@@ -243,6 +245,9 @@ int main(int argc, char* argv[])
 	break;
       case 'n':
 	promisc = 0;
+	break;
+      case 'f':
+	filter_only_one_type = 1;
 	break;
       case 'v':
 	verbose = 1;
@@ -263,32 +268,52 @@ int main(int argc, char* argv[])
   }  else
     pfring_set_application_name(pd, "forwarder");
 
-  /* reflect all TCP packets received on in_dev -> out_dev */
-  memset(&rule, 0, sizeof(rule));
-  rule.rule_id = 1;
-  rule.rule_action = reflect_packet_and_stop_rule_evaluation;
-  rule.core_fields.proto = 6 /* tcp */;
-  snprintf(rule.reflector_device_name, REFLECTOR_NAME_LEN, "%s", out_dev);
+  if(!filter_only_one_type) {
+     /* reflect all TCP packets received on in_dev -> out_dev */
+     memset(&rule, 0, sizeof(rule));
+     rule.rule_id = 1;
+     rule.rule_action = reflect_packet_and_stop_rule_evaluation;
+     rule.core_fields.proto = 6 /* tcp */;
+     snprintf(rule.reflector_device_name, REFLECTOR_NAME_LEN, "%s", out_dev);
 
-  if(pfring_add_filtering_rule(pd, &rule) < 0) {
-    printf("pfring_add_filtering_rule() failed\n");
-    pfring_close(pd);
-    return(-1);
-  } else
-    printf("Reflecting TCP packets received on %s to %s\n",
-	   in_dev, out_dev);
+     if(pfring_add_filtering_rule(pd, &rule) < 0) {
+       printf("pfring_add_filtering_rule() failed\n");
+       pfring_close(pd);
+       return(-1);
+     } else
+       printf("Reflecting TCP packets received on %s to %s\n",
+    	   in_dev, out_dev);
  
-  /* Receive UDP packets in userland */
-  memset(&rule, 0, sizeof(rule));
-  rule.rule_id = 2;
-  rule.rule_action = forward_packet_and_stop_rule_evaluation;
-  rule.core_fields.proto = 17 /* udp */;
-  if(pfring_add_filtering_rule(pd, &rule) < 0) {
-    printf("pfring_add_filtering_rule() failed\n");
-    pfring_close(pd);
-    return(-1);
-  } else
-    printf("Capture UDP packets\n");
+     /* Receive UDP packets in userland */
+     memset(&rule, 0, sizeof(rule));
+     rule.rule_id = 2;
+     rule.rule_action = forward_packet_and_stop_rule_evaluation;
+     rule.core_fields.proto = 17 /* udp */;
+     if(pfring_add_filtering_rule(pd, &rule) < 0) {
+       printf("pfring_add_filtering_rule() failed\n");
+       pfring_close(pd);
+       return(-1);
+     } else
+       printf("Capture UDP packets\n");
+
+  }
+  else {
+     memset(&hash_rule, 0, sizeof(hash_filtering_rule));
+     hash_rule.proto = 6;
+     hash_rule.rule_id = 1; 
+     hash_rule.rule_action = reflect_packet_and_stop_rule_evaluation;
+     hash_rule.host4_peer_a = ntohl(inet_addr("198.19.9.2"));
+     hash_rule.host4_peer_b = ntohl(inet_addr("198.19.9.1"));
+     snprintf(hash_rule.reflector_device_name, REFLECTOR_NAME_LEN, "%s", out_dev);
+
+     if(pfring_handle_hash_filtering_rule(pd, &hash_rule, 1) < 0) {
+       printf("pfring_add_hash_filtering_rule(1) failed\n");
+       pfring_close(pd);
+       return(-1);
+     } else
+       printf("Reflecting 198.19.9.2 TCP packets\n");
+
+  }
 
   /* Enable rings */
   pfring_enable_ring(pd);

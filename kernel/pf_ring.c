@@ -4791,10 +4791,11 @@ void dna_device_handler(dna_device_operation operation,
       next->dev.packet_waitqueue = packet_waitqueue;
       next->dev.interrupt_received = interrupt_received;
       next->dev.adapter_ptr = adapter_ptr;
-      next->dev.wait_packet_function_ptr =
-	wait_packet_function_ptr;
+      next->dev.wait_packet_function_ptr = wait_packet_function_ptr;
       list_add(&next->list, &ring_dna_devices_list);
       dna_devices_list_size++;
+      /* Increment usage count to avoid unloading it while DNA modules are in use */
+      try_module_get(THIS_MODULE);	
     } else {
       printk("[PF_RING] Could not kmalloc slot!!\n");
     }
@@ -4810,6 +4811,8 @@ void dna_device_handler(dna_device_operation operation,
 	list_del(ptr);
 	kfree(entry);
 	dna_devices_list_size--;
+	/* Decrement usage count for DNA devices */
+	module_put(THIS_MODULE); 
 	break;
       }
     }
