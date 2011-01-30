@@ -334,6 +334,8 @@ int main(int argc, char* argv[]) {
     if((rc = pfring_set_direction(ring[i], direction)) != 0)
       printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
 
+    pfring_enable_ring(ring[i]);
+
     pthread_create(&pd_thread[i], NULL, packet_consumer_thread, (void*)i);
   }
   

@@ -308,6 +308,8 @@ int main (int argc, char * argv [])
   printf ("%s: listening from %s using PF_RING driver ver %d.%d.%d\n\n", progname, interface,
 	  (ringdriver & 0xFFFF0000) >> 16, (ringdriver & 0x0000FF00) >> 8, ringdriver & 0x000000FF);
 
+  pfring_enable_ring(ring);
+
   /* Announce */
   printf ("%s: starting to capture #%lu packets per thread (please be patient)...\n", progname, maxcount / threadsno);
 

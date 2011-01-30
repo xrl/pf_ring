@@ -136,6 +136,8 @@ int main(int argc, char* argv[]) {
   printf("Capturing from %s\n", device);
 
   signal(SIGINT, sigproc);
+
+  pfring_enable_ring(pd);
   
   while(1) {
     u_char buffer[2048];

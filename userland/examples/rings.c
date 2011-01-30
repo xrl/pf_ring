@@ -216,6 +216,8 @@ int main (int argc, char * argv [])
       } else
       pfring_set_application_name(ringtable [r], "rings");
 
+  pfring_enable_ring(ringtable [r]);
+
   /* Get memory for packet capturing */
   packet = calloc (snapshot, 1);
 

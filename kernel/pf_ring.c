@@ -1836,6 +1836,8 @@ static int reflect_packet(struct sk_buff *skb,
 
 /* ********************************** */
 
+#define RING_DEBUG
+
 static int add_skb_to_ring(struct sk_buff *skb,
 			   struct ring_opt *pfr,
 			   struct pfring_pkthdr *hdr,
@@ -2171,6 +2173,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
   return(0);
 }
 
+#undef RING_DEBUG
+
 /* ********************************** */
 
 static u_int hash_pkt_cluster(ring_cluster_element * cluster_ptr,
@@ -2454,7 +2458,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     skb->tstamp.off_usec;
 #else /* 2.6.22 and above */
   if(skb->tstamp.tv64 == 0)
-    __net_timestamp(skb);
+    __net_timestamp(skb); /* If timestamp is missing add it */
   hdr.ts = ktime_to_timeval(skb->tstamp);
 #endif
 

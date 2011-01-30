@@ -423,6 +423,8 @@ int main(int argc, char* argv[]) {
     alarm(ALARM_SLEEP);
   }
 
+  pfring_enable_ring(pd);
+
   /* ************************************************ */
 
   {

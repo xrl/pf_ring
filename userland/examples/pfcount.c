@@ -721,7 +721,7 @@ int main(int argc, char* argv[]) {
     if(num_threads > 0) wait_for_packet = 1;
   }
 
-  if(!wait_for_packet) pfring_enable_ring(pd);
+  pfring_enable_ring(pd);
 
   if(0) {
     filtering_rule rule;

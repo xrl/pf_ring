@@ -445,7 +445,6 @@ int main(int argc, char* argv[]) {
   }
 
   pcap_loop(pd, -1, dummyProcesssPacket, NULL);
-
   pcap_close(pd);
 
   return(0);

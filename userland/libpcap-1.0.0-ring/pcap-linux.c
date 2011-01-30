@@ -557,12 +557,17 @@ pcap_activate_linux(pcap_t *handle)
 
 	  handle->ring = pfring_open((char*)device, handle->opt.promisc, handle->snapshot, 1);
 	  
-	  if(clusterId = getenv("PCAP_PF_RING_CLUSTER_ID")) 
-	    if(atoi(clusterId) > 0 && atoi(clusterId) < 255)
-	      if(getenv("PCAP_PF_RING_USE_CLUSTER_PER_FLOW"))
-		pfring_set_cluster(handle->ring, atoi(clusterId), cluster_per_flow);
-	      else
-		pfring_set_cluster(handle->ring, atoi(clusterId), cluster_round_robin);
+	  if(handle->ring) {
+	    if(clusterId = getenv("PCAP_PF_RING_CLUSTER_ID")) 
+	      if(atoi(clusterId) > 0 && atoi(clusterId) < 255)
+		if(getenv("PCAP_PF_RING_USE_CLUSTER_PER_FLOW"))
+		  pfring_set_cluster(handle->ring, atoi(clusterId), cluster_per_flow);
+		else
+		  pfring_set_cluster(handle->ring, atoi(clusterId), cluster_round_robin);
+	    
+	    pfring_enable_ring(handle->ring);
+	  } else
+	    handle->ring = NULL;
 	} else
           handle->ring = NULL;
 

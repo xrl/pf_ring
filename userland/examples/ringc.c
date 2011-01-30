@@ -255,6 +255,8 @@ int main (int argc, char * argv [])
   printf ("%s: starting to capture (partial reports will be available every %d secs)\n", progname, heartbeat);
   printf (" [use ^C to interrupt]\n\n");
 
+  pfring_enable_ring(ring);
+
   while (! done && (! maxcount || partial < maxcount))
     /* Please give me just a packet at once from the ring */
     if (pfring_recv (ring, packet, sizeof (packet), & header, 1) > 0)
