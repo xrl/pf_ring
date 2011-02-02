@@ -4415,6 +4415,24 @@ static int ring_setsockopt(struct socket *sock,
 
     ret = handle_hw_filtering_rule(pfr->ring_netdev, &hw_rule,
 				   (optname == SO_ADD_HW_FILTERING_RULE) ? 1 : 0);
+
+    if (ret != -1){
+      struct list_head *ptr, *tmp_ptr;
+      
+      list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
+        ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
+
+        if(dev_ptr->dev == pfr->ring_netdev) {
+          if(optname == SO_ADD_HW_FILTERING_RULE)
+            dev_ptr->num_hw_filters++;
+          else {
+           if(dev_ptr->num_hw_filters > 0)
+             dev_ptr->num_hw_filters--;
+          }
+          break;
+        }
+      }
+    }
     break;
 
   case SO_SET_PACKET_CONSUMER_MODE:
