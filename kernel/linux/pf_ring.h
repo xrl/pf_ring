@@ -155,8 +155,10 @@ struct pkt_parsing_info {
 					 a message from PF_RING 
 				      */
 struct pfring_extended_pkthdr {
-  int if_index;         /* index of the interface on which the packet has been received. 
-			   It can be also used to report other information */
+  u_int64_t timestamp_ns; /* Packet timestamp at ns precision. Note that if your NIC supports
+			     hardware timestamp, this is the place to read timestamp from */
+  int if_index;           /* index of the interface on which the packet has been received. 
+                             It can be also used to report other information */
   struct pkt_parsing_info parsed_pkt; /* packet parsing info */
   u_int16_t parsed_header_len; /* Extra parsing data before packet */
 };

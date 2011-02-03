@@ -1836,6 +1836,18 @@ static int reflect_packet(struct sk_buff *skb,
 
 /* ********************************** */
 
+/*
+ * add_skb_to_ring()
+ *
+ * Add the specified skb to the ring so that userland apps/plugins
+ * can use the packet.
+ *
+ * Return code:
+ * 0   packet successully processed
+ * -1  processing error (e.g. the packet has been discarded by 
+ *                       filter, ring not active...) 
+ *
+ */
 static int add_skb_to_ring(struct sk_buff *skb,
 			   struct ring_opt *pfr,
 			   struct pfring_pkthdr *hdr,
@@ -2003,10 +2015,8 @@ static int add_skb_to_ring(struct sk_buff *skb,
       entry = list_entry(ptr, filtering_rule_element, list);
 
       if(match_filtering_rule(pfr, entry, hdr, skb, displ,
-			      parse_memory_buffer,
-			      &free_parse_mem,
-			      &last_matched_plugin,
-			      &behaviour)) {
+			      parse_memory_buffer, &free_parse_mem,
+			      &last_matched_plugin, &behaviour)) {
 	if(debug)
 	  printk("[PF_RING] behaviour=%d\n", behaviour);
 
@@ -2020,8 +2030,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
 	  fwd_pkt = 1;
 
-	  hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket),
-							 GFP_KERNEL);
+	  hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
 
 	  if(hash_bucket) {
 	    int rc = 0;
@@ -2397,8 +2406,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	  offset &= IP_OFFSET;
 	  offset <<= 3;
 
-	  printk
-	    ("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u]"
+	  printk("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u]"
 	     "[ip_id=%u][network_header=%d][displ=%d]\n",
 	     iphdr->protocol, offset,
 	     ntohs(iphdr->id),
@@ -2409,8 +2417,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 
 	  if(skk != NULL) {
 #if defined (RING_DEBUG)
-	    printk
-	      ("[PF_RING] IP reasm on new skb [skb_len=%d]"
+	    printk("[PF_RING] IP reasm on new skb [skb_len=%d]"
 	       "[head_len=%d][nr_frags=%d][frag_list=%p]\n",
 	       (int)skk->len,
 	       skb_headlen(skk),
@@ -2445,17 +2452,19 @@ static int skb_ring_handler(struct sk_buff *skb,
   /* BD - API changed for time keeping */
 #if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,14))
   if(skb->stamp.tv_sec == 0)
-    do_gettimeofday(&skb->stamp);
+    do_gettimeofday(&skb->stamp);  /* If timestamp is missing add it */
   hdr.ts.tv_sec = skb->stamp.tv_sec, hdr.ts.tv_usec = skb->stamp.tv_usec;
+  hdr.extended_hdr.timestamp_ns = 0; /* No nsec for old kernels */
 #elif(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22))
   if(skb->tstamp.off_sec == 0)
-    __net_timestamp(skb);
-  hdr.ts.tv_sec = skb->tstamp.off_sec, hdr.ts.tv_usec =
-    skb->tstamp.off_usec;
+    __net_timestamp(skb); /* If timestamp is missing add it */
+  hdr.ts.tv_sec = skb->tstamp.off_sec, hdr.ts.tv_usec = skb->tstamp.off_usec;
+  hdr.extended_hdr.timestamp_ns = 0; /* No nsec for old kernels */
 #else /* 2.6.22 and above */
   if(skb->tstamp.tv64 == 0)
     __net_timestamp(skb); /* If timestamp is missing add it */
   hdr.ts = ktime_to_timeval(skb->tstamp);
+  hdr.extended_hdr.timestamp_ns = ktime_to_ns(skb->tstamp);
 #endif
 
   hdr.len = hdr.caplen = skb->len + displ;
@@ -2493,7 +2502,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	   || (pfr->ring_netdev == &any_dev) /* Socket bound to 'any' */
 	   || ((skb->dev->flags & IFF_SLAVE) && (pfr->ring_netdev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
-      int old_caplen = hdr.caplen;	/* Keep old lenght */
+      int old_caplen = hdr.caplen;  /* Keep old lenght */
       hdr.caplen = min(hdr.caplen, pfr->bucket_len);
       add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id, num_rx_channels);
       hdr.caplen = old_caplen;
@@ -2538,8 +2547,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 	     ) {
 	    if(check_and_init_free_slot(pfr, pfr->slots_info->insert_off) /* Not full */) {
 	      /* We've found the ring where the packet can be stored */
-	      add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ,
-			      channel_id, num_rx_channels);
+	      add_skb_to_ring(skb, pfr, &hdr, is_ip_pkt, displ, channel_id, num_rx_channels);
 	      rc = 1; /* Ring found: we've done our job */
 	      break;
 	    }

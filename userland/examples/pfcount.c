@@ -326,10 +326,11 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
     char buf1[32], buf2[32];
     struct ip ip;
     int s = (h->ts.tv_sec + thiszone) % 86400;
-    
-    printf("%02d:%02d:%02d.%06u ",
+    u_int nsec = h->extended_hdr.timestamp_ns % 1000;
+
+    printf("%02d:%02d:%02d.%06u%03u ",
 	   s / 3600, (s % 3600) / 60, s % 60,
-	   (unsigned)h->ts.tv_usec);
+	   (unsigned)h->ts.tv_usec, nsec);
 
 #if 0
     for(i=0; i<32; i++)
