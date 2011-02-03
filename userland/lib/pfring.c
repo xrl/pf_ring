@@ -22,8 +22,6 @@
 
 #include "pfring_e1000e_dna.h"
 
-#define USE_ADAPTIVE_WAIT
-
 #define MAX_NUM_LOOPS    1000000000
 #define YIELD_MULTIPLIER      10000
 
@@ -959,9 +957,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     } else
       return(0);
   } else {
-#ifdef USE_ADAPTIVE_WAIT
     u_int32_t num_loops = 0;
-#endif
 
     if((ring == NULL) || (ring->buffer == NULL)) return(-1);
 
@@ -1015,7 +1011,6 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       struct pollfd pfd;
       int rc;
 
-#ifdef USE_ADAPTIVE_WAIT
       /*
 	Spin in userland for a while and if no packet arrives then
 	it's time to poll the kernel. I have to do this as a call to
@@ -1028,8 +1023,6 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	  sched_yield();
 	}
       } else {
-#endif
-
 	/* Sleep when nothing is happening */
 	pfd.fd      = ring->fd;
 	pfd.events  = POLLIN /* |POLLERR */;
@@ -1045,14 +1038,9 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 #endif
 
 	errno = 0;
-
 	rc = poll(&pfd, 1, 500);
-
 	ring->num_poll_calls++;
-
-#ifdef USE_ADAPTIVE_WAIT
       }
-#endif
 
       if(rc == -1)
 	return(-1);
