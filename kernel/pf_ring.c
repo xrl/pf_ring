@@ -36,6 +36,7 @@
  * - Andreas Tsopelas <tsopelas@kth.se>
  * - Alfredo Cardigliano <cardigliano@ntop.org>
  * - Alex Aronson <alexa@silicom.co.il>
+ * - Piotr Romanus <promanus@crossbeamsys.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2118,7 +2119,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
       write_lock_bh(&pfr->ring_index_lock);
       pfr->slots_info->tot_pkts++;
 
-      if(pfr->pktToSample == 0) {
+      if(pfr->pktToSample <= 1) {
 	pfr->pktToSample = pfr->sample_rate;
       } else {
 	pfr->pktToSample--;
