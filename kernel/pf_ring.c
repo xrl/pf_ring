@@ -1836,8 +1836,6 @@ static int reflect_packet(struct sk_buff *skb,
 
 /* ********************************** */
 
-#define RING_DEBUG
-
 static int add_skb_to_ring(struct sk_buff *skb,
 			   struct ring_opt *pfr,
 			   struct pfring_pkthdr *hdr,
@@ -1898,7 +1896,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #if defined(RING_DEBUG)
   printk("[PF_RING] add_skb_to_ring: [%s][displ=%d][len=%d][caplen=%d]"
 	 "[is_ip_pkt=%d][%d -> %d][%p/%p]\n",
-	 (skb->dev->name == NULL) ? skb->dev->name : "<NULL>",
+	 (skb->dev->name != NULL) ? skb->dev->name : "<NULL>",
 	 displ, hdr->len, hdr->caplen,
 	 is_ip_pkt, hdr->extended_hdr.parsed_pkt.l4_src_port,
 	 hdr->extended_hdr.parsed_pkt.l4_dst_port, skb->dev,
@@ -2172,8 +2170,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
   return(0);
 }
-
-#undef RING_DEBUG
 
 /* ********************************** */
 
@@ -5029,98 +5025,102 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
   struct pfring_hooks *hook;
   int debug = 0;
 
-  /* Skip non ethernet interfaces */
-  if(strncmp(dev->name, "eth", 3) && strncmp(dev->name, "lan", 3)) {
-    if(debug) printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n", dev->name);
-    return NOTIFY_DONE;
-  }
+  if(dev != NULL) {
+    if(debug) printk("[PF_RING] packet_notifier(%lu)\n", msg);
 
-  switch(msg) {
-  case NETDEV_PRE_UP:
-  case NETDEV_UP:
-  case NETDEV_DOWN:
-    break;
-  case NETDEV_REGISTER:
-    if(debug) printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
-		     dev->name, dev->pfring_ptr, &ring_hooks);
-
-    if(dev->pfring_ptr == NULL) {
-      dev->pfring_ptr = &ring_hooks;
-      if(add_device_to_ring_list(dev) != 0) {
-	printk("[PF_RING] Error in add_device_to_ring_list(%s)\n", dev->name);
-      }
+    /* Skip non ethernet interfaces */
+    if(strncmp(dev->name, "eth", 3) && strncmp(dev->name, "lan", 3)) {
+      if(debug) printk("[PF_RING] packet_notifier(%s): skipping non ethernet device\n", dev->name);
+      return NOTIFY_DONE;
     }
-    break;
 
-  case NETDEV_UNREGISTER:
-    if(debug) printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
-		     dev->name, dev->pfring_ptr);
+    switch(msg) {
+    case NETDEV_PRE_UP:
+    case NETDEV_UP:
+    case NETDEV_DOWN:
+      break;
+    case NETDEV_REGISTER:
+      if(debug) printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
+		       dev->name, dev->pfring_ptr, &ring_hooks);
 
-    hook = (struct pfring_hooks*)dev->pfring_ptr;
-    if(hook->magic == PF_RING) {
-      remove_device_from_ring_list(dev);
-      dev->pfring_ptr = NULL;
-    }
-    /* We don't have to worry updating rules that might have used this
-       device (just removed) as reflection device. This because whenever
-       we set a rule with reflection, we do dev_put() so such device is
-       busy until we remove the rule
-    */
-    break;
-
-  case NETDEV_CHANGE:     /* Interface state change */
-  case NETDEV_CHANGEADDR: /* Interface address changed (e.g. during device probing) */
-    break;
-  case NETDEV_CHANGENAME: /* Rename interface ethX -> ethY */
-    {
-      struct list_head *ptr, *tmp_ptr;
-
-      if(debug) printk("[PF_RING] Device change name %s\n", dev->name);
-
-      list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
-	ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
-
-	if(dev_ptr->dev == dev) {
-	  if(debug) printk("[PF_RING] ==>> FOUND device change name %s -> %s\n",
-			   dev_ptr->proc_entry->name, dev->name);
-
-	  /* Remove old entry */
-	  if(dev_ptr->has_hw_filtering)
-	    remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
-
-	  remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
-	  remove_proc_entry(dev_ptr->proc_entry->name, ring_proc_dev_dir);
-	  /* Add new entry */
-	  dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
-	  create_proc_read_entry(PROC_INFO, 0 /* read-only */,
-				 dev_ptr->proc_entry,
-				 ring_proc_dev_get_info /* read */,
-				 dev_ptr);
-
-#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
-	  if(dev_ptr->has_hw_filtering) {
-	    struct proc_dir_entry *entry;
-
-	    entry= create_proc_read_entry(PROC_RULES, 0666 /* rw */,
-					  dev_ptr->proc_entry,
-					  ring_proc_dev_rule_read,
-					  dev_ptr);
-	    if(entry)
-	      entry->write_proc = ring_proc_dev_rule_write;
-	  }
-#endif
-
-	  dev_ptr->proc_entry->name = dev->name;
-	  break;
+      if(dev->pfring_ptr == NULL) {
+	dev->pfring_ptr = &ring_hooks;
+	if(add_device_to_ring_list(dev) != 0) {
+	  printk("[PF_RING] Error in add_device_to_ring_list(%s)\n", dev->name);
 	}
       }
-    }
-    break;
+      break;
 
-  default:
-    if(debug) printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
-		     dev->name, msg, dev->pfring_ptr);
-    break;
+    case NETDEV_UNREGISTER:
+      if(debug) printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
+		       dev->name, dev->pfring_ptr);
+
+      hook = (struct pfring_hooks*)dev->pfring_ptr;
+      if(hook->magic == PF_RING) {
+	remove_device_from_ring_list(dev);
+	dev->pfring_ptr = NULL;
+      }
+      /* We don't have to worry updating rules that might have used this
+	 device (just removed) as reflection device. This because whenever
+	 we set a rule with reflection, we do dev_put() so such device is
+	 busy until we remove the rule
+      */
+      break;
+
+    case NETDEV_CHANGE:     /* Interface state change */
+    case NETDEV_CHANGEADDR: /* Interface address changed (e.g. during device probing) */
+      break;
+    case NETDEV_CHANGENAME: /* Rename interface ethX -> ethY */
+      {
+	struct list_head *ptr, *tmp_ptr;
+
+	if(debug) printk("[PF_RING] Device change name %s\n", dev->name);
+
+	list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
+	  ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
+
+	  if(dev_ptr->dev == dev) {
+	    if(debug) printk("[PF_RING] ==>> FOUND device change name %s -> %s\n",
+			     dev_ptr->proc_entry->name, dev->name);
+
+	    /* Remove old entry */
+	    if(dev_ptr->has_hw_filtering)
+	      remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
+
+	    remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
+	    remove_proc_entry(dev_ptr->proc_entry->name, ring_proc_dev_dir);
+	    /* Add new entry */
+	    dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
+	    create_proc_read_entry(PROC_INFO, 0 /* read-only */,
+				   dev_ptr->proc_entry,
+				   ring_proc_dev_get_info /* read */,
+				   dev_ptr);
+
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
+	    if(dev_ptr->has_hw_filtering) {
+	      struct proc_dir_entry *entry;
+
+	      entry= create_proc_read_entry(PROC_RULES, 0666 /* rw */,
+					    dev_ptr->proc_entry,
+					    ring_proc_dev_rule_read,
+					    dev_ptr);
+	      if(entry)
+		entry->write_proc = ring_proc_dev_rule_write;
+	    }
+#endif
+
+	    dev_ptr->proc_entry->name = dev->name;
+	    break;
+	  }
+	}
+      }
+      break;
+
+    default:
+      if(debug) printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
+		       dev->name, msg, dev->pfring_ptr);
+      break;
+    }
   }
 
   return NOTIFY_DONE;
