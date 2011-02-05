@@ -55,6 +55,14 @@
  */
 
 #include <linux/version.h>
+
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18))
+#error **********************************************************************
+#error * PF_RING works on kernel 2.6.18 or newer. Please update your kernel *
+#error **********************************************************************
+#endif
+
+
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
 #include <generated/autoconf.h>
@@ -3182,9 +3190,8 @@ static int do_memory_mmap(struct vm_area_struct *vma,
 
     if(mode == 0) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
-      // rc = vm_insert_page(vma, start, vmalloc_to_page(ptr));
       rc = remap_vmalloc_range(vma, ptr, 0);
-      break;
+      break; /* Do not iterate */
 #else
       rc = remap_pfn_range(vma, start, kvirt_to_pa((unsigned long)ptr), PAGE_SIZE, PAGE_SHARED);
 #endif
