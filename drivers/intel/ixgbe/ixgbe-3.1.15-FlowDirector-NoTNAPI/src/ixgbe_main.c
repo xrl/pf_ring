@@ -57,10 +57,10 @@
 #define HAVE_PF_RING
 #endif
 
-/* CPACKET CPACKET CPACKET CPACKET CPACKET CPACKET */
-#define CPACKET_TIMESTAMPS
+
 #undef HAVE_PF_RING
 
+/* #define CPACKET_TIMESTAMPS */
 
 #ifdef CPACKET_TIMESTAMPS
 #include <linux/timecompare.h>
