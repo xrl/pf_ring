@@ -2473,7 +2473,15 @@ static int skb_ring_handler(struct sk_buff *skb,
   if(skb->tstamp.tv64 == 0)
     __net_timestamp(skb); /* If timestamp is missing add it */
   hdr.ts = ktime_to_timeval(skb->tstamp);
-  hdr.extended_hdr.timestamp_ns = ktime_to_ns(skb->tstamp);
+
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
+  {
+    /* Use hardware timestamps when present. If not, just use software timestamps */
+    hdr.extended_hdr.timestamp_ns = ktime_to_ns(skb_hwtstamps(skb)->hwtstamp);
+  }
+#endif
+  if(hdr.extended_hdr.timestamp_ns == 0)
+    hdr.extended_hdr.timestamp_ns = ktime_to_ns(skb->tstamp);
 #endif
 
   hdr.len = hdr.caplen = skb->len + displ;
