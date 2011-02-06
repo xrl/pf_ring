@@ -1,6 +1,6 @@
 /* ***************************************************************
  *
- * (C) 2004-10 - Luca Deri <deri@ntop.org>
+ * (C) 2004-11 - Luca Deri <deri@ntop.org>
  *
  * This code includes contributions courtesy of
  * - Amit D. Chaudhary <amit_ml@rajgad.com>
@@ -159,6 +159,10 @@ static struct list_head ring_cluster_list;
 
 /* List of all devices on which PF_RING has been registered */
 static struct list_head ring_aware_device_list;
+
+/* Keep track of number of rings per device (plus any) */
+static u_int8_t num_rings_per_device[MAX_NUM_IFIDX] = { 0 };
+static u_int8_t num_any_rings = 0;
 
 /* List of all dna (direct nic access) devices */
 static struct list_head ring_dna_devices_list;
@@ -534,6 +538,11 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
     }
 
     rlen += sprintf(buf+rlen, "Type:              %s\n", dev_buf);
+
+    if(dev->ifindex < MAX_NUM_IFIDX)
+      rlen += sprintf(buf+rlen, "# bound sockets:   %d\n",
+		      num_rings_per_device[dev->ifindex]);
+
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
     rlen += sprintf(buf+rlen, "Max # TX Queues:   %d\n", dev->num_tx_queues);
     rlen += sprintf(buf+rlen, "# Used TX Queues:  %d\n", dev->real_num_tx_queues);
@@ -2336,6 +2345,27 @@ static int skb_ring_handler(struct sk_buff *skb,
   struct sk_buff *skk = NULL;
   struct sk_buff *orig_skb = skb;
 
+  /* Check if there's at least one PF_RING ring defined that
+     could receive the packet: if none just stop here */
+  
+  if(ring_table_size == 0) return(rc);
+
+#if defined(RING_DEBUG)
+  if(1) {
+    if(skb->dev && (skb->dev->ifindex < MAX_NUM_IFIDX))
+      printk("[PF_RING] --> skb_ring_handler(%s): %d rings [num_any_rings=%d]\n", 
+	     skb->dev->name, 
+	     num_rings_per_device[skb->dev->ifindex],
+	     num_any_rings);
+  }
+#endif
+
+  if((num_any_rings == 0)
+     && (skb->dev 
+	 && (skb->dev->ifindex < MAX_NUM_IFIDX)
+	 && (num_rings_per_device[skb->dev->ifindex] == 0)))
+    return(rc);
+
 #ifdef PROFILING
   uint64_t rdt = _rdtsc(), rdt1, rdt2;
 #endif
@@ -2478,6 +2508,9 @@ static int skb_ring_handler(struct sk_buff *skb,
   {
     /* Use hardware timestamps when present. If not, just use software timestamps */
     hdr.extended_hdr.timestamp_ns = ktime_to_ns(skb_hwtstamps(skb)->hwtstamp);
+#ifdef RING_DEBUG
+    printk("[PF_RING] hwts=%llu\n", hdr.extended_hdr.timestamp_ns);
+#endif
   }
 #endif
   if(hdr.extended_hdr.timestamp_ns == 0)
@@ -2969,6 +3002,14 @@ static int ring_release(struct socket *sock)
   ring_proc_remove(pfr);
   write_lock_bh(&ring_mgmt_lock);
 
+  if(pfr->ring_netdev && pfr->ring_netdev == &any_dev)
+    num_any_rings--;
+  else {    
+    if(pfr->ring_netdev
+       && (pfr->ring_netdev->ifindex < MAX_NUM_IFIDX))
+      num_rings_per_device[pfr->ring_netdev->ifindex]--;
+  }
+
   if(pfr->ring_netdev != &none_dev) {
     if(pfr->cluster_id != 0)
       remove_from_cluster(sk, pfr);
@@ -3109,7 +3150,18 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   pfr->num_rx_channels = 1;
 #endif
 
-
+  if(dev) {
+    if(dev == &any_dev)
+      num_any_rings++;
+    else {
+      if(dev->ifindex < MAX_NUM_IFIDX)
+	num_rings_per_device[dev->ifindex]++;
+      else 
+	printk("[PF_RING] INTERNAL ERROR: ifindex %d for %s is > than MAX_NUM_IFIDX\n",
+	       dev->ifindex, dev->name);
+    }
+  }
+  
   return(0);
 }
 
@@ -4976,6 +5028,7 @@ void remove_device_from_ring_list(struct net_device *dev) {
 	remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
 	remove_proc_entry(dev_ptr->dev->name, ring_proc_dev_dir);
       }
+
       list_del(ptr);
       kfree(dev_ptr);
       break;
@@ -5035,7 +5088,7 @@ int add_device_to_ring_list(struct net_device *dev) {
   } else
     printk("[PF_RING] Device %s does NOT support hardware packet filtering [2]\n", dev->name);
 #endif
-
+  
   list_add(&dev_ptr->list, &ring_aware_device_list);
 
   return(0);
@@ -5234,7 +5287,7 @@ static int __init ring_init(void)
 #endif
 
   printk("[PF_RING] Welcome to PF_RING %s ($Revision: %s$)\n"
-	 "(C) 2004-10 L.Deri <deri@ntop.org>\n",
+	 "(C) 2004-11 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION, SVN_REV);
 
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
@@ -5252,9 +5305,11 @@ static int __init ring_init(void)
 
   memset(&any_dev, 0, sizeof(any_dev));
   strcpy(any_dev.name, "any");
-
+  any_dev.ifindex = MAX_NUM_IFIDX-1, any_dev.type = ARPHRD_ETHER;
+    
   memset(&none_dev, 0, sizeof(none_dev));
   strcpy(none_dev.name, "none");
+  none_dev.ifindex = MAX_NUM_IFIDX-2;
 
   ring_proc_init();
   sock_register(&ring_family_ops);

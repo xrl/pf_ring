@@ -34,8 +34,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.5.0"
-#define RING_VERSION_NUM           0x040500
+#define RING_VERSION                "4.5.1"
+#define RING_VERSION_NUM           0x040501
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -498,6 +498,8 @@ typedef struct {
   dna_device dev;
   struct list_head list;
 } dna_device_list;
+
+#define MAX_NUM_IFIDX  1024
 
 typedef struct {
   struct net_device *dev;
