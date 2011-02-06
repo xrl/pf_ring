@@ -4,7 +4,7 @@ all: libpfring pcap ring_examples lib_c++ mod_perl
 ###################
 
 libpfring:
-	cd lib; make
+	cd lib; ./configure; make
 
 pcap:
 	cd libpcap-1.0.0-ring; ./configure --enable-ipv6; make
