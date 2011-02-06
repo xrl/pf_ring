@@ -49,8 +49,6 @@
 
 #include "igb.h"
 
-#define HAVE_PF_RING
-
 #ifdef HAVE_PF_RING
 #include "../../../../../kernel/linux/pf_ring.h"
 #endif
