@@ -130,7 +130,7 @@
 *			DirectIO in ESX)
 *
 * fw_upgrade:
-* 	Firmware upgrade option. This driver is certified with firmware 
+* 	Firmware upgrade option. This driver is certified with firmware
 *	version 1.8.0.
 *	1 - Upgrade firmware for all adapters with firmware between 1.4.4 and 1.5.255.
 *	2 - Upgrade firmware for all adapters with PXE. Force firmware upgrade for all
@@ -198,6 +198,11 @@
 #ifdef VXGE_PF_RING
 * pf_ring_en:
 *	This is used to enable/disable pf_ring feature in the driver.
+*	0 = Disable (default)
+*	1 = Enable
+*
+* hw_stamp:
+*	This is used to enable/disable hw timestamps feature in the driver.
 *	0 = Disable (default)
 *	1 = Enable
 *
@@ -359,6 +364,7 @@ VXGE_MODULE_PARAM_INT(udp_stream, FALSE);
 #ifdef VXGE_PF_RING
 VXGE_MODULE_PARAM_INT(pf_ring_en, TRUE);
 VXGE_MODULE_PARAM_INT(pf_ring_debug, FALSE);
+VXGE_MODULE_PARAM_INT(hw_stamp, FALSE);
 #endif /* PF_RING */
 
 static u16 vpath_selector[VXGE_HW_MAX_VIRTUAL_PATHS] =
@@ -510,7 +516,7 @@ vxge_hw_device_set_flow_ctrl(struct __vxge_hw_device *hldev,
 
 	/* In case where rx/tx_enable_pause is set to 2 and we have only one
 	 * function configured with highest priority, then
-	 * set RXMAC_VCFG1.CONTRIB_L2_FLOW 
+	 * set RXMAC_VCFG1.CONTRIB_L2_FLOW
 	 */
 	if ((rx_enable == FLOW_CTRL_ENABLE_HIGH_PRIO_FUNC ||
 		tx_enable == FLOW_CTRL_ENABLE_HIGH_PRIO_FUNC))
@@ -1696,7 +1702,7 @@ vxge_rx_1b_compl(struct __vxge_hw_ring *ringh, void *dtr,
 				ring->stats.rx_dropped++;
 				break;
 			}
-		} else 
+		} else
 
 			{
 			struct sk_buff *skb_up;
@@ -1828,6 +1834,11 @@ vxge_rx_1b_compl(struct __vxge_hw_ring *ringh, void *dtr,
 			u32 ns = *(u32 *)(skb->head + pkt_length);
 			skb_hwts->hwtstamp = ns_to_ktime(ns);
 			skb_hwts->syststamp.tv64 = 0;
+
+#ifdef VXGE_PF_RING
+			if(pf_ring_debug)
+			  printk("[PF_RING/VXGE] hwtstamp=%llu\n", ktime_to_ns(skb_hwts->hwtstamp));
+#endif
 		}
 #endif
 #ifdef NETIF_F_RXHASH
@@ -1852,7 +1863,7 @@ vxge_rx_1b_compl(struct __vxge_hw_ring *ringh, void *dtr,
 			ring->pkts_to_process -= 1;
 			if (!ring->pkts_to_process)
 				break;
-#endif 
+#endif
 		}
 	} while (vxge_hw_ring_rxd_next_completed(ringh, &dtr,
 		&t_code) == VXGE_HW_OK);
@@ -3325,8 +3336,8 @@ static void vxge_svid_update(struct work_struct *work)
 				}
 			}
 			/* Send the message with SVID always irrespective of
-			 * of change in SVID value 
-			 */ 
+			 * of change in SVID value
+			 */
 			status = vxge_hw_send_message(hldev, 0,
 				VXGE_HW_MSG_TYPE_SEND_SVID_TO_VF, vplist[0],
 				hldev->device_svid[vf_idx], &msg_sent);
@@ -4182,7 +4193,7 @@ int vxge_open_vpaths(struct vxgedev *vdev)
 				vdev->config.napi_enable;
 			vdev->vpaths[i].ring.intr_type =
 				vdev->config.intr_type;
-			vdev->vpaths[i].ring.promisc_en = 
+			vdev->vpaths[i].ring.promisc_en =
 				(promisc_en && !priv_status) ?
 				VXGE_HW_PROM_MODE_ENABLE:
 				VXGE_HW_PROM_MODE_DISABLE;
@@ -4965,7 +4976,7 @@ void vxge_config_ci_for_tti_rti(struct vxgedev *vdev)
 		fifo = &vdev->vpaths[i].fifo;
 		hw_fifo = fifo->handle;
 		vxge_hw_vpath_tti_ci_set(hw_fifo);
-		/* 
+		/*
 		 * For Inta (with or without napi), Set CI ON for only one
 		 * vpath. (Have only one free running timer).
 		 */
@@ -5088,7 +5099,7 @@ vxge_open(struct net_device *dev)
 					&vdev->vpaths[i].ring.napi;
 			}
 		}
-#endif 
+#endif
 	}
 #endif
 	/* configure RTH */
@@ -5174,7 +5185,7 @@ vxge_open(struct net_device *dev)
 
 		vpath = &vdev->vpaths[i];
 		if (!vpath->is_open)
-			continue; 
+			continue;
 
 		if (vdev->vlan_tag_strip ==
 			VXGE_HW_VPATH_RPA_STRIP_VLAN_TAG_ENABLE) {
@@ -5258,7 +5269,7 @@ vxge_open(struct net_device *dev)
 	/* Update the steering table with VID, in the case of PF */
 	for (i = 0; i < vdev->num_functions; i++) {
 
-		/* Do not update, if it is deafult value */  
+		/* Do not update, if it is deafult value */
 		if (svlan_id[i] == VXGE_HW_SVLAN_ID_DEFAULT)
 			continue;
 
@@ -5288,11 +5299,11 @@ vxge_open(struct net_device *dev)
 	}
 	goto skip_update_vf;
 update_vf:
-	if (hldev->s_vid != VXGE_HW_SVLAN_ID_DEFAULT) { 
+	if (hldev->s_vid != VXGE_HW_SVLAN_ID_DEFAULT) {
 		for (j = 0; j < vdev->no_of_vpath; j++) {
 			vpath = &vdev->vpaths[j];
 			if (!vpath->is_open)
-				continue; 
+				continue;
 			status = vxge_hw_vpath_vid_add_vpn(vpath->handle,
 					hldev->s_vid,
 					vpath->handle->vpath->vp_id);
@@ -5386,7 +5397,7 @@ static void vxge_napi_del_all(struct vxgedev *vdev)
 	}
 	return;
 }
-#endif 
+#endif
 #endif
 int do_vxge_close(struct net_device *dev, int do_io)
 {
@@ -5477,7 +5488,7 @@ int do_vxge_close(struct net_device *dev, int do_io)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 	if (vdev->config.napi_enable)
 		vxge_napi_del_all(vdev);
-#endif 
+#endif
 #endif
 
 	if (is_mf(vdev->config.device_hw_info.function_mode))
@@ -5817,7 +5828,7 @@ u8 record_persist_config(struct __vxge_hw_device *hldev)
 			printk(KERN_ALERT
 				"%s: L2 switch %s %s\n",
 				VXGE_DRIVER_NAME,
-				(l2_switch == 
+				(l2_switch ==
 				VXGE_HW_XMAC_NWIF_L2_SWITCH_DISABLE) ? "disable":
 				"enable",
 				(status == VXGE_HW_FAIL) ?
@@ -5866,7 +5877,7 @@ u8 record_persist_config(struct __vxge_hw_device *hldev)
 
 			/*
  			 * Configure vpath_mapping for active/active mode only
- 			 */ 
+ 			 */
 			if (cfg_port_mode ==
 				VXGE_HW_DP_NP_MODE_ACTIVE_ACTIVE) {
 				status = vxge_hw_config_vpath_map(hldev,
@@ -6013,7 +6024,7 @@ static enum vxge_hw_status vxge_fw_upgrade(struct __vxge_hw_device *hldev)
 			goto exit;
 	}
 
-	/* Change function mode, port configurations. 
+	/* Change function mode, port configurations.
 	 * Some of the l2_switch and and port_mode configrurations are not
 	 * supported in older firmwares before 1.7.0, allow these configurations
 	 * when adapter is in 1.7.0 and above firmware */
@@ -6209,7 +6220,7 @@ vxge_config_vepa_mode(struct vxgedev *vdev, int vepa_mode)
 					" failure", VXGE_DRIVER_NAME);
 				goto exit0;
 			}
-		}		
+		}
 	} else {
 		/* Enable L2 switch */
 		status = vxge_hw_endis_l2_switch(vdev->devh,
@@ -7010,14 +7021,14 @@ static int __devinit vxge_config_vpaths(
 
 #ifdef ESX_KL
 		/*
-		 * To use multiple FIFOs both netq and tx_steering should 
+		 * To use multiple FIFOs both netq and tx_steering should
 		 * be enabled.
 		 */
 		if ((!config_param->tx_steering_type) || (!netq)) {
 			config_param->tx_steering_type = NO_STEERING;
 			netq = 0;
 		}
-#endif 
+#endif
 		/* If both tx_steering and Rx_steering are
 		   disabled, enable only one Vpath */
 		if ((!config_param->tx_steering_type &&
@@ -7094,10 +7105,10 @@ static int __devinit vxge_config_vpaths(
 				((VXGE_RTI_BTIMER_DEFAULT_VAL * 1000)/272);
 		}
 
-		/* 
+		/*
 		 * Enable CI for RTI after interrupts are enabled in
 		 * in vxge_open. Otherwise, occasionally, when NAPI is
-		 * enabled, the rx interrupt does not fire when 
+		 * enabled, the rx interrupt does not fire when
 		 * the driver loads on system boot.
 		 */
 		device_config->vp_config[i].rti.timer_ci_en =
@@ -7193,7 +7204,7 @@ static int __devinit vxge_config_vpaths(
 		if (config_param->napi_enable)
 			if (no_of_vpaths > 1)
 				config_param->napi_enable = 0;
-#endif 
+#endif
 
 	return no_of_vpaths;
 }
@@ -7445,6 +7456,27 @@ static void __devinit vxge_print_parm(struct vxgedev *vdev, u64 vpath_mask)
 					vdev->ndev->name,
 					active_config ? "Enabled" : "Disabled");
 	}
+
+#ifdef VXGE_PF_RING
+	vxge_debug_init(VXGE_TRACE, "PF_RING support %s",
+			pf_ring_en ? "enabled" : "disabled");
+
+	if(pf_ring_en) {	  
+	  vxge_debug_init(VXGE_TRACE, "PF_RING debugging %s",
+			  pf_ring_debug ? "enabled" : "disabled");
+	}
+
+	if(hw_stamp) {
+	  struct hwtstamp_config config;
+	  
+	  memset(&config, 0, sizeof(config));
+	  config.tx_type = HWTSTAMP_TX_OFF, config.rx_filter = HWTSTAMP_FILTER_ALL;
+	  vxge_hwtstamp_ioctl(vdev, &config);
+	}
+
+	vxge_debug_init(VXGE_TRACE, "RX hardware timestamps %s", 	 
+			vdev->rx_hwts ? "enabled" : "disabled");
+#endif
 }
 
 #ifdef CONFIG_PM
@@ -7614,7 +7646,7 @@ static void vxge_get_mibbase_info(struct mib_base *base)
 	base->intr_type       = intr_type;
 	base->doorbell        = 1;
 	base->lro             = lro;
-	base->lro_aggr_packet = (VXGE_T1A_LRO_MAX_BYTES - 1) 
+	base->lro_aggr_packet = (VXGE_T1A_LRO_MAX_BYTES - 1)
 				/ VXGE_HW_DEFAULT_MTU;
 	base->napi            = napi;
 	base->vlan_tag_strip  = vlan_tag_strip;
@@ -8082,7 +8114,7 @@ vxge_probe(struct pci_dev *pdev, const struct pci_device_id *pre)
 	}
 #endif
 
-#endif 
+#endif
 
 	if (lro == VXGE_HW_GRO_ENABLE) {
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 29))
@@ -8101,7 +8133,7 @@ vxge_probe(struct pci_dev *pdev, const struct pci_device_id *pre)
 	/* if Any s_vid is configured disallow promisc_mode on VF's */
 	for (vf_idx = 0; vf_idx < VXGE_HW_MAX_VIRTUAL_FUNCTIONS; vf_idx++) {
 		if ((svlan_id[vf_idx] != VXGE_HW_SVLAN_ID_DEFAULT)
-			&& (promisc_all_en)) { 
+			&& (promisc_all_en)) {
 			vxge_debug_init(VXGE_ERR,
 			"%s : S_VID is configured, promisc mode on VF not"
 			" allowed", __func__);
@@ -8265,7 +8297,7 @@ vxge_probe(struct pci_dev *pdev, const struct pci_device_id *pre)
 					"to version %x\n", VXGE_DRIVER_NAME,
 					vxge_cert_eprom_image_version[i]);
 
-				printk(KERN_ALERT "%s: eprom image upgrade" 
+				printk(KERN_ALERT "%s: eprom image upgrade"
 					"instructions in README\n",
 					VXGE_DRIVER_NAME);
 
@@ -8357,7 +8389,7 @@ skip_eprom_ver_check:
 	for (i = 0; i < VXGE_HW_MAX_ROM_IMAGES; i++) {
 		if (!ll_config.device_hw_info.eprom_image_data[i].is_valid)
 			break;
-		hldev->eprom_versions[i] = 
+		hldev->eprom_versions[i] =
 			ll_config.device_hw_info.eprom_image_data[i].version;
 	}
 
@@ -8395,7 +8427,7 @@ skip_eprom_ver_check:
 			(fw_ver_maj_min == VXGE_CERT_MAJ_MIN_FW_VER)))
 			goto continue_load;
 
-		/* 
+		/*
 		 * If it is force upgrade with PXE option and if the version of
 		 * both firmware and gPXE are same as certified version,
 		 * do not upgrade the fw. If either of them is different
@@ -8423,7 +8455,7 @@ skip_eprom_ver_check:
 				goto continue_load;
 			}
 		}
-		/* 
+		/*
 		 * If it is force upgrade w/o PXE option and if the adapter's
 		 * version of firmware is same as certified version, do not
 		 * upgrade the fw. Upgrade only if adapter has a gPXE image.
@@ -8555,7 +8587,7 @@ continue_load:
 		ll_config.rth_hash_type_tcpipv4 = 1;
 		break;
 	case RTH_IPV4_STEERING:
-		ll_config.rth_hash_type_ipv4 = 1; 
+		ll_config.rth_hash_type_ipv4 = 1;
 		break;
 	case RTH_IPV6_EX_STEERING:
 		ll_config.rth_hash_type_ipv6ex = 1;
