@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-10 - Luca Deri <deri@ntop.org>
+ * (C) 2005-11 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,6 +17,10 @@
 #define __USE_XOPEN2K
 #include <sys/types.h>
 #include <pthread.h>
+
+#ifdef ENABLE_HW_TIMESTAMP
+#include <linux/net_tstamp.h>
+#endif
 
 #include "pfring.h"
 
@@ -275,6 +279,45 @@ int pfring_bind(pfring *ring, char *device_name) {
 
 /* **************************************************** */
 
+#ifdef ENABLE_HW_TIMESTAMP
+
+int pfring_enable_hw_timestamp(pfring* ring, char *device_name) {
+  struct hwtstamp_config hwconfig;
+  struct ifreq ifr;
+  int rc, sock_fd;
+
+  sock_fd = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+  if(sock_fd <= 0) return(-1);
+
+  memset(&hwconfig, 0, sizeof(hwconfig));
+
+  /* Enable RX/TX timestamps */
+  hwconfig.tx_type = HWTSTAMP_TX_ON;
+  hwconfig.rx_filter = HWTSTAMP_FILTER_ALL;
+
+  memset(&ifr, 0, sizeof(ifr));
+  strcpy(ifr.ifr_name, device_name);
+  ifr.ifr_data = (void *)&hwconfig;
+
+  rc = ioctl(sock_fd, SIOCSHWTSTAMP, &ifr);
+  if(rc < 0) 
+    rc = errno;
+  else
+    rc = 0;
+
+#ifdef RING_DEBUG
+  printf("pfring_enable_hw_timestamp(%s) returned %d\n", 
+	 device_name, rc);
+#endif
+
+  close(sock_fd);
+  return(rc);
+}
+
+#endif
+
+/* **************************************************** */
+
 pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
 			     u_int32_t caplen, u_int8_t _reentrant,
 			     u_int8_t consumer_plugin_id,
@@ -387,6 +430,8 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
 	if(set_if_promisc(device_name, 1) == 0)
 	  ring->clear_promisc = 1;
       }
+
+      pfring_enable_hw_timestamp(ring, device_name);
     } else {
       close(ring->fd);
       err = -1;
@@ -437,6 +482,7 @@ u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
   else
     num_channels = pfring_get_num_rx_channels(ring[0]);
 
+  pfring_enable_hw_timestamp(ring[0], base_device_name);
   pfring_close(ring[0]);
 
   /* Now do the real job */

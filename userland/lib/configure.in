@@ -1,0 +1,16 @@
+AC_INIT([pfring.c], 1.0)
+
+AC_PROG_CC
+AC_CONFIG_FILES(Makefile)
+
+
+AC_CHECK_HEADERS([linux/net_tstamp.h])
+
+CFLAGS=""
+
+if test "x$ac_cv_header_linux_net_tstamp_h" = x""yes; then :
+CFLAGS="-DENABLE_HW_TIMESTAMP $CFLAGS"
+fi
+
+AC_SUBST(CFLAGS)
+AC_OUTPUT
