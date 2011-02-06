@@ -2509,7 +2509,9 @@ static int skb_ring_handler(struct sk_buff *skb,
     /* Use hardware timestamps when present. If not, just use software timestamps */
     hdr.extended_hdr.timestamp_ns = ktime_to_ns(skb_hwtstamps(skb)->hwtstamp);
 #ifdef RING_DEBUG
-    printk("[PF_RING] hwts=%llu\n", hdr.extended_hdr.timestamp_ns);
+    printk("[PF_RING] hwts=%llu/dev=%s\n",
+	   hdr.extended_hdr.timestamp_ns, 
+	   skb->dev ? skb->dev->name : "???");
 #endif
   }
 #endif
