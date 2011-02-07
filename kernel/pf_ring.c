@@ -942,7 +942,7 @@ static int ring_alloc_mem(struct sock *sk)
   num_pages += (num_pages + (SHMLBA-1)) % SHMLBA;
   tot_mem = num_pages*PAGE_SIZE;
 
-  /* roundingi size to the next power of 2 (needed by vPFRing) */
+  /* rounding size to the next power of 2 (needed by vPFRing) */
   tot_mem--;
   tot_mem |= tot_mem >> 1;
   tot_mem |= tot_mem >> 2;
@@ -1708,7 +1708,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
   if(waitqueue_active(&pfr->ring_slots_waitqueue))
     wake_up_interruptible(&pfr->ring_slots_waitqueue);
 
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   /* Signaling on vPFRing's eventfd ctx when needed */
   if(pfr->vpfring_ctx && (!(pfr->slots_info->vpfring_guest_flags & VPFRING_GUEST_NO_INTERRUPT))) {
      eventfd_signal(pfr->vpfring_ctx, 1);
@@ -3087,7 +3087,7 @@ static int ring_release(struct socket *sock)
   sock_put(sk);
   write_unlock_bh(&ring_mgmt_lock);
 
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   /* Release the vPFRing eventfd */
   if (pfr->vpfring_ctx)
     eventfd_ctx_put(pfr->vpfring_ctx);
@@ -3919,7 +3919,7 @@ static int ring_setsockopt(struct socket *sock,
   u_int16_t rule_id, rule_inactivity;
   packet_direction direction;
   hw_filtering_rule hw_rule;
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   struct vpfring_eventfd_info eventfd_i;
   struct file *eventfp;
 #endif
@@ -4556,7 +4556,7 @@ static int ring_setsockopt(struct socket *sock,
     }
     break;
 
-#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
     case SO_SET_VPFRING_EVENTFD:
       if(optlen != sizeof(eventfd_i))
         return -EINVAL;

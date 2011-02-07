@@ -431,7 +431,9 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
 	  ring->clear_promisc = 1;
       }
 
+#ifdef ENABLE_HW_TIMESTAMP
       pfring_enable_hw_timestamp(ring, device_name);
+#endif
     } else {
       close(ring->fd);
       err = -1;
@@ -482,7 +484,9 @@ u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
   else
     num_channels = pfring_get_num_rx_channels(ring[0]);
 
+#ifdef ENABLE_HW_TIMESTAMP
   pfring_enable_hw_timestamp(ring[0], base_device_name);
+#endif
   pfring_close(ring[0]);
 
   /* Now do the real job */

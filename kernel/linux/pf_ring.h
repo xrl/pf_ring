@@ -590,7 +590,9 @@ struct ring_opt {
   u_int8_t kernel_consumer_plugin_id; /* If != 0 it identifies a plugin responsible for consuming packets */
   char *kernel_consumer_options, *kernel_consumer_private;
 
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   struct eventfd_ctx *vpfring_ctx; /* eventfd ctx used by vPFRing */
+#endif
 };
 
 /* **************************************** */
