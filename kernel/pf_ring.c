@@ -316,13 +316,13 @@ static inline void skb_copy_to_linear_data(struct sk_buff *skb,
 #endif /* KERNEL_VERSION */
 #endif /* RH_MAJOR */
 
-#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16))
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)) || ((RHEL_MAJOR == 5) && (RHEL_MINOR < 2))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
   return(struct iphdr *)skb->nh.iph;
 }
 
-#ifndef REDHAT_PATCHED_KERNEL
+#if (!defined(REDHAT_PATCHED_KERNEL)) || ((RHEL_MAJOR == 5) && (RHEL_MINOR < 2))
 static inline void skb_set_network_header(struct sk_buff *skb, const int offset)
 {
   skb->nh.iph = (struct iphdr *)skb->data + offset;
