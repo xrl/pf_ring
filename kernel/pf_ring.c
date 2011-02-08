@@ -316,7 +316,7 @@ static inline void skb_copy_to_linear_data(struct sk_buff *skb,
 #endif /* KERNEL_VERSION */
 #endif /* RH_MAJOR */
 
-#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)) || ((RHEL_MAJOR == 5) && (RHEL_MINOR < 2))
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)) || (defined(RHEL_MAJOR) && (RHEL_MAJOR == 5) && (RHEL_MINOR < 2))
 static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
 {
   return(struct iphdr *)skb->nh.iph;
