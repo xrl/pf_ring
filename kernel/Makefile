@@ -28,6 +28,7 @@ all: Makefile pf_ring.c linux/pf_ring.h
 		echo "*********************************************"; \
 	fi
 	make -C /lib/modules/$(BUILD_KERNEL)/build SUBDIRS=$(HERE) EXTRA_CFLAGS='$(EXTRA_CFLAGS)' modules
+	cd plugins; make
 
 clean:
 	make -C /lib/modules/$(BUILD_KERNEL)/build SUBDIRS=$(HERE) clean

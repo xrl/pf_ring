@@ -1,6 +1,6 @@
 /* ***************************************************************
  *
- * (C) 2007-09 - Luca Deri <deri@ntop.org>
+ * (C) 2007-11 - Luca Deri <deri@ntop.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -122,7 +122,7 @@ static int dummy_plugin_plugin_filter_skb(struct ring_opt *the_ring,
     }
   }
 
-  if(hdr->parsed_pkt.ipv4_src == filter->src_host)
+  if(hdr->extended_hdr.parsed_pkt.ip_src.v4 == filter->src_host)
     return(1); /* match */
   else
     return(0);
