@@ -1852,6 +1852,7 @@ static int reflect_packet(struct sk_buff *skb,
       atomic_dec(&skb->users);
     }
 
+    yield();
     return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN);
   } else
     pfr->slots_info->tot_fwd_notok++;

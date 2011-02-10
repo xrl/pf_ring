@@ -201,11 +201,6 @@
 *	0 = Disable (default)
 *	1 = Enable
 *
-* hw_stamp:
-*	This is used to enable/disable hw timestamps feature in the driver.
-*	0 = Disable (default)
-*	1 = Enable
-*
 * pf_ring_debug:
 *	This is used to enable/disable pf_ring related debug messages.
 *	0 = Disable (default)
@@ -364,7 +359,6 @@ VXGE_MODULE_PARAM_INT(udp_stream, FALSE);
 #ifdef VXGE_PF_RING
 VXGE_MODULE_PARAM_INT(pf_ring_en, TRUE);
 VXGE_MODULE_PARAM_INT(pf_ring_debug, FALSE);
-VXGE_MODULE_PARAM_INT(hw_stamp, FALSE);
 #endif /* PF_RING */
 
 static u16 vpath_selector[VXGE_HW_MAX_VIRTUAL_PATHS] =
@@ -6272,6 +6266,7 @@ vxge_hwtstamp_ioctl(struct vxgedev *vdev, struct hwtstamp_config *config)
 	if (config->flags)
 		return -EINVAL;
 
+
 	/* Transmit HW Timestamp not supported */
 	switch (config->tx_type) {
 	case HWTSTAMP_TX_OFF:
@@ -6305,6 +6300,9 @@ vxge_hwtstamp_ioctl(struct vxgedev *vdev, struct hwtstamp_config *config)
 	case HWTSTAMP_FILTER_PTP_V2_EVENT:
 	case HWTSTAMP_FILTER_PTP_V2_SYNC:
 	case HWTSTAMP_FILTER_PTP_V2_DELAY_REQ:
+
+	  printk("vxge_hwtstamp_ioctl() called\n");
+
 		status = vxge_timestamp_config(vdev, 1);
 		if (status != VXGE_HW_OK)
 			return -EFAULT;
@@ -7464,14 +7462,6 @@ static void __devinit vxge_print_parm(struct vxgedev *vdev, u64 vpath_mask)
 	if(pf_ring_en) {	  
 	  vxge_debug_init(VXGE_TRACE, "PF_RING debugging %s",
 			  pf_ring_debug ? "enabled" : "disabled");
-	}
-
-	if(hw_stamp) {
-	  struct hwtstamp_config config;
-	  
-	  memset(&config, 0, sizeof(config));
-	  config.tx_type = HWTSTAMP_TX_OFF, config.rx_filter = HWTSTAMP_FILTER_ALL;
-	  vxge_hwtstamp_ioctl(vdev, &config);
 	}
 
 	vxge_debug_init(VXGE_TRACE, "RX hardware timestamps %s", 	 

@@ -291,8 +291,8 @@ int pfring_enable_hw_timestamp(pfring* ring, char *device_name) {
 
   memset(&hwconfig, 0, sizeof(hwconfig));
 
-  /* Enable RX/TX timestamps */
-  hwconfig.tx_type = HWTSTAMP_TX_ON;
+  /* Enable RX/disable TX timestamps */
+  hwconfig.tx_type = HWTSTAMP_TX_OFF;
   hwconfig.rx_filter = HWTSTAMP_FILTER_ALL;
 
   memset(&ifr, 0, sizeof(ifr));
