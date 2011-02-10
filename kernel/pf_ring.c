@@ -796,8 +796,9 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen, "Tot Fwd Ok     : %lu\n", (unsigned long)fsi->tot_fwd_ok);
 	rlen += sprintf(buf + rlen, "Tot Fwd Errors : %lu\n", (unsigned long)fsi->tot_fwd_notok);
 	rlen += sprintf(buf + rlen, "Num Free Slots : %u\n",  get_num_ring_free_slots(pfr));
-      } else
-	rlen = sprintf(buf, "WARNING fsi == NULL\n");
+      } else {
+	rlen = sprintf(buf, "WARNING ring not active (fsi == NULL)\n");
+      }
     } else
       rlen = sprintf(buf, "WARNING data == NULL\n");
   }
@@ -1411,9 +1412,9 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 				struct sk_buff *skb,
 				int displ,
 				struct parse_buffer *parse_memory_buffer[],
-				u_int8_t * free_parse_mem,
-				u_int * last_matched_plugin,
-				rule_action_behaviour * behaviour)
+				u_int8_t *free_parse_mem,
+				u_int *last_matched_plugin,
+				rule_action_behaviour *behaviour)
 {
   int debug = 0;
   u_int8_t empty_mac[ETH_ALEN] = { 0 }; /* NULL MAC address */
@@ -1524,11 +1525,11 @@ static int match_filtering_rule(struct ring_opt *the_ring,
   }
 #endif
 
+  /* Step 1 - Filter (optional) */
   if((rule->rule.extended_fields.filter_plugin_id > 0)
      && (rule->rule.extended_fields.filter_plugin_id < MAX_PLUGIN_ID)
      && (plugin_registration[rule->rule.extended_fields.filter_plugin_id] != NULL)
-     && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->
-	 pfring_plugin_filter_skb != NULL)
+     && (plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb != NULL)
      ) {
     int rc;
 
@@ -1552,21 +1553,20 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     if(rc <= 0) {
       return(0);	/* No match */
     } else {
-      *last_matched_plugin =
-	rule->rule.extended_fields.filter_plugin_id;
+      *last_matched_plugin = rule->rule.extended_fields.filter_plugin_id;
       hdr->extended_hdr.parsed_pkt.last_matched_plugin_id =
 	rule->rule.extended_fields.filter_plugin_id;
 
       if(debug)
-	printk
-	  ("[PF_RING] [last_matched_plugin = %d][buffer=%p][len=%d]\n",
-	   *last_matched_plugin,
-	   parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id],
-	   parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id] ?
-	   parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]->mem_len : 0);
+	printk("[PF_RING] [last_matched_plugin = %d][buffer=%p][len=%d]\n",
+	       *last_matched_plugin,
+	       parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id],
+	       parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id] ?
+	       parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]->mem_len : 0);
     }
   }
 
+  /* Step 2 - Handle skb */  
   /* Action to be performed in case of match */
   if((rule->rule.plugin_action.plugin_id != NO_PLUGIN_ID)
      && (rule->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
@@ -1764,12 +1764,19 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
-static int add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr)
+static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr, struct sk_buff *skb)
 {
   read_lock_bh(&ring_mgmt_lock);
-  add_pkt_to_ring(NULL, pfr, hdr, 0, 0, 0, NULL);
+  add_pkt_to_ring(skb, pfr, hdr, 0, RING_ANY_CHANNEL, 0, NULL);
   read_unlock_bh(&ring_mgmt_lock);
   return(0);
+}
+
+/* ********************************** */
+
+static int add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr)
+{
+  return(add_packet_to_ring(pfr, hdr, NULL));
 }
 
 /* ********************************** */
@@ -2047,7 +2054,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	  filtering_hash_bucket *hash_bucket;
 
 	  fwd_pkt = 1;
-
 	  hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
 
 	  if(hash_bucket) {
@@ -2069,7 +2075,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	      hash_bucket->rule.port_peer_b = hdr->extended_hdr.parsed_pkt.l4_dst_port;
 	      hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
 	      hash_bucket->rule.reflector_device_name[0] = '\0';
-	      hash_bucket->rule.internals.jiffies_last_match = jiffies;/* Avoid immediate rule purging */
+	      hash_bucket->rule.internals.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
 	      hash_bucket->rule.internals.reflector_dev = NULL;
 	      hash_bucket->rule.plugin_action.plugin_id = NO_PLUGIN_ID;
 	    }
@@ -2939,6 +2945,7 @@ static int ring_create(
   pfr->channel_id = RING_ANY_CHANNEL;
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
   pfr->handle_hash_rule = handle_filtering_hash_bucket;
+  pfr->add_packet_to_ring = add_packet_to_ring;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
   rwlock_init(&pfr->ring_rules_lock);

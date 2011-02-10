@@ -2,7 +2,7 @@
  *
  * Definitions for packet ring
  *
- * 2004-10 Luca Deri <deri@ntop.org>
+ * 2004-11 Luca Deri <deri@ntop.org>
  *
  */
 
@@ -527,6 +527,9 @@ typedef int (*do_handle_filtering_hash_bucket)(struct ring_opt *pfr,
 					       filtering_hash_bucket* rule,
 					       u_char add_rule);
 
+typedef int (*do_add_packet_to_ring)(struct ring_opt *pfr, 
+				     struct pfring_pkthdr *hdr, struct sk_buff *skb);
+
 /* ************************************************* */
 
 /*
@@ -585,6 +588,7 @@ struct ring_opt {
 
   /* Function pointer */
   do_handle_filtering_hash_bucket handle_hash_rule;
+  do_add_packet_to_ring add_packet_to_ring;
 
   /* Kernel consumer */
   u_int8_t kernel_consumer_plugin_id; /* If != 0 it identifies a plugin responsible for consuming packets */
