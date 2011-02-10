@@ -7,7 +7,7 @@ libpfring:
 	cd lib; ./configure; make
 
 pcap:
-	cd libpcap-1.0.0-ring; ./configure --enable-ipv6; make
+	cd libpcap-1.1.1-ring; ./configure --enable-ipv6; make
 
 ring_examples:
 	cd examples; make
@@ -26,7 +26,7 @@ libpfring_clean:
 	cd lib; make clean
 
 pcap_clean:
-	if test -f libpcap-1.0.0-ring/config.status; then cd libpcap-1.0.0-ring; make clean; fi
+	if test -f libpcap-1.1.1-ring/config.status; then cd libpcap-1.1.1-ring; make clean; fi
 
 ring_examples_clean:
 	cd examples; make clean

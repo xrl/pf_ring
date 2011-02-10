@@ -24,7 +24,7 @@ DNA_DEFINE = #-DENABLE_DNA_SUPPORT
 # PF_RING aware libpcap
 #
 EXTRA_LIBS = #-ldag
-PCAPDIR    = ../libpcap-1.0.0-ring
+PCAPDIR    = ../libpcap-1.1.1-ring
 LIBPCAP    = ${PCAPDIR}/libpcap.a  ${EXTRA_LIBS}
 
 #
