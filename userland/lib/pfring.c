@@ -88,7 +88,7 @@ int pfring_set_hw_rule(pfring *ring, hw_filtering_rule *rule, u_int8_t add_rule)
 #else
   if(ring->dna_mapped_device) return(-1);
 
-  return(ring ? setsockopt(ring->fd, 0, 
+  return(ring ? setsockopt(ring->fd, 0,
 			   add_rule ? SO_ADD_HW_FILTERING_RULE : SO_DEL_HW_FILTERING_RULE,
 			   rule, sizeof(hw_filtering_rule)) : -1);
 #endif
@@ -101,13 +101,13 @@ int pfring_set_cluster(pfring *ring, u_int clusterId, cluster_type the_type) {
   return(-1);
 #else
 
-  if(ring->dna_mapped_device) 
+  if(ring->dna_mapped_device)
     return(-1);
   else {
     struct add_to_cluster cluster;
-    
+
     cluster.clusterId = clusterId, cluster.the_type = the_type;
-    
+
     return(ring ? setsockopt(ring->fd, 0, SO_ADD_TO_CLUSTER,
 			     &cluster, sizeof(cluster)): -1);
   }
@@ -300,13 +300,13 @@ int pfring_enable_hw_timestamp(pfring* ring, char *device_name) {
   ifr.ifr_data = (void *)&hwconfig;
 
   rc = ioctl(sock_fd, SIOCSHWTSTAMP, &ifr);
-  if(rc < 0) 
+  if(rc < 0)
     rc = errno;
   else
     rc = 0;
 
 #ifdef RING_DEBUG
-  printf("pfring_enable_hw_timestamp(%s) returned %d\n", 
+  printf("pfring_enable_hw_timestamp(%s) returned %d\n",
 	 device_name, rc);
 #endif
 
@@ -369,7 +369,7 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
     if(rc == 0) {
       if(consumer_plugin_id > 0) {
 	ring->kernel_packet_consumer = consumer_plugin_id;
-	rc = pfring_set_packet_consumer_mode(ring, consumer_plugin_id, 
+	rc = pfring_set_packet_consumer_mode(ring, consumer_plugin_id,
 					     consumer_data, consumer_data_len);
 	if(rc < 0) {
 	  free(ring);
@@ -382,7 +382,7 @@ pfring* pfring_open_consumer(char *device_name, u_int8_t promisc,
 				  MAP_SHARED, ring->fd, 0);
 
       if(ring->buffer == MAP_FAILED) {
-	printf("mmap() failed");
+	printf("mmap() failed: try with a smaller snaplen\n");
 	free(ring);
 	return(NULL);
       }
@@ -552,7 +552,7 @@ int  pfring_send(pfring *ring, char *pkt, u_int pkt_len) {
 #ifdef USE_PCAP
   pcap_t *pcapPtr = (pcap_t*)ring;
   return(pcap_inject(pcapPtr, pkt, pkt_len));
-#else 
+#else
   return(sendto(ring->fd, pkt, pkt_len, 0, (struct sockaddr *)&ring->sock_tx, sizeof(ring->sock_tx)));
 #endif
 }
@@ -617,7 +617,7 @@ u_int16_t pfring_get_ring_id(pfring *ring) {
     int ret, rc = getsockopt(ring->fd, 0, SO_GET_RING_ID, &id, &len);
 
     ret = (rc == 0) ? id : -1;
-    
+
     return(ret);
   }
 #endif
@@ -652,7 +652,7 @@ int pfring_get_hash_filtering_rule_stats(pfring *ring,
 #else
   if(ring == NULL)
     return(-1);
-  else if(ring->dna_mapped_device) 
+  else if(ring->dna_mapped_device)
     return(-1);
   else {
     char buffer[2048];
@@ -1016,7 +1016,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       pthread_spin_lock(&ring->spinlock);
 
     if(ring->slots_info->tot_insert != ring->slots_info->tot_read) {
-      char *bucket = &ring->slots[ring->slots_info->remove_off];      
+      char *bucket = &ring->slots[ring->slots_info->remove_off];
       u_int32_t next_off, real_slot_len, insert_off, bktLen;
 
       memcpy(hdr, bucket, sizeof(struct pfring_pkthdr));
@@ -1030,18 +1030,18 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	memcpy(buffer, &bucket[sizeof(struct pfring_pkthdr)], bktLen);
 	buffer[bktLen] = '\0';
       }
-    
+
       next_off = ring->slots_info->remove_off + real_slot_len;
-      if ((next_off + ring->slots_info->slot_len) > (ring->slots_info->tot_mem - sizeof(FlowSlotInfo))){  
+      if ((next_off + ring->slots_info->slot_len) > (ring->slots_info->tot_mem - sizeof(FlowSlotInfo))){
         next_off = 0;
       }
 
       /* This prevents the compiler from reordering instructions.
        * http://en.wikipedia.org/wiki/Memory_ordering#Compiler_memory_barrier */
       gcc_mb();
-      
+
       ring->slots_info->tot_read++;
-      ring->slots_info->remove_off = next_off;     
+      ring->slots_info->remove_off = next_off;
 
       /* Ugly safety check */
       if((ring->slots_info->tot_insert == ring->slots_info->tot_read)
@@ -1053,7 +1053,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
       return(1);
     }
- 
+
     /* Nothing to do: we need to wait */
     if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
 
@@ -1096,8 +1096,8 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	return(-1);
       else
 	goto do_pfring_recv;
-    }    
-     
+    }
+
     return(-1); /* Not reached */
   }
 }
@@ -1118,7 +1118,7 @@ int pfring_get_selectable_fd(pfring *ring) {
 #ifdef USE_PCAP
   return(pcap_get_selectable_fd((pcap_t*)ring));
 #else
-  if((ring == NULL) || ring->dna_mapped_device) 
+  if((ring == NULL) || ring->dna_mapped_device)
     return(-1);
   else
     return(ring->fd);
@@ -1175,7 +1175,7 @@ u_int8_t pfring_get_packet_consumer_mode(pfring *ring) {
     int ret, rc = getsockopt(ring->fd, 0, SO_GET_PACKET_CONSUMER_MODE, &id, &len);
 
     ret = (rc == 0) ? id : -1;
-    
+
     return(ret);
   }
 #endif
@@ -1183,7 +1183,7 @@ u_int8_t pfring_get_packet_consumer_mode(pfring *ring) {
 
 /* **************************************************** */
 
-int pfring_set_packet_consumer_mode(pfring *ring, u_int8_t plugin_id, 
+int pfring_set_packet_consumer_mode(pfring *ring, u_int8_t plugin_id,
 				    char *plugin_data, u_int plugin_data_len) {
   char buffer[4096];
 
@@ -1191,15 +1191,15 @@ int pfring_set_packet_consumer_mode(pfring *ring, u_int8_t plugin_id,
   return(-1);
 #else
   if((ring == NULL) || ring->dna_mapped_device) return(-1);
-  
+
   if(plugin_data_len > (sizeof(buffer)-1)) return(-2);
 
   memcpy(buffer, &plugin_id, 1);
 
   if(plugin_data_len > 0)
     memcpy(&buffer[1], plugin_data, plugin_data_len);
-  
-  return(setsockopt(ring->fd, 0, SO_SET_PACKET_CONSUMER_MODE, 
+
+  return(setsockopt(ring->fd, 0, SO_SET_PACKET_CONSUMER_MODE,
 		    buffer, plugin_data_len+1));
 #endif
 }
@@ -1326,7 +1326,7 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 #endif
       return(ring);
     } else {
-      printf("pfring_map_dna_device() failed [rc=%d]: device already in use or non-DNA driver?\n", 
+      printf("pfring_map_dna_device() failed [rc=%d]: device already in use or non-DNA driver?\n",
 	     rc);
       printf("Make sure that you load the DNA-driver *after* you loaded the PF_RING kernel module\n");
       free(ring);
