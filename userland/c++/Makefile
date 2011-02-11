@@ -1,7 +1,7 @@
 CPP=g++ -g 
 
 KERNEL_DIR=../../kernel
-LIBPCAP_DIR=../libpcap-1.0.0-ring
+LIBPCAP_DIR=../libpcap-1.1.1-ring
 INCLUDE=-I$(KERNEL_DIR) -I$(LIBPCAP_DIR) -I../lib
 LIBPFRING_CPP=libpfring_cpp.a
 RANLIB=ranlib
