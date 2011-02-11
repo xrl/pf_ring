@@ -60,7 +60,7 @@
 
 #undef HAVE_PF_RING
 
-/* #define CPACKET_TIMESTAMPS */
+//#define CPACKET_TIMESTAMPS
 
 #ifdef CPACKET_TIMESTAMPS
 #include <linux/timecompare.h>
@@ -985,9 +985,12 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
     memcpy(&ts, &skb->data[skb->len], sizeof(struct cpacket_ts));
 
     if(ts.epoch > 0) {
+      struct skb_shared_hwtstamps *skb_hwts = skb_hwtstamps(skb);
+
       ts.epoch = ntohl(ts.epoch), ts.ns = ntohl(ts.ns);      
-      skb->tstamp =  ktime_set((const long)ts.epoch, (const unsigned long)ts.ns);
-      // printk(KERN_INFO "[CPACKET] %u.%u\n", ts.epoch, ts.ns);
+      skb_hwts->hwtstamp = ktime_set((const long)ts.epoch, (const unsigned long)ts.ns);
+      skb_hwts->syststamp.tv64 = 0;
+      //printk(KERN_INFO "[CPACKET] %u.%u\n", ts.epoch, ts.ns);
     }
   }
 #endif
