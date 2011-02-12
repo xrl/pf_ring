@@ -1,5 +1,4 @@
-all: libpfring pcap ring_examples lib_c++ mod_perl
-
+all: libpfring pcap ring_examples lib_c++ mod_perl tcpdump
 
 ###################
 
@@ -18,9 +17,12 @@ lib_c++:
 mod_perl:
 	cd perl; make
 
+tcpdump:
+	cd tcpdump-4.1.1; ./configure ; make
+
 ###################
 
-clean: libpfring_clean pcap_clean ring_examples_clean lib_c++_clean mod_perl_clean
+clean: libpfring_clean pcap_clean ring_examples_clean lib_c++_clean mod_perl_clean tcpdump_clean
 
 libpfring_clean:
 	cd lib; make clean
@@ -36,3 +38,6 @@ lib_c++_clean:
 
 mod_perl_clean:
 	if test -f perl/Net-Pfring/Makefile; then cd perl; make clean; fi
+
+tcpdump_clean:
+	if test -f tcpdump-4.1.1/config.status; then cd tcpdump-4.1.1; make clean; fi
