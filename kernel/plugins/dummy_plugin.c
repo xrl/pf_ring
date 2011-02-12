@@ -100,40 +100,6 @@ static int dummy_plugin_plugin_handle_skb(struct ring_opt *pfr,
 
 /* ************************************ */
 
-struct dummy_filter {
-  u_int32_t src_host;
-};
-
-static int dummy_plugin_plugin_filter_skb(struct ring_opt *the_ring,
-					  filtering_rule_element *rule,
-					  struct pfring_pkthdr *hdr,
-					  struct sk_buff *skb,
-					  struct parse_buffer **parse_memory)
-{
-  struct dummy_filter *filter = (struct dummy_filter*)rule->rule.extended_fields.filter_plugin_data;
-
-#ifdef DEBUG
-  printk("-> dummy_plugin_plugin_filter_skb(host=0x%08X)\n", filter->src_host);
-#endif
-
-  /* Test allocation in order to show how memory placeholder works */
-  if((*parse_memory) == NULL) {
-    (*parse_memory) = kmalloc(sizeof(struct parse_buffer*), GFP_KERNEL);
-    if(*parse_memory) {
-      (*parse_memory)->mem_len = 4;
-      (*parse_memory)->mem = kmalloc((*parse_memory)->mem_len, GFP_KERNEL);
-      printk("-> dummy_plugin_plugin_filter_skb allocated memory\n");
-    }
-  }
-
-  if(hdr->extended_hdr.parsed_pkt.ip_src.v4 == filter->src_host)
-    return(1); /* match */
-  else
-    return(0);
-}
-
-/* ************************************ */
-
 static int dummy_plugin_plugin_get_stats(struct ring_opt *pfr,
 					 filtering_rule_element *rule,
 					 filtering_hash_bucket  *hash_bucket,
@@ -164,7 +130,6 @@ static int __init dummy_plugin_init(void)
   memset(&reg, 0, sizeof(reg));
 
   reg.plugin_id                = plugin_id;
-  reg.pfring_plugin_filter_skb = dummy_plugin_plugin_filter_skb;
   reg.pfring_plugin_handle_skb = dummy_plugin_plugin_handle_skb;
   reg.pfring_plugin_get_stats  = dummy_plugin_plugin_get_stats;
 
