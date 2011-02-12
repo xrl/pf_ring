@@ -254,6 +254,7 @@ int main(int argc, char* argv[])
 	break;
     }
   }  
+
   if ( (!in_dev) || (!out_dev) )
   {
     printf("you must specify an input and an output device!\n");
@@ -261,13 +262,14 @@ int main(int argc, char* argv[])
   }
 
   /* open devices */
-  if((pd = pfring_open(in_dev, promisc, 1500, 0)) == NULL) 
-  {
+  if((pd = pfring_open(in_dev, promisc, 1500, 0)) == NULL) {
     printf("pfring_open error for %s\n", in_dev);
     return -1;
-  }  else
+  }  else {
     pfring_set_application_name(pd, "forwarder");
-
+    pfring_set_direction(pd, rx_only_direction);
+  }
+  
   if(!filter_only_one_type) {
      /* reflect all TCP packets received on in_dev -> out_dev */
      memset(&rule, 0, sizeof(rule));

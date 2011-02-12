@@ -26,7 +26,7 @@
 
 #include "pfring_e1000e_dna.h"
 
-#define MAX_NUM_LOOPS    1000000000
+#define MAX_NUM_LOOPS        100000
 #define YIELD_MULTIPLIER      10000
 
 #define gcc_mb() __asm__ __volatile__("": : :"memory");

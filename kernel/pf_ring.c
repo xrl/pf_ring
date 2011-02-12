@@ -1831,6 +1831,7 @@ static int reflect_packet(struct sk_buff *skb,
       memcpy(skb->data, &skb->data[6], 6);
       memcpy(&skb->data[6], dst_mac, 6);
     }
+
     /*
       NOTE
       dev_queue_xmit() must be called with interrupts enabled
@@ -1852,7 +1853,7 @@ static int reflect_packet(struct sk_buff *skb,
       atomic_dec(&skb->users);
     }
 
-    yield();
+    /* yield(); */
     return(ret == NETDEV_TX_OK ? 0 : -ENETDOWN);
   } else
     pfr->slots_info->tot_fwd_notok++;
@@ -2648,6 +2649,7 @@ static int skb_ring_handler(struct sk_buff *skb,
       }
     }
   }
+
 #ifdef PROFILING
   rdt2 = _rdtsc() - rdt2;
   rdt = _rdtsc() - rdt;
