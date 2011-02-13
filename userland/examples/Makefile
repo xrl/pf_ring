@@ -85,7 +85,7 @@ dummy_plugin_pfcount: dummy_plugin_pfcount.o ${LIBPFRING}
 	${CC} dummy_plugin_pfcount.o ${LIBS} -o $@
 
 pcap2nspcap: pcap2nspcap.o ${LIBPFRING}
-	${CC} pcap2nspcap.o ${LIBS} -lpcap -o $@
+	${CC} pcap2nspcap.o ${LIBPCAP} ${LIBS} -o $@
 
 pfcount_multichannel: pfcount_multichannel.o ${LIBPFRING}
 	${CC} pfcount_multichannel.o ${LIBS} -o $@
