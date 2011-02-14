@@ -63,7 +63,8 @@ ${DYNAMICLIB}: ${OBJS} pfring.h ${RING_H} Makefile
 	${CC} ${LDFLAGS} ${OBJS} ${SYSLIBS} -o $@
 
 install: ${STATICLIB} ${DYNAMICLIB}
-	mkdir -p ${INSTDIR}
+	mkdir -p ${INSTDIR}/lib
+	mkdir -p ${INSTDIR}/include
 	cp ${STATICLIB} ${INSTDIR}/lib/
 	cp ${DYNAMICLIB} ${INSTDIR}/lib/
 	cp pfring_e1000e_dna.h pfring.h ${INSTDIR}/include/
