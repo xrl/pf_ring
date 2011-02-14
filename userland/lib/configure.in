@@ -12,5 +12,13 @@ if test "x$ac_cv_header_linux_net_tstamp_h" = x""yes; then :
 CFLAGS="-DENABLE_HW_TIMESTAMP $CFLAGS"
 fi
 
+if test ".${prefix}" = ".NONE"; then
+   INSTALL_PREFIX=${ac_default_prefix};
+else
+   INSTALL_PREFIX=${prefix};
+fi
+
 AC_SUBST(CFLAGS)
+AC_SUBST(INSTALL_PREFIX)
+
 AC_OUTPUT
