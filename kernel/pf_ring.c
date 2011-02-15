@@ -5129,9 +5129,10 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
     case NETDEV_DOWN:
       break;
     case NETDEV_REGISTER:
-      if(debug) printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
-		       dev->name, dev->pfring_ptr, &ring_hooks);
-
+      if(debug)
+	printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
+	       dev->name, dev->pfring_ptr, &ring_hooks);
+      
       if(dev->pfring_ptr == NULL) {
 	dev->pfring_ptr = &ring_hooks;
 	if(add_device_to_ring_list(dev) != 0) {
@@ -5141,11 +5142,12 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
       break;
 
     case NETDEV_UNREGISTER:
-      if(debug) printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
-		       dev->name, dev->pfring_ptr);
+      if(debug)
+	printk("[PF_RING] packet_notifier(%s) [UNREGISTER][pfring_ptr=%p]\n",
+	       dev->name, dev->pfring_ptr);
 
       hook = (struct pfring_hooks*)dev->pfring_ptr;
-      if(hook->magic == PF_RING) {
+      if(hook && (hook->magic == PF_RING)) {
 	remove_device_from_ring_list(dev);
 	dev->pfring_ptr = NULL;
       }
@@ -5169,9 +5171,10 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 	  ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
 
 	  if(dev_ptr->dev == dev) {
-	    if(debug) printk("[PF_RING] ==>> FOUND device change name %s -> %s\n",
-			     dev_ptr->proc_entry->name, dev->name);
-
+	    if(debug)
+	      printk("[PF_RING] ==>> FOUND device change name %s -> %s\n",
+		     dev_ptr->proc_entry->name, dev->name);
+	    
 	    /* Remove old entry */
 	    if(dev_ptr->has_hw_filtering)
 	      remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
@@ -5206,8 +5209,9 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
       break;
 
     default:
-      if(debug) printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
-		       dev->name, msg, dev->pfring_ptr);
+      if(debug)
+	printk("[PF_RING] packet_notifier(%s): unhandled message [msg=%lu][pfring_ptr=%p]\n",
+	       dev->name, msg, dev->pfring_ptr);
       break;
     }
   }
