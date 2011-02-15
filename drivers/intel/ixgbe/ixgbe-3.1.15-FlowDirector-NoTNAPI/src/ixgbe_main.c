@@ -57,9 +57,6 @@
 #define HAVE_PF_RING
 #endif
 
-
-#undef HAVE_PF_RING
-
 //#define CPACKET_TIMESTAMPS
 
 #ifdef CPACKET_TIMESTAMPS
