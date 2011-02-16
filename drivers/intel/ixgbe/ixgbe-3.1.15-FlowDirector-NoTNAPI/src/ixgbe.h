@@ -28,15 +28,17 @@
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
 
-/* L.Deri - Trick to enable VLAN sniffing */
-#undef NETIF_F_HW_VLAN_TX
-
 #ifndef IXGBE_NO_LRO
 #include <net/tcp.h>
 #endif
 
 #include <linux/pci.h>
 #include <linux/netdevice.h>
+
+#ifdef DISABLE_NETIF_F_HW_VLAN_TX
+#undef NETIF_F_HW_VLAN_TX
+#endif
+
 #ifdef HAVE_IRQ_AFFINITY_HINT
 #include <linux/cpumask.h>
 #endif /* HAVE_IRQ_AFFINITY_HINT */
