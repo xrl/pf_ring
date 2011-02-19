@@ -43,7 +43,6 @@
 #include <arpa/inet.h>
 
 #include "pfring.h"
-#include "dummy_plugin.h"
 
 #define ALARM_SLEEP             1
 #define DEFAULT_SNAPLEN       128
@@ -89,8 +88,6 @@ void print_stats() {
   static u_int64_t lastPkts = 0;
   u_int64_t diff;
   static struct timeval lastTime;
-  struct simple_stats stats;
-  u_int len;
 
   if(startTime.tv_sec == 0) {
     gettimeofday(&startTime, NULL);
@@ -135,13 +132,6 @@ void print_stats() {
 
   lastTime.tv_sec = endTime.tv_sec, lastTime.tv_usec = endTime.tv_usec;
 
-  len = sizeof(stats);
-  if(pfring_get_filtering_rule_stats(pd, 5, (char*)&stats, &len) >= 0) {
-    fprintf(stderr, "=========================\n");
-    fprintf(stderr, "Dummy Plugin Stats (ICMP) [Pkts: %llu][Bytes: %llu]\n",
-	    stats.num_pkts, stats.num_bytes);
-  }
-  
   fprintf(stderr, "=========================\n\n");
 }
 
@@ -456,8 +446,7 @@ int main(int argc, char* argv[]) {
   int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   u_int clusterId = 0;
   packet_direction direction = rx_and_tx_direction;
-  filtering_rule rule;
-  struct dummy_filter *filter;
+  hash_filtering_rule rule;
 
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
@@ -553,22 +542,19 @@ int main(int argc, char* argv[]) {
   /* The dummy plugin will dropp all but ICMP packets */
   rule.rule_id = 5;
   rule.rule_action = forward_packet_and_stop_rule_evaluation;
-  rule.plugin_action.plugin_id = DUMMY_PLUGIN_ID; /* DUMMY plugin */
-  rule.extended_fields.filter_plugin_id = DUMMY_PLUGIN_ID; /* Enable packet parsing/filtering */
-  filter = (struct dummy_filter*)rule.extended_fields.filter_plugin_data;
-  filter->protocol = 1; /* ICMP */
 
-  if(pfring_add_filtering_rule(pd, &rule) < 0)
-    printf("pfring_add_hash_filtering_rule(2) failed\n");
+  if(pfring_handle_hash_filtering_rule(pd, &rule, 1) < 0)
+    printf("pfring_handle_hash_filtering_rule(ADD) failed\n");
   else
     printf("Rule added successfully...\n");
 
+  if(pfring_handle_hash_filtering_rule(pd, &rule, 0) < 0)
+    printf("pfring_handle_hash_filtering_rule(REMOVE) failed\n");
+  else
+    printf("Rule removed successfully...\n");
+
   pfring_enable_ring(pd);
-  packet_consumer_thread(0);
-
   pfring_close(pd);
-
-  sleep(3);
 
   return(0);
 }
