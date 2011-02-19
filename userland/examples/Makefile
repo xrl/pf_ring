@@ -30,7 +30,8 @@ LIBPCAP    = ${PCAPDIR}/libpcap.a  ${EXTRA_LIBS}
 #
 # Search directories
 #
-INCLUDE    = -I../../kernel -I${PFRINGDIR} -I${PCAPDIR}
+PFRING_KERNEL=../../kernel
+INCLUDE    = -I${PFRING_KERNEL}  -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${PCAPDIR}
 
 #
 # C compiler and flags
@@ -55,7 +56,8 @@ LIBS       = ${LIBPFRING} -lpthread
 #
 # Main targets
 #
-PFPROGS   = ringc rings ringm pcaps pfcount pfcount_multichannel pftwin ptwin preflect pfbounce pfmap forwarder alldevs dummy_plugin_pfcount pcap2nspcap
+PFPROGS   = ringc rings ringm pcaps pfcount pfcount_multichannel pftwin ptwin preflect pfbounce pfmap \
+	    forwarder alldevs dummy_plugin_pfcount pcap2nspcap pfcount_dummy_plugin
 PCAPPROGS = pcount pwrite
 TARGETS   = ${PFPROGS} ${PCAPPROGS}
 
@@ -89,6 +91,9 @@ pcap2nspcap: pcap2nspcap.o ${LIBPFRING}
 
 pfcount_multichannel: pfcount_multichannel.o ${LIBPFRING}
 	${CC} pfcount_multichannel.o ${LIBS} -o $@
+
+pfcount_dummy_plugin: pfcount_dummy_plugin.o ${LIBPFRING}
+	${CC} pfcount_dummy_plugin.o ${LIBS} -o $@
 
 preflect: preflect.o ${LIBPFRING}
 	${CC} preflect.o ${LIBPCAP} ${LIBS} -o $@

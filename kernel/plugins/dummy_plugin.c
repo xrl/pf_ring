@@ -18,6 +18,15 @@
  *
  */
 
+/*
+
+  IMPORTANT
+
+  See userland/examples/pfcount_dummy_plugin.c for
+  learning how to use plugins from userspace
+
+*/
+
 #include <linux/version.h>
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
@@ -56,29 +65,25 @@
 #define PF_RING_PLUGIN
 #include <linux/pf_ring.h>
 
-struct simple_stats {
-  u_int64_t num_pkts, num_bytes;
-};
-
-static u_int16_t plugin_id = 1;
+#include "dummy_plugin.h"
 
 static struct pfring_plugin_registration reg;
 
 /* ************************************ */
 
-static int dummy_plugin_plugin_handle_skb(struct ring_opt *pfr,
-					  filtering_rule_element *rule,
-					  filtering_hash_bucket *hash_rule,
-					  struct pfring_pkthdr *hdr,
-					  struct sk_buff *skb,
-					  u_int16_t filter_plugin_id,
-					  struct parse_buffer **filter_rule_memory_storage,
-					  rule_action_behaviour *behaviour)
+static int dummy_plugin_handle_skb(struct ring_opt *pfr,
+				   filtering_rule_element *rule,
+				   filtering_hash_bucket *hash_rule,
+				   struct pfring_pkthdr *hdr,
+				   struct sk_buff *skb,
+				   u_int16_t filter_plugin_id,
+				   struct parse_buffer **filter_rule_memory_storage,
+				   rule_action_behaviour *behaviour)
 {
 
   if(rule != NULL) {
     if(rule->plugin_data_ptr == NULL) {
-      rule->plugin_data_ptr = (struct simple_stats*)kmalloc(sizeof(struct simple_stats), GFP_KERNEL);
+      rule->plugin_data_ptr = (struct simple_stats*)kmalloc(sizeof(struct simple_stats), GFP_ATOMIC);
       if(rule->plugin_data_ptr != NULL)
 	memset(rule->plugin_data_ptr, 0, sizeof(struct simple_stats));
     }
@@ -88,7 +93,7 @@ static int dummy_plugin_plugin_handle_skb(struct ring_opt *pfr,
       stats->num_pkts++, stats->num_bytes += hdr->len;
 
 #ifdef DEBUG
-      printk("-> dummy_plugin_plugin_handle_skb [pkts=%u][bytes=%u]\n",
+      printk("-> dummy_plugin_handle_skb [pkts=%u][bytes=%u]\n",
 	     (unsigned int)stats->num_pkts,
 	     (unsigned int)stats->num_bytes);
 #endif
@@ -100,14 +105,14 @@ static int dummy_plugin_plugin_handle_skb(struct ring_opt *pfr,
 
 /* ************************************ */
 
-static int dummy_plugin_plugin_get_stats(struct ring_opt *pfr,
-					 filtering_rule_element *rule,
-					 filtering_hash_bucket  *hash_bucket,
-					 u_char* stats_buffer,
-					 u_int stats_buffer_len)
+static int dummy_plugin_get_stats(struct ring_opt *pfr,
+				  filtering_rule_element *rule,
+				  filtering_hash_bucket  *hash_bucket,
+				  u_char* stats_buffer,
+				  u_int stats_buffer_len)
 {
 #ifdef DEBUG
-  printk("-> dummy_plugin_plugin_get_stats(len=%d)\n", stats_buffer_len);
+  printk("-> dummy_plugin_get_stats(len=%d)\n", stats_buffer_len);
 #endif
 
   if(stats_buffer_len >= sizeof(struct simple_stats)) {
@@ -123,22 +128,46 @@ static int dummy_plugin_plugin_get_stats(struct ring_opt *pfr,
 
 /* ************************************ */
 
+static int dummy_plugin_filter(struct ring_opt *the_ring,
+			       filtering_rule_element *rule,
+			       struct pfring_pkthdr *hdr,
+			       struct sk_buff *skb,
+			       struct parse_buffer **parse_memory)
+{
+  struct dummy_filter *rule_filter = (struct dummy_filter*)rule->rule.extended_fields.filter_plugin_data;
+
+  if(rule_filter) {
+#ifdef DEBUG
+    printk("->l3_proto=%d / protocol=%d\n",
+	   hdr->extended_hdr.parsed_pkt.l3_proto, rule_filter->protocol);
+#endif
+
+    if(hdr->extended_hdr.parsed_pkt.l3_proto != rule_filter->protocol)
+      return(0); /* no match */
+  }
+
+  return(1); /* Ok */
+}
+
+/* ************************************ */
+
 static int __init dummy_plugin_init(void)
 {
   printk("Welcome to dummy plugin for PF_RING\n");
 
   memset(&reg, 0, sizeof(reg));
 
-  reg.plugin_id                = plugin_id;
-  reg.pfring_plugin_handle_skb = dummy_plugin_plugin_handle_skb;
-  reg.pfring_plugin_get_stats  = dummy_plugin_plugin_get_stats;
+  reg.plugin_id                = DUMMY_PLUGIN_ID;
+  reg.pfring_plugin_handle_skb = dummy_plugin_handle_skb;
+  reg.pfring_plugin_get_stats  = dummy_plugin_get_stats;
+  reg.pfring_plugin_filter_skb = dummy_plugin_filter;
 
   snprintf(reg.name, sizeof(reg.name)-1, "dummy");
   snprintf(reg.description, sizeof(reg.description)-1, "This is a dummy plugin");
 
   register_plugin(&reg);
 
-  printk("Dummy plugin started [id=%d]\n", plugin_id);
+  printk("Dummy plugin started [id=%d]\n", DUMMY_PLUGIN_ID);
   return(0);
 }
 
@@ -147,7 +176,7 @@ static int __init dummy_plugin_init(void)
 static void __exit dummy_plugin_exit(void)
 {
   printk("Thanks for having used dummy plugin for PF_RING\n");
-  unregister_plugin(plugin_id);
+  unregister_plugin(DUMMY_PLUGIN_ID);
 }
 
 /* ************************************ */
