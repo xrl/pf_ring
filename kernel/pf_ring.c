@@ -3996,8 +3996,15 @@ static int add_filtering_rule_element(struct ring_opt *pfr, filtering_rule_eleme
   }
 
   if(rule->rule.reflector_device_name[0] != '\0') {
-    rule->rule.internals.reflector_dev =
-      dev_get_by_name(
+    if((pfr->ring_netdev != NULL)
+       && (strcmp(rule->rule.reflector_device_name, pfr->ring_netdev->name) == 0)) {
+      if(debug)
+	printk("[PF_RING] You cannot use as reflection device the same device on which this ring is bound\n");
+      kfree(rule);
+      return(-EFAULT);
+    }
+
+    rule->rule.internals.reflector_dev = dev_get_by_name(
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 		      &init_net,
 #endif
@@ -4114,11 +4121,18 @@ static int add_filtering_rule_element(struct ring_opt *pfr, filtering_rule_eleme
 /* ************************************* */
 
 static int add_filtering_hash_bucket(struct ring_opt *pfr, filtering_hash_bucket *rule) {
-  int rc = 0;
+  int rc = 0, debug = 0;
 
   if(rule->rule.reflector_device_name[0] != '\0') {
-    rule->rule.internals.reflector_dev =
-      dev_get_by_name(
+    if((pfr->ring_netdev != NULL)
+       && (strcmp(rule->rule.reflector_device_name, pfr->ring_netdev->name) == 0)) {
+      if(debug)
+	printk("[PF_RING] You cannot use as reflection device the same device on which this ring is bound\n");
+      kfree(rule);
+      return(-EFAULT);
+    }
+
+    rule->rule.internals.reflector_dev = dev_get_by_name(
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
 		      &init_net,
 #endif
