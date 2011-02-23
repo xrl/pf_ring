@@ -659,6 +659,7 @@ typedef int (*plugin_get_stats)(struct ring_opt *pfr,
 typedef int (*plugin_add_rule)(filtering_rule_element *rule,
 			       struct pfring_pkthdr *hdr,
 			       filtering_hash_bucket *hash_bucket);
+typedef void (*plugin_register)(u_int8_t register_plugin);
 
 /* Called when a ring is disposed */
 typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
@@ -683,6 +684,7 @@ struct pfring_plugin_registration {
   plugin_get_stats     pfring_plugin_get_stats;
   plugin_free_ring_mem pfring_plugin_free_ring_mem;
   plugin_add_rule      pfring_plugin_add_rule;
+  plugin_register      pfring_plugin_register;
 
   /* ************** */
 

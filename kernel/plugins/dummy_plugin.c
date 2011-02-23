@@ -151,6 +151,15 @@ static int dummy_plugin_filter(struct ring_opt *the_ring,
 
 /* ************************************ */
 
+static void dummy_plugin_register(u_int8_t register_plugin) {
+  if(register_plugin)
+    try_module_get(THIS_MODULE); /* Increment usage count */
+  else
+    module_put(THIS_MODULE);	 /* Decrement usage count */
+}
+
+/* ************************************ */
+
 static int __init dummy_plugin_init(void)
 {
   printk("Welcome to dummy plugin for PF_RING\n");
@@ -161,6 +170,7 @@ static int __init dummy_plugin_init(void)
   reg.pfring_plugin_handle_skb = dummy_plugin_handle_skb;
   reg.pfring_plugin_get_stats  = dummy_plugin_get_stats;
   reg.pfring_plugin_filter_skb = dummy_plugin_filter;
+  reg.pfring_plugin_register   = dummy_plugin_register;
 
   snprintf(reg.name, sizeof(reg.name)-1, "dummy");
   snprintf(reg.description, sizeof(reg.description)-1, "This is a dummy plugin");

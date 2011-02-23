@@ -255,9 +255,13 @@ int main(int argc, char* argv[])
     }
   }  
 
-  if ( (!in_dev) || (!out_dev) )
-  {
+  if ((!in_dev) || (!out_dev)) {
     printf("you must specify an input and an output device!\n");
+    return -1;
+  }
+
+  if(strcmp(in_dev, out_dev) == 0) {
+    printf("In and out devices must mot be the same!\n");
     return -1;
   }
 
