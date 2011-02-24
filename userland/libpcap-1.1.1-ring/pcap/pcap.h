@@ -167,7 +167,9 @@ struct pcap_pkthdr {
 #ifdef HAVE_PF_RING
 /* Nanosecond accuracy */
 struct ns_pcaphdr {
-  u_int32_t tv_sec, tv_usec, caplen, len;
+  struct timeval ts;
+  bpf_u_int32 caplen;
+  bpf_u_int32 len;  
   u_int64_t ns;
 };
 #endif

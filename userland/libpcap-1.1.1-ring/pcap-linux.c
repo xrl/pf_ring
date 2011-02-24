@@ -25,8 +25,8 @@
  *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
  *
  *  Modifications:     Added PACKET_MMAP support
- *                     Paolo Abeni <paolo.abeni@email.it> 
- *                     
+ *                     Paolo Abeni <paolo.abeni@email.it>
+ *
  *                     based on previous works of:
  *                     Simon Patarin <patarin@cs.unibo.it>
  *                     Phil Wood <cpw@lanl.gov>
@@ -45,7 +45,7 @@
  * modification, are permitted provided that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer. 
+ *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
@@ -54,12 +54,12 @@
  *
  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
  * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
  * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
  * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
  * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
- * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, 
+ * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
@@ -232,7 +232,7 @@ static const char rcsid[] _U_ =
 # endif /* PACKET_HOST */
 
 
- /* check for memory mapped access avaibility. We assume every needed 
+ /* check for memory mapped access avaibility. We assume every needed
   * struct is defined if the macro TPACKET_HDRLEN is defined, because it
   * uses many ring related structs and macros */
 # ifdef TPACKET_HDRLEN
@@ -929,7 +929,7 @@ linux_if_drops(const char * if_name)
 	FILE * file;
 	int field_to_convert = 3, if_name_sz = strlen(if_name);
 	long int dropped_pkts = 0;
-	
+
 	file = fopen("/proc/net/dev", "r");
 	if (!file)
 		return 0;
@@ -944,7 +944,7 @@ linux_if_drops(const char * if_name)
 			field_to_convert = 4;
 			continue;
 		}
-	
+
 		/* find iface and make sure it actually matches -- space before the name and : after it */
 		if ((bufptr = strstr(buffer, if_name)) &&
 			(bufptr == buffer || *(bufptr-1) == ' ') &&
@@ -958,20 +958,20 @@ linux_if_drops(const char * if_name)
 				while (*bufptr != '\0' && *(bufptr++) == ' ');
 				while (*bufptr != '\0' && *(bufptr++) != ' ');
 			}
-			
+
 			/* get rid of any final spaces */
 			while (*bufptr != '\0' && *bufptr == ' ') bufptr++;
-			
+
 			if (*bufptr != '\0')
 				dropped_pkts = strtol(bufptr, NULL, 10);
 
 			break;
 		}
 	}
-	
+
 	fclose(file);
 	return dropped_pkts;
-} 
+}
 
 
 /*
@@ -1164,15 +1164,15 @@ pcap_activate_linux(pcap_t *handle)
 	  char *clusterId;
 
 	  handle->ring = pfring_open((char*)device, handle->opt.promisc, handle->snapshot, 1);
-	  
+
 	  if(handle->ring) {
-	    if(clusterId = getenv("PCAP_PF_RING_CLUSTER_ID")) 
+	    if(clusterId = getenv("PCAP_PF_RING_CLUSTER_ID"))
 	      if(atoi(clusterId) > 0 && atoi(clusterId) < 255)
 		if(getenv("PCAP_PF_RING_USE_CLUSTER_PER_FLOW"))
 		  pfring_set_cluster(handle->ring, atoi(clusterId), cluster_per_flow);
 		else
 		  pfring_set_cluster(handle->ring, atoi(clusterId), cluster_round_robin);
-	    
+
 	    pfring_enable_ring(handle->ring);
 	  } else
 	    handle->ring = NULL;
@@ -1189,9 +1189,9 @@ pcap_activate_linux(pcap_t *handle)
 	} else {
 	  /* printf("Open HAVE_PF_RING(%s) failed. Fallback to pcap\n", device); */
 #endif
-	
+
 	/*
-	 * If we're in promiscuous mode, then we probably want 
+	 * If we're in promiscuous mode, then we probably want
 	 * to see when the interface drops packets too, so get an
 	 * initial count from /proc/net/dev
 	 */
@@ -1702,9 +1702,14 @@ pcap_read_packet(pcap_t *handle, pcap_handler callback, u_char *userdata)
 	/* Call the user supplied callback function */
 #if defined(HAVE_PF_RING)
 	{
-	  struct ns_pcaphdr myhdr;
-	  
-	  myhdr.tv_sec = pcap_header.ts.tv_sec, myhdr.tv_usec = pcap_header.ts.tv_usec;
+	  struct myts {
+	    struct timeval ts;
+	    u_int32_t caplen, len;
+	    u_int64_t ns;
+	  };
+	  struct myts myhdr;
+
+	  myhdr.ts.tv_sec = pcap_header.ts.tv_sec, myhdr.ts.tv_usec = pcap_header.ts.tv_usec;
 	  myhdr.caplen = pcap_header.caplen, myhdr.len = pcap_header.len;
 	  myhdr.ns = pcap_header.extended_hdr.timestamp_ns;
 
@@ -1763,7 +1768,7 @@ pcap_inject_linux(pcap_t *handle, const void *buf, size_t size)
 		return (-1);
 	}
 	return (ret);
-}                           
+}
 
 /*
  *  Get the statistics for the given packet capture handle.
@@ -1782,7 +1787,7 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 #endif
 
 	long if_dropped = 0;
-	
+
 #ifdef HAVE_PF_RING
 	if(handle->ring != NULL) {
 	  pfring_stat ring_stats;
@@ -1796,7 +1801,7 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	}
 #endif
 
-	/* 
+	/*
 	 *	To fill in ps_ifdrop, we parse /proc/net/dev for the number
 	 */
 	if (handle->opt.promisc)
@@ -1826,7 +1831,7 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 		 *	dropped by the interface driver.  It counts only
 		 *	packets that passed the filter.
 		 *
-		 *	See above for ps_ifdrop. 
+		 *	See above for ps_ifdrop.
 		 *
 		 *	Both statistics include packets not yet read from
 		 *	the kernel by libpcap, and thus not yet seen by
@@ -1855,7 +1860,7 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 		 * "tp_packets" as the count of packets and "tp_drops"
 		 * as the count of drops.
 		 *
-		 * Keep a running total because each call to 
+		 * Keep a running total because each call to
 		 *    getsockopt(handle->fd, SOL_PACKET, PACKET_STATISTICS, ....
 		 * resets the counters to zero.
 		 */
@@ -1901,10 +1906,10 @@ pcap_stats_linux(pcap_t *handle, struct pcap_stat *stats)
 	 * We maintain the count of packets processed by libpcap in
 	 * "md.packets_read", for reasons described in the comment
 	 * at the end of pcap_read_packet().  We have no idea how many
-	 * packets were dropped by the kernel buffers -- but we know 
+	 * packets were dropped by the kernel buffers -- but we know
 	 * how many the interface dropped, so we can return that.
 	 */
-	 
+
 	stats->ps_recv = handle->md.packets_read;
 	stats->ps_drop = 0;
 	stats->ps_ifdrop = handle->md.stat.ps_ifdrop;
@@ -3074,7 +3079,7 @@ activate_new(pcap_t *handle)
 #endif
 }
 
-static int 
+static int
 activate_mmap(pcap_t *handle)
 {
 #ifdef HAVE_PACKET_RING
@@ -3109,7 +3114,7 @@ activate_mmap(pcap_t *handle)
 
 	/* override some defaults and inherit the other fields from
 	 * activate_new
-	 * handle->offset is used to get the current position into the rx ring 
+	 * handle->offset is used to get the current position into the rx ring
 	 * handle->cc is used to store the ring size */
 	handle->read_op = pcap_read_linux_mmap;
 	handle->cleanup_op = pcap_cleanup_linux_mmap;
@@ -3182,9 +3187,9 @@ create_ring(pcap_t *handle)
 	unsigned i, j, frames_per_block;
 	struct tpacket_req req;
 
-	/* Note that with large snapshot (say 64K) only a few frames 
+	/* Note that with large snapshot (say 64K) only a few frames
 	 * will be available in the ring even with pretty large ring size
-	 * (and a lot of memory will be unused). 
+	 * (and a lot of memory will be unused).
 	 * The snap len should be carefully chosen to achive best
 	 * performance */
 	req.tp_frame_size = TPACKET_ALIGN(handle->snapshot +
@@ -3192,12 +3197,12 @@ create_ring(pcap_t *handle)
 					  sizeof(struct sockaddr_ll));
 	req.tp_frame_nr = handle->opt.buffer_size/req.tp_frame_size;
 
-	/* compute the minumum block size that will handle this frame. 
-	 * The block has to be page size aligned. 
-	 * The max block size allowed by the kernel is arch-dependent and 
+	/* compute the minumum block size that will handle this frame.
+	 * The block has to be page size aligned.
+	 * The max block size allowed by the kernel is arch-dependent and
 	 * it's not explicitly checked here. */
 	req.tp_block_size = getpagesize();
-	while (req.tp_block_size < req.tp_frame_size) 
+	while (req.tp_block_size < req.tp_frame_size)
 		req.tp_block_size <<= 1;
 
 	frames_per_block = req.tp_block_size/req.tp_frame_size;
@@ -3208,7 +3213,7 @@ retry:
 
 	/* req.tp_frame_nr is requested to match frames_per_block*req.tp_block_nr */
 	req.tp_frame_nr = req.tp_block_nr * frames_per_block;
-	
+
 	if (setsockopt(handle->fd, SOL_PACKET, PACKET_RX_RING,
 					(void *) &req, sizeof(req))) {
 		if ((errno == ENOMEM) && (req.tp_block_nr > 1)) {
@@ -3324,7 +3329,7 @@ pcap_oneshot_mmap(u_char *user, const struct pcap_pkthdr *h,
 	memcpy(sp->pd->md.oneshot_buffer, bytes, h->caplen);
 	*sp->pkt = sp->pd->md.oneshot_buffer;
 }
-    
+
 static void
 pcap_cleanup_linux_mmap( pcap_t *handle )
 {
@@ -3347,7 +3352,7 @@ pcap_getnonblock_mmap(pcap_t *p, char *errbuf)
 static int
 pcap_setnonblock_mmap(pcap_t *p, int nonblock, char *errbuf)
 {
-	/* map each value to the corresponding 2's complement, to 
+	/* map each value to the corresponding 2's complement, to
 	 * preserve the timeout value provided with pcap_set_timeout */
 	if (nonblock) {
 		if (p->md.timeout >= 0) {
@@ -3401,7 +3406,7 @@ pcap_get_ring_frame(pcap_t *handle, int status)
 #endif
 
 static int
-pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback, 
+pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 		u_char *user)
 {
 	int timeout;
@@ -3425,7 +3430,7 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 		do {
 			ret = poll(&pollinfo, 1, timeout);
 			if (ret < 0 && errno != EINTR) {
-				snprintf(handle->errbuf, PCAP_ERRBUF_SIZE, 
+				snprintf(handle->errbuf, PCAP_ERRBUF_SIZE,
 					"can't poll on packet socket: %s",
 					pcap_strerror(errno));
 				return PCAP_ERROR;
@@ -3468,7 +3473,7 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 							"The interface went down");
 					} else {
 						snprintf(handle->errbuf,
-							PCAP_ERRBUF_SIZE, 
+							PCAP_ERRBUF_SIZE,
 							"Error condition on packet socket: %s",
 							strerror(errno));
 					}
@@ -3476,7 +3481,7 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 				}
 				if (pollinfo.revents & POLLNVAL) {
 					snprintf(handle->errbuf,
-						PCAP_ERRBUF_SIZE, 
+						PCAP_ERRBUF_SIZE,
 						"Invalid polling request on packet socket");
 					return PCAP_ERROR;
 				}
@@ -3489,7 +3494,7 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 		} while (ret < 0);
 	}
 
-	/* non-positive values of max_packets are used to require all 
+	/* non-positive values of max_packets are used to require all
 	 * packets currently available in the ring */
 	while ((pkts < max_packets) || (max_packets <= 0)) {
 		int run_bpf;
@@ -3525,33 +3530,33 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 			break;
 #endif
 		default:
-			snprintf(handle->errbuf, PCAP_ERRBUF_SIZE, 
+			snprintf(handle->errbuf, PCAP_ERRBUF_SIZE,
 				"unsupported tpacket version %d",
 				handle->md.tp_version);
 			return -1;
 		}
 		/* perform sanity check on internal offset. */
 		if (tp_mac + tp_snaplen > handle->bufsize) {
-			snprintf(handle->errbuf, PCAP_ERRBUF_SIZE, 
+			snprintf(handle->errbuf, PCAP_ERRBUF_SIZE,
 				"corrupted frame on kernel ring mac "
-				"offset %d + caplen %d > frame len %d", 
+				"offset %d + caplen %d > frame len %d",
 				tp_mac, tp_snaplen, handle->bufsize);
 			return -1;
 		}
 
 		/* run filter on received packet
 		 * If the kernel filtering is enabled we need to run the
-		 * filter until all the frames present into the ring 
-		 * at filter creation time are processed. 
-		 * In such case md.use_bpf is used as a counter for the 
+		 * filter until all the frames present into the ring
+		 * at filter creation time are processed.
+		 * In such case md.use_bpf is used as a counter for the
 		 * packet we need to filter.
-		 * Note: alternatively it could be possible to stop applying 
+		 * Note: alternatively it could be possible to stop applying
 		 * the filter when the ring became empty, but it can possibly
 		 * happen a lot later... */
 		bp = (unsigned char*)h.raw + tp_mac;
-		run_bpf = (!handle->md.use_bpf) || 
+		run_bpf = (!handle->md.use_bpf) ||
 			((handle->md.use_bpf>1) && handle->md.use_bpf--);
-		if (run_bpf && handle->fcode.bf_insns && 
+		if (run_bpf && handle->fcode.bf_insns &&
 				(bpf_filter(handle->fcode.bf_insns, bp,
 					tp_len, tp_snaplen) == 0))
 			goto skip;
@@ -3613,7 +3618,7 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 			if (bp < (u_char *)h.raw +
 					   TPACKET_ALIGN(handle->md.tp_hdrlen) +
 					   sizeof(struct sockaddr_ll)) {
-				snprintf(handle->errbuf, PCAP_ERRBUF_SIZE, 
+				snprintf(handle->errbuf, PCAP_ERRBUF_SIZE,
 					"cooked-mode frame doesn't have room for sll header");
 				return -1;
 			}
@@ -3670,7 +3675,9 @@ pcap_read_linux_mmap(pcap_t *handle, int max_packets, pcap_handler callback,
 		{
 		  struct ns_pcaphdr myhdr;
 
-		  myhdr.tv_sec = pcaphdr.ts.tv_sec, myhdr.tv_usec = pcaphdr.ts.tv_usec;
+		  myhdr.ts.tv_sec = pcaphdr.ts.tv_sec;
+		  myhdr.ts.tv_usec = pcaphdr.ts.tv_usec;
+		  
 		  myhdr.caplen = pcaphdr.caplen, myhdr.len = pcaphdr.len;
 
 		  if(handle->ring != NULL) {
@@ -3715,7 +3722,7 @@ skip:
 	return pkts;
 }
 
-static int 
+static int
 pcap_setfilter_linux_mmap(pcap_t *handle, struct bpf_program *filter)
 {
 	int n, offset;
@@ -4948,7 +4955,7 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 	 * the filtering done in userland even if it could have been
 	 * done in the kernel.
 	 */
-	if (setsockopt(handle->fd, 
+	if (setsockopt(handle->fd,
 #ifdef HAVE_PF_RING
 		       0,
 #else
@@ -4992,7 +4999,7 @@ set_kernel_filter(pcap_t *handle, struct sock_fprog *fcode)
 	/*
 	 * Now attach the new filter.
 	 */
-	ret = setsockopt(handle->fd, 
+	ret = setsockopt(handle->fd,
 #ifdef HAVE_PF_RING
 			 0,
 #else
@@ -5037,7 +5044,7 @@ reset_kernel_filter(pcap_t *handle)
 	int dummy = 0;
 
 #ifdef HAVE_PF_RING
-	if(handle->ring != NULL) 
+	if(handle->ring != NULL)
 	  return(-1);
 #endif
 
