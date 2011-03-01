@@ -1598,7 +1598,7 @@ print_packet(u_char *user, const struct pcap_pkthdr *h, const u_char *sp)
 #if defined(HAVE_PF_RING)
 	{
 	  struct ns_pcaphdr *myhdr = (struct ns_pcaphdr*)h;
-	  int s = myhdr->tv_sec % 86400;
+	  int s = myhdr->ts.tv_sec % 86400;
 	  u_int nsec = myhdr->ns % 1000;
 
 	  printf("%02d:%02d:%02d.%06u%03u ",
