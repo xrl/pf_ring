@@ -177,6 +177,8 @@ static int __init dummy_plugin_init(void)
 
   register_plugin(&reg);
 
+  pf_ring_add_module_dependency();
+
   printk("Dummy plugin started [id=%d]\n", DUMMY_PLUGIN_ID);
   return(0);
 }

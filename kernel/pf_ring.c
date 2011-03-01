@@ -37,6 +37,7 @@
  * - Alfredo Cardigliano <cardigliano@ntop.org>
  * - Alex Aronson <alexa@silicom.co.il>
  * - Piotr Romanus <promanus@crossbeamsys.com>
+ * - Lior Okman <lior.okman@insightix.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -5151,6 +5152,13 @@ int add_device_to_ring_list(struct net_device *dev) {
 
   return(0);
 }
+
+/* ************************************ */
+
+void pf_ring_add_module_dependency(void) {
+     /* Don't actually do anything */
+}
+EXPORT_SYMBOL(pf_ring_add_module_dependency);
 
 /* ************************************ */
 
