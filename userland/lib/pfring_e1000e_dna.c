@@ -139,7 +139,7 @@ void init_e1000(pfring* ring) {
 
 void term_e1000(pfring* ring) {
   set_e1000_rx_register(ring, ring->rx_reg);
-  printf("term_e1000() called\n");
+  /* printf("term_e1000() called\n"); */
 }
 
 /* **************************************************** */
