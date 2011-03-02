@@ -37,7 +37,7 @@ clean:
 install:
 	mkdir -p $(INSTDIR)
 	cp *.ko $(INSTDIR)
-	cp linux/pf_ring.h $(DESTDIR)/usr/include/linux
+	cp linux/pf_ring.h $(DESTDIR)/usr/src/linux-headers-$(BUILD_KERNEL)/include/linux/
 	@if test -d ${TARGETDIR}; then \
 		cp linux/pf_ring.h ${TARGETDIR}; \
 	fi

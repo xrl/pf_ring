@@ -38,6 +38,7 @@
  * - Alex Aronson <alexa@silicom.co.il>
  * - Piotr Romanus <promanus@crossbeamsys.com>
  * - Lior Okman <lior.okman@insightix.com>
+ * - Fedor Sakharov <fedor.sakharov@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
