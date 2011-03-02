@@ -627,7 +627,7 @@ int main(int argc, char* argv[]) {
     pd = pfring_open(device, promisc,  snaplen, (num_threads > 0) ? 1 : 0);
 #ifdef ENABLE_DNA_SUPPORT
   else
-    pd = pfring_open_dna(device, 0 /* we don't use threads */);
+    pd = pfring_open_dna(device, promisc, 0 /* we don't use threads */);
 #endif
 
   if(pd == NULL) {

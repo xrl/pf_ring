@@ -515,7 +515,7 @@ void pfring_close(pfring *ring) {
   if(!ring) return;
 
   if(ring->dna_mapped_device) {
-    term_e1000(ring); /* FIX */
+    term_e1000(ring);
     if(ring->dna_dev.packet_memory != 0)
       munmap((void*)ring->dna_dev.packet_memory,
 	     ring->dna_dev.packet_memory_tot_len);
@@ -1227,7 +1227,7 @@ static void pfring_dump_dna_stats(pfring* ring) {
 
 /* **************************************************** */
 
-pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
+pfring* pfring_open_dna(char *device_name,  u_int8_t promisc, u_int8_t _reentrant) {
 #ifdef USE_PCAP
   return(NULL);
 #else
@@ -1319,7 +1319,13 @@ pfring* pfring_open_dna(char *device_name, u_int8_t _reentrant) {
 	return(NULL);
       }
 
-      init_e1000(ring); /* FIX */
+      init_e1000(ring);
+      ring->device_name = strdup(device_name ? device_name : "");
+
+      if(promisc) {
+	if(set_if_promisc(device_name, 1) == 0)
+	  ring->clear_promisc = 1;
+      }
 
 #ifdef DEBUG
       pfring_dump_dna_stats(ring);

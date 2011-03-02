@@ -364,6 +364,14 @@ int	bpf_validate(const struct bpf_insn *f, int len);
 char	*bpf_image(const struct bpf_insn *, int);
 void	bpf_dump(const struct bpf_program *, int);
 
+
+#ifdef HAVE_PF_RING
+u_int32_t pcap_get_pfring_id(pcap_t *handle);
+int pcap_set_master_id(pcap_t *handle, u_int32_t master_id);
+int pcap_set_master(pcap_t *handle, pcap_t *master);
+#endif
+
+
 #if defined(WIN32)
 
 /*

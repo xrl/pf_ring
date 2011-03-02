@@ -148,9 +148,6 @@ int main(int argc, char* argv[]) {
     return(-1);
   }
 
-  pfring_enable_ring(pd);
-  pfring_enable_ring(out_device);
-  
   pcap_loop(pd, -1, dummyProcesssPacket, NULL);
   pcap_close(pd);
 

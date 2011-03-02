@@ -140,7 +140,7 @@ extern "C" {
   u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
 				    u_int32_t caplen, u_int8_t _reentrant,
 				    pfring* ring[MAX_NUM_RX_CHANNELS]);
-  pfring* pfring_open_dna(char *device_name, u_int8_t reentrant);
+  pfring* pfring_open_dna(char *device_name,  u_int8_t promisc, u_int8_t reentrant);
   void pfring_close(pfring *ring);
   int  pfring_send(pfring *ring, char *pkt, u_int pkt_len);
   int pfring_stats(pfring *ring, pfring_stat *stats);
@@ -164,6 +164,7 @@ extern "C" {
 					hash_filtering_rule* rule_to_add,
 					u_char add_rule);
   int pfring_enable_ring(pfring *ring);
+  int pfring_disable_ring(pfring *ring);
   int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id);
   int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy);
   int pfring_version(pfring *ring, u_int32_t *version);
