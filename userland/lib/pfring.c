@@ -1008,6 +1008,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       return(0);
   } else {
     u_int32_t num_loops = 0;
+    int rc = 0;
 
     if((ring == NULL) || (ring->buffer == NULL)) return(-1);
 
@@ -1059,7 +1060,6 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
     if(wait_for_incoming_packet) {
       struct pollfd pfd;
-      int rc;
 
       /*
 	Spin in userland for a while and if no packet arrives then
@@ -1088,12 +1088,15 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 #endif
 
 	errno = 0;
-	rc = poll(&pfd, 1, 500);
-	ring->num_poll_calls++;
-      }
 
-      if(rc == -1)
-	return(-1);
+	do {
+	  rc = poll(&pfd, 1, 500);
+	  ring->num_poll_calls++;	  
+	} while(rc == -1);
+     }
+
+       if(rc == -1)
+	 return(-1);
       else
 	goto do_pfring_recv;
     }
