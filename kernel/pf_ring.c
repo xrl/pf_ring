@@ -1708,7 +1708,8 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 
   write_unlock_bh(&pfr->ring_index_lock);
 
-  if(waitqueue_active(&pfr->ring_slots_waitqueue))
+  if(waitqueue_active(&pfr->ring_slots_waitqueue)
+     && (num_queued_pkts(pfr) >= pfr->poll_num_pkts_watermark))
     wake_up_interruptible(&pfr->ring_slots_waitqueue);
 
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
