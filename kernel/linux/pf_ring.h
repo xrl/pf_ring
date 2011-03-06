@@ -30,12 +30,15 @@
 #define DEFAULT_BUCKET_LEN            128
 #define MAX_NUM_DEVICES               256
 
+/* Watermark */
+#define DEFAULT_MIN_PKT_QUEUED        128
+
 /* Dirty hack I know, but what else shall I do man? */
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.6.0"
-#define RING_VERSION_NUM           0x040600
+#define RING_VERSION                "4.6.1"
+#define RING_VERSION_NUM           0x040601
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -56,7 +59,8 @@
 #define SO_DEL_HW_FILTERING_RULE         114
 #define SO_SET_PACKET_CONSUMER_MODE      115
 #define SO_DEACTIVATE_RING               116
-#define SO_SET_VPFRING_EVENTFD           117 /* vPFRing*/
+#define SO_SET_POLL_WATERMARK            117
+#define SO_SET_VPFRING_EVENTFD           118 /* vPFRing*/
 
 /* Get */
 #define SO_GET_RING_VERSION              120
@@ -543,6 +547,9 @@ struct ring_opt {
   char *appl_name; /* String that identifies the application bound to the socket */
   packet_direction direction; /* Specify the capture direction for packets */
 
+  /* Poll Watermark */
+  u_int16_t poll_num_pkts_watermark;
+
   /* Master Ring */
   struct ring_opt *master_ring;
 
@@ -555,9 +562,6 @@ struct ring_opt {
 
   /* Channel */
   int32_t channel_id;  /* -1 = any channel */
-
-  /* Packet buffers */
-  unsigned long order;
 
   /* Ring Slots */
   char* ring_memory;

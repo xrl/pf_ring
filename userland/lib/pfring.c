@@ -572,6 +572,17 @@ int pfring_toggle_filtering_policy(pfring *ring,
 
 /* **************************************************** */
 
+int pfring_set_poll_watermark(pfring *ring, u_int16_t watermark) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+  return(ring ? setsockopt(ring->fd, 0, SO_SET_POLL_WATERMARK,
+			   &watermark, sizeof(watermark)): -1);
+#endif
+}
+
+/* **************************************************** */
+
 int pfring_version(pfring *ring, u_int32_t *version) {
 #ifdef USE_PCAP
   return(-1);
@@ -1089,14 +1100,12 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
 	errno = 0;
 
-	do {
-	  rc = poll(&pfd, 1, 500);
-	  ring->num_poll_calls++;	  
-	} while(rc == -1);
-     }
+	rc = poll(&pfd, 1, 500);
+	ring->num_poll_calls++;	  
+      }
 
-       if(rc == -1)
-	 return(-1);
+      if(rc == -1)
+	return(-1);
       else
 	goto do_pfring_recv;
     }

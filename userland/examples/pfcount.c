@@ -522,6 +522,7 @@ int main(int argc, char* argv[]) {
   int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   u_int clusterId = 0;
   packet_direction direction = rx_and_tx_direction;
+  u_int16_t watermark = 0;
 
 #if 0
   struct sched_param schedparam;
@@ -561,7 +562,7 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:" /* "f:" */)) != '?') {
+  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:w:" /* "f:" */)) != '?') {
     if((c == 255) || (c == -1)) break;
 
     switch(c) {
@@ -609,6 +610,9 @@ int main(int argc, char* argv[]) {
     case 's':
       string = strdup(optarg);
       break;
+    case 'w':
+      watermark = atoi(optarg);
+      break;
     }
   }
 
@@ -655,6 +659,11 @@ int main(int argc, char* argv[]) {
 
   if((rc = pfring_set_direction(pd, direction)) != 0)
     printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
+
+  if(watermark > 0) {
+    if((rc = pfring_set_poll_watermark(pd, watermark)) != 0)
+      printf("pfring_set_poll_watermark returned [rc=%d][watermark=%d]\n", rc, watermark);
+  }
 
 #if 0
   if(0) {
@@ -732,6 +741,25 @@ int main(int argc, char* argv[]) {
     rule.rule_id = 5;
     rule.rule_action = forward_packet_and_stop_rule_evaluation;
     rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
+    
+    if(pfring_add_filtering_rule(pd, &rule) < 0)
+      printf("pfring_add_hash_filtering_rule(2) failed\n");
+    else
+      printf("Rule added successfully...\n");
+  }
+
+  if(1) {
+    filtering_rule rule;
+
+#define DUMMY_PLUGIN_ID   1
+    
+    memset(&rule, 0, sizeof(rule));
+    
+    rule.rule_id = 5;
+    rule.rule_action = forward_packet_and_stop_rule_evaluation;
+    rule.core_fields.proto = 6 /* tcp */;
+    // rule.plugin_action.plugin_id = DUMMY_PLUGIN_ID; /* Dummy plugin */
+    // rule.extended_fields.filter_plugin_id = DUMMY_PLUGIN_ID; /* Enable packet parsing/filtering */
     
     if(pfring_add_filtering_rule(pd, &rule) < 0)
       printf("pfring_add_hash_filtering_rule(2) failed\n");

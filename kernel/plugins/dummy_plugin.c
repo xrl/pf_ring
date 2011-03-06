@@ -69,7 +69,7 @@
 
 static struct pfring_plugin_registration reg;
 
-#define DEBUG
+/* #define DEBUG */
 
 /* ************************************ */
 

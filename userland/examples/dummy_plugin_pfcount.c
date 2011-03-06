@@ -108,7 +108,8 @@ void print_stats() {
     diff = pfringStat.recv-lastPkts;
     fprintf(stderr, "=========================\n"
 	    "Actual Stats: %llu pkts [%.1f ms][%.1f pkt/sec]\n",
-	    diff, deltaMillisec, ((double)diff/(double)(deltaMillisec/1000)));
+	    (long long unsigned int)diff, deltaMillisec, 
+	    ((double)diff/(double)(deltaMillisec/1000)));
   }
 
   lastPkts = pfringStat.recv;
@@ -133,6 +134,7 @@ void sigproc(int sig) {
 /* ******************************** */
 
 void my_sigalarm(int sig) {
+  if(numPkts == 0) gettimeofday(&startTime, NULL);
   print_stats();
   printf("\n");
   alarm(ALARM_SLEEP);
@@ -309,21 +311,22 @@ void printHelp(void) {
   printf("pfcount\n(C) 2005-11 Deri Luca <deri@ntop.org>\n");
   printf("-h              [Print help]\n");
   printf("-i <device>     [Device name]\n");
-  printf("-s <string>     [String to search on packets]\n");
+  printf("-p <protocol>   [Dummy protocol filter (6=tcp, 17=udp, 1=icmp)]\n");
   printf("-v              [Verbose]\n");
 }
 
 /* *************************************** */
 
 int main(int argc, char* argv[]) {
-  char *device = NULL, c, *string = NULL;
+  char *device = NULL, c;
   int promisc, add_rule = 1;
+  u_int8_t protocol = 6 /* tcp */;
   filtering_rule rule;
   struct dummy_filter *filter;
 
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:vs:a" /* "f:" */)) != -1) {
+  while((c = getopt(argc,argv,"hi:c:vp:a" /* "f:" */)) != -1) {
     switch(c) {
     case 'h':
       printHelp();
@@ -331,6 +334,9 @@ int main(int argc, char* argv[]) {
       break;
     case 'i':
       device = strdup(optarg);
+      break;
+    case 'p':
+      protocol = atoi(optarg);
       break;
     case 'v':
       verbose = 1;
@@ -340,9 +346,6 @@ int main(int argc, char* argv[]) {
 	bpfFilter = strdup(optarg);
 	break;
       */
-    case 's':
-      string = strdup(optarg);
-      break;
     }
   }
 
@@ -377,7 +380,7 @@ int main(int argc, char* argv[]) {
   rule.plugin_action.plugin_id = DUMMY_PLUGIN_ID; /* Dummy plugin */
   rule.extended_fields.filter_plugin_id = DUMMY_PLUGIN_ID; /* Enable packet parsing/filtering */
   filter = (struct dummy_filter*)rule.extended_fields.filter_plugin_data;
-  filter->protocol = 6 /* tcp */; 
+  filter->protocol = protocol; 
 
   if(add_rule) {
     if(pfring_add_filtering_rule(pd, &rule) < 0) {

@@ -167,6 +167,7 @@ extern "C" {
   int pfring_disable_ring(pfring *ring);
   int pfring_remove_filtering_rule(pfring *ring, u_int16_t rule_id);
   int pfring_toggle_filtering_policy(pfring *ring, u_int8_t rules_default_accept_policy);
+  int pfring_set_poll_watermark(pfring *ring, u_int16_t watermark);
   int pfring_version(pfring *ring, u_int32_t *version);
   int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */);
   int pfring_get_selectable_fd(pfring *ring);

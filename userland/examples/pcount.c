@@ -280,7 +280,7 @@ void dummyProcesssPacket(u_char *_deviceId,
     else
       printf("[eth_type=0x%04X]", eth_type);
     
-    printf("[caplen=%d][len=%d]\n", h->caplen, h->len);
+    printf("[caplen=%u][len=%u]\n", h->caplen, h->len);
   }
 
   if(numPkts == 0) gettimeofday(&startTime, NULL);
