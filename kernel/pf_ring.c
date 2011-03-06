@@ -1865,6 +1865,200 @@ static int reflect_packet(struct sk_buff *skb,
 
 /* ********************************** */
 
+int check_perfect_rules(struct sk_buff *skb,
+			struct ring_opt *pfr,
+			struct pfring_pkthdr *hdr,
+			int *fwd_pkt,
+			u_int8_t *free_parse_mem,
+			struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID],
+			int displ, u_int *last_matched_plugin)
+{
+  u_int hash_idx;
+  filtering_hash_bucket *hash_bucket;
+  u_int8_t hash_found = 0;
+
+  hash_idx = hash_pkt_header(hdr, 0, 0) % DEFAULT_RING_HASH_SIZE;
+  hash_bucket = pfr->filtering_hash[hash_idx];
+
+  while(hash_bucket != NULL) {
+    if(hash_bucket_match(hash_bucket, hdr, 0, 0)) {
+      hash_found = 1;
+      break;
+    } else
+      hash_bucket = hash_bucket->next;
+  } /* while */
+
+  if(hash_found) {
+    rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
+
+    if((hash_bucket->rule.plugin_action.plugin_id != NO_PLUGIN_ID)
+       && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
+       && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id] != NULL)
+       && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->
+	   pfring_plugin_handle_skb != NULL)
+       ) {
+      plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
+	->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, 0, /* no plugin */
+				   &parse_memory_buffer
+				   [hash_bucket->rule.plugin_action.plugin_id],
+				   &behaviour);
+
+      if(parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id])
+	*free_parse_mem = 1;
+      *last_matched_plugin = hash_bucket->rule.plugin_action.plugin_id;
+      hdr->extended_hdr.parsed_pkt.last_matched_plugin_id = hash_bucket->rule.plugin_action.plugin_id;
+    } else
+      behaviour = hash_bucket->rule.rule_action;
+
+    switch(behaviour) {
+    case forward_packet_and_stop_rule_evaluation:
+      *fwd_pkt = 1;
+      break;
+    case dont_forward_packet_and_stop_rule_evaluation:
+      *fwd_pkt = 0;
+      break;
+    case execute_action_and_continue_rule_evaluation:
+      hash_found = 0;	/* This way we also evaluate the list of rules */
+      break;
+    case forward_packet_add_rule_and_stop_rule_evaluation:
+      *fwd_pkt = 1;
+      break;
+    case reflect_packet_and_stop_rule_evaluation:
+    case bounce_packet_and_stop_rule_evaluation:
+      *fwd_pkt = 0;
+      reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ, behaviour);
+      break;
+    case reflect_packet_and_continue_rule_evaluation:
+    case bounce_packet_and_continue_rule_evaluation:
+      *fwd_pkt = 0;
+      reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ, behaviour);
+      hash_found = 0;	/* This way we also evaluate the list of rules */
+      break;
+    }
+  } else {
+    /* printk("[PF_RING] Packet not found\n"); */
+  }
+    
+  return(hash_found);
+}
+
+/* ********************************** */
+
+int check_wildcard_rules(struct sk_buff *skb,
+			 struct ring_opt *pfr,
+			 struct pfring_pkthdr *hdr,
+			 int *fwd_pkt,
+			 u_int8_t *free_parse_mem,
+			 struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID],
+			 int displ, u_int *last_matched_plugin)
+{
+  struct list_head *ptr, *tmp_ptr;
+   int debug = 0;
+
+   list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
+     filtering_rule_element *entry;
+     rule_action_behaviour behaviour =
+       forward_packet_and_stop_rule_evaluation;
+
+     entry = list_entry(ptr, filtering_rule_element, list);
+
+     if(match_filtering_rule(pfr, entry, hdr, skb, displ,
+			     parse_memory_buffer, free_parse_mem,
+			     last_matched_plugin, &behaviour)) {
+       if(debug)
+	 printk("[PF_RING] behaviour=%d\n", behaviour);
+
+       hdr->extended_hdr.parsed_pkt.last_matched_rule_id = entry->rule.rule_id;
+
+       if(behaviour == forward_packet_and_stop_rule_evaluation) {
+	 *fwd_pkt = 1;
+	 break;
+       } else if(behaviour == forward_packet_add_rule_and_stop_rule_evaluation) {
+	 filtering_hash_bucket *hash_bucket;
+
+	 *fwd_pkt = 1;
+	 hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
+
+	 if(hash_bucket) {
+	   int rc = 0;
+
+	   if(*last_matched_plugin
+	      && plugin_registration[*last_matched_plugin] != NULL
+	     && plugin_registration[*last_matched_plugin]->pfring_plugin_add_rule != NULL
+	     && (plugin_registration[*last_matched_plugin]->pfring_plugin_add_rule(entry, hdr, hash_bucket) == 0) ) {
+	    if(debug) {
+	      printk("pfring_plugin_add_rule(entry, hdr, hash_bucket) done!\n");
+	    }
+	  } else {
+	    hash_bucket->rule.vlan_id = hdr->extended_hdr.parsed_pkt.vlan_id;
+	    hash_bucket->rule.proto = hdr->extended_hdr.parsed_pkt.l3_proto;
+	    hash_bucket->rule.host4_peer_a = hdr->extended_hdr.parsed_pkt.ipv4_src;
+	    hash_bucket->rule.host4_peer_b = hdr->extended_hdr.parsed_pkt.ipv4_dst;
+	    hash_bucket->rule.port_peer_a = hdr->extended_hdr.parsed_pkt.l4_src_port;
+	    hash_bucket->rule.port_peer_b = hdr->extended_hdr.parsed_pkt.l4_dst_port;
+	    hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
+	    hash_bucket->rule.reflector_device_name[0] = '\0';
+	    hash_bucket->rule.internals.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
+	    hash_bucket->rule.internals.reflector_dev = NULL;
+	    hash_bucket->rule.plugin_action.plugin_id = NO_PLUGIN_ID;
+	  }
+
+	  write_lock(&pfr->ring_rules_lock);
+	  rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
+
+	  if((rc != 0) && (rc != -EEXIST)) {
+	    write_unlock(&pfr->ring_rules_lock);
+	    kfree(hash_bucket);
+	    return(-1);
+	  } else {
+	    if(rc != -EEXIST) /* Rule already existing */
+	      pfr->num_filtering_rules++;
+
+	    write_unlock(&pfr->ring_rules_lock);
+
+	    if(debug)
+	      printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
+		     ((hash_bucket->rule.host4_peer_a >> 24) & 0xff), ((hash_bucket->rule.host4_peer_a >> 16) & 0xff),
+		     ((hash_bucket->rule.host4_peer_a >> 8) & 0xff), ((hash_bucket->rule.host4_peer_a >> 0) & 0xff),
+		     hash_bucket->rule.port_peer_a, ((hash_bucket->rule.host4_peer_b >> 24) & 0xff),
+		     ((hash_bucket->rule.host4_peer_b >> 16) & 0xff), ((hash_bucket->rule.host4_peer_b >> 8) & 0xff),
+		     ((hash_bucket->rule.host4_peer_b >> 0) & 0xff), hash_bucket->rule.port_peer_b, pfr->num_filtering_rules);
+	  }
+	}
+	break;
+      } else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
+	*fwd_pkt = 0;
+	break;
+      }
+
+      if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
+	*fwd_pkt = 1;
+	break;
+      } else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
+	*fwd_pkt = 0;
+	break;
+      } else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
+	/* The action has already been performed inside match_filtering_rule()
+	   hence instead of stopping rule evaluation, the next rule
+	   will be evaluated */
+      } else if((entry->rule.rule_action == reflect_packet_and_stop_rule_evaluation)
+		|| (entry->rule.rule_action == bounce_packet_and_stop_rule_evaluation)) {
+	*fwd_pkt = 0;
+	reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ, entry->rule.rule_action);
+	break;
+      } else if((entry->rule.rule_action == reflect_packet_and_continue_rule_evaluation)
+		|| (entry->rule.rule_action == bounce_packet_and_continue_rule_evaluation)) {
+	*fwd_pkt = 1;
+	reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ, entry->rule.rule_action);
+      }
+    }
+  }  /* for */
+
+   return(0);
+}
+
+/* ********************************** */
+
 /*
  * add_skb_to_ring()
  *
@@ -1885,11 +2079,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 			   u_int8_t num_rx_channels)
 {
   int fwd_pkt = 0;
-  struct list_head *ptr, *tmp_ptr;
+  struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
   u_int8_t free_parse_mem = 0;
   u_int last_matched_plugin = 0, debug = 0;
-  u_char hash_found = 0;
-  struct parse_buffer *parse_memory_buffer[MAX_PLUGIN_ID] = { NULL };
+  u_int8_t hash_found = 0;
 
   /* This is a memory holder for storing parsed packet information
      that will then be freed when the packet has been handled
@@ -1967,173 +2160,17 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	   skb->pkt_type, skb->cloned);
 
   /* [2.1] Search the hash */
-  if(pfr->filtering_hash != NULL) {
-    u_int hash_idx;
-    filtering_hash_bucket *hash_bucket;
-
-    hash_idx = hash_pkt_header(hdr, 0, 0) % DEFAULT_RING_HASH_SIZE;
-    hash_bucket = pfr->filtering_hash[hash_idx];
-
-    while(hash_bucket != NULL) {
-      if(hash_bucket_match(hash_bucket, hdr, 0, 0)) {
-	hash_found = 1;
-	break;
-      } else
-	hash_bucket = hash_bucket->next;
-    } /* while */
-
-    if(hash_found) {
-      rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
-
-      if((hash_bucket->rule.plugin_action.plugin_id != NO_PLUGIN_ID)
-	 && (hash_bucket->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
-	 && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id] != NULL)
-	 && (plugin_registration[hash_bucket->rule.plugin_action.plugin_id]->
-	     pfring_plugin_handle_skb != NULL)
-	 ) {
-	plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
-	  ->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, 0, /* no plugin */
-				     &parse_memory_buffer
-				     [hash_bucket->rule.plugin_action.plugin_id],
-				     &behaviour);
-
-	if(parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id])
-	  free_parse_mem = 1;
-	last_matched_plugin = hash_bucket->rule.plugin_action.plugin_id;
-	hdr->extended_hdr.parsed_pkt.last_matched_plugin_id = hash_bucket->rule.plugin_action.plugin_id;
-      } else
-	behaviour = hash_bucket->rule.rule_action;
-
-      switch(behaviour) {
-      case forward_packet_and_stop_rule_evaluation:
-	fwd_pkt = 1;
-	break;
-      case dont_forward_packet_and_stop_rule_evaluation:
-	fwd_pkt = 0;
-	break;
-      case execute_action_and_continue_rule_evaluation:
-	hash_found = 0;	/* This way we also evaluate the list of rules */
-	break;
-      case forward_packet_add_rule_and_stop_rule_evaluation:
-	fwd_pkt = 1;
-	break;
-      case reflect_packet_and_stop_rule_evaluation:
-      case bounce_packet_and_stop_rule_evaluation:
-	fwd_pkt = 0;
-	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ, behaviour);
-	break;
-      case reflect_packet_and_continue_rule_evaluation:
-      case bounce_packet_and_continue_rule_evaluation:
-	fwd_pkt = 0;
-	reflect_packet(skb, pfr, hash_bucket->rule.internals.reflector_dev, displ, behaviour);
-	hash_found = 0;	/* This way we also evaluate the list of rules */
-	break;
-      }
-    } else {
-      /* printk("[PF_RING] Packet not found\n"); */
-    }
-  }
+  if(pfr->filtering_hash != NULL) 
+    hash_found = check_perfect_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem, 
+				     parse_memory_buffer, displ, &last_matched_plugin);
 
   /* [2.2] Search rules list */
   if((!hash_found) && (pfr->num_filtering_rules > 0)) {
-    list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-      filtering_rule_element *entry;
-      rule_action_behaviour behaviour =
-	forward_packet_and_stop_rule_evaluation;
+    int rc = check_wildcard_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem, 
+				  parse_memory_buffer, displ, &last_matched_plugin);
 
-      entry = list_entry(ptr, filtering_rule_element, list);
-
-      if(match_filtering_rule(pfr, entry, hdr, skb, displ,
-			      parse_memory_buffer, &free_parse_mem,
-			      &last_matched_plugin, &behaviour)) {
-	if(debug)
-	  printk("[PF_RING] behaviour=%d\n", behaviour);
-
-	hdr->extended_hdr.parsed_pkt.last_matched_rule_id = entry->rule.rule_id;
-
-	if(behaviour == forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 1;
-	  break;
-	} else if(behaviour == forward_packet_add_rule_and_stop_rule_evaluation) {
-	  filtering_hash_bucket *hash_bucket;
-
-	  fwd_pkt = 1;
-	  hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
-
-	  if(hash_bucket) {
-	    int rc = 0;
-
-	    if(last_matched_plugin
-	       && plugin_registration[last_matched_plugin] != NULL
-	       && plugin_registration[last_matched_plugin]->pfring_plugin_add_rule != NULL
-	       && (plugin_registration[last_matched_plugin]->pfring_plugin_add_rule(entry, hdr, hash_bucket) == 0) ) {
-	      if(debug) {
-		printk("pfring_plugin_add_rule(entry, hdr, hash_bucket) done!\n");
-	      }
-	    } else {
-	      hash_bucket->rule.vlan_id = hdr->extended_hdr.parsed_pkt.vlan_id;
-	      hash_bucket->rule.proto = hdr->extended_hdr.parsed_pkt.l3_proto;
-	      hash_bucket->rule.host4_peer_a = hdr->extended_hdr.parsed_pkt.ipv4_src;
-	      hash_bucket->rule.host4_peer_b = hdr->extended_hdr.parsed_pkt.ipv4_dst;
-	      hash_bucket->rule.port_peer_a = hdr->extended_hdr.parsed_pkt.l4_src_port;
-	      hash_bucket->rule.port_peer_b = hdr->extended_hdr.parsed_pkt.l4_dst_port;
-	      hash_bucket->rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	      hash_bucket->rule.reflector_device_name[0] = '\0';
-	      hash_bucket->rule.internals.jiffies_last_match = jiffies; /* Avoid immediate rule purging */
-	      hash_bucket->rule.internals.reflector_dev = NULL;
-	      hash_bucket->rule.plugin_action.plugin_id = NO_PLUGIN_ID;
-	    }
-
-	    write_lock(&pfr->ring_rules_lock);
-	    rc = pfr->handle_hash_rule(pfr, hash_bucket, 1 /* add_rule_from_plugin */);
-
-	    if((rc != 0) && (rc != -EEXIST)) {
-	      write_unlock(&pfr->ring_rules_lock);
-	      kfree(hash_bucket);
-	      return(-1);
-	    } else {
-	      if(rc != -EEXIST) /* Rule already existing */
-		pfr->num_filtering_rules++;
-
-	      write_unlock(&pfr->ring_rules_lock);
-
-	      if(debug)
-		printk("[PF_RING] Added rule: [%d.%d.%d.%d:%d <-> %d.%d.%d.%d:%d][tot_rules=%d]\n",
-		       ((hash_bucket->rule.host4_peer_a >> 24) & 0xff), ((hash_bucket->rule.host4_peer_a >> 16) & 0xff),
-		       ((hash_bucket->rule.host4_peer_a >> 8) & 0xff), ((hash_bucket->rule.host4_peer_a >> 0) & 0xff),
-		       hash_bucket->rule.port_peer_a, ((hash_bucket->rule.host4_peer_b >> 24) & 0xff),
-		       ((hash_bucket->rule.host4_peer_b >> 16) & 0xff), ((hash_bucket->rule.host4_peer_b >> 8) & 0xff),
-		       ((hash_bucket->rule.host4_peer_b >> 0) & 0xff), hash_bucket->rule.port_peer_b, pfr->num_filtering_rules);
-	    }
-	  }
-	  break;
-	} else if(behaviour == dont_forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 0;
-	  break;
-	}
-
-	if(entry->rule.rule_action == forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 1;
-	  break;
-	} else if(entry->rule.rule_action == dont_forward_packet_and_stop_rule_evaluation) {
-	  fwd_pkt = 0;
-	  break;
-	} else if(entry->rule.rule_action == execute_action_and_continue_rule_evaluation) {
-	  /* The action has already been performed inside match_filtering_rule()
-	     hence instead of stopping rule evaluation, the next rule
-	     will be evaluated */
-	} else if((entry->rule.rule_action == reflect_packet_and_stop_rule_evaluation)
-		  || (entry->rule.rule_action == bounce_packet_and_stop_rule_evaluation)) {
-	  fwd_pkt = 0;
-	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ, entry->rule.rule_action);
-	  break;
-	} else if((entry->rule.rule_action == reflect_packet_and_continue_rule_evaluation)
-		  || (entry->rule.rule_action == bounce_packet_and_continue_rule_evaluation)) {
-	  fwd_pkt = 1;
-	  reflect_packet(skb, pfr, entry->rule.internals.reflector_dev, displ, entry->rule.rule_action);
-	}
-      }
-    }  /* for */
+    if(rc != 0) 
+      return(rc);
   }
 
   if(fwd_pkt) {
@@ -2339,6 +2376,78 @@ inline int is_valid_skb_direction(packet_direction direction, u_char recv_packet
 
 /* ********************************** */
 
+static struct sk_buff* defrag_skb(struct sk_buff *skb,
+				  u_int16_t displ,
+				  struct pfring_pkthdr *hdr) {
+  struct sk_buff *cloned = NULL;
+  struct iphdr *iphdr = NULL;
+  struct sk_buff *skk = NULL;
+
+  skb_reset_network_header(skb);
+  skb_reset_transport_header(skb);
+  skb_set_network_header(skb, ETH_HLEN - displ);
+
+  iphdr = ip_hdr(skb);
+
+  if(iphdr && (iphdr->version == 4)) {
+#if defined (RING_DEBUG)
+    printk("[PF_RING] [version=%d] %X -> %X\n",
+	   iphdr->version, iphdr->saddr, iphdr->daddr);
+#endif
+    if(iphdr->frag_off & htons(IP_MF | IP_OFFSET)) {
+      if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL) {
+#if defined (RING_DEBUG)
+	int offset = ntohs(iphdr->frag_off);
+	offset &= IP_OFFSET;
+	offset <<= 3;
+
+	printk("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u]"
+	       "[ip_id=%u][network_header=%d][displ=%d]\n",
+	       iphdr->protocol, offset,
+	       ntohs(iphdr->id),
+	       hdr.extended_hdr.parsed_pkt.pkt_detail.offset.
+	       l3_offset - displ, displ);
+#endif
+	skk = ring_gather_frags(cloned);
+
+	if(skk != NULL) {
+#if defined (RING_DEBUG)
+	  printk("[PF_RING] IP reasm on new skb [skb_len=%d]"
+		 "[head_len=%d][nr_frags=%d][frag_list=%p]\n",
+		 (int)skk->len,
+		 skb_headlen(skk),
+		 skb_shinfo(skk)->nr_frags,
+		 skb_shinfo(skk)->frag_list);
+#endif
+	  skb = skk;
+	  parse_pkt(skb, displ, hdr);
+	  hdr->len = hdr->caplen = skb->len + displ;
+	  return(skb);
+	} else {
+	  //printk("[PF_RING] Fragment queued \n");
+	  return(NULL);	/* mask rcvd fragments */
+	}
+      }
+    } else {
+#if defined (RING_DEBUG)
+      printk("[PF_RING] Do not seems to be a fragmented ip_pkt[iphdr=%p]\n",
+	     iphdr);
+#endif
+    }
+  } else if(iphdr && iphdr->version == 6) {
+    /* Re-assembling fragmented IPv6 packets has not been
+       implemented. Probability of observing fragmented IPv6
+       packets is extremely low. */
+#if defined (RING_DEBUG)
+    printk("[PF_RING] Re-assembling fragmented IPv6 packet hs not been implemented\n");
+#endif
+  }  
+
+  return(NULL);
+}
+
+/* ********************************** */
+
 static int skb_ring_handler(struct sk_buff *skb,
 			    u_char recv_packet,
 			    u_char real_skb /* 1=real skb, 0=faked skb */ ,
@@ -2394,6 +2503,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     */
     return(0);
   }
+
 #if defined(RING_DEBUG)
   if(0) {
     struct timeval tv;
@@ -2426,74 +2536,16 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   is_ip_pkt = parse_pkt(skb, displ, &hdr);
 
-  /* (de)Fragmentation <fusco@ntop.org> */
-  if(enable_ip_defrag
-     && real_skb
-     && is_ip_pkt
-     && recv_packet
-     && (ring_table_size > 0)) {
-    struct sk_buff *cloned = NULL;
-    struct iphdr *iphdr = NULL;
+  if(enable_ip_defrag) {
+    if(real_skb
+       && is_ip_pkt
+       && recv_packet
+       && (ring_table_size > 0)) {      
+      skb = defrag_skb(skb, displ, &hdr);
 
-    skb_reset_network_header(skb);
-    skb_reset_transport_header(skb);
-    skb_set_network_header(skb, ETH_HLEN - displ);
-
-    iphdr = ip_hdr(skb);
-
-    if(iphdr && (iphdr->version == 4)) {
-#if defined (RING_DEBUG)
-      printk("[PF_RING] [version=%d] %X -> %X\n",
-	     iphdr->version, iphdr->saddr, iphdr->daddr);
-#endif
-      if(iphdr->frag_off & htons(IP_MF | IP_OFFSET)) {
-	if((cloned = skb_clone(skb, GFP_ATOMIC)) != NULL) {
-#if defined (RING_DEBUG)
-	  int offset = ntohs(iphdr->frag_off);
-	  offset &= IP_OFFSET;
-	  offset <<= 3;
-
-	  printk("[PF_RING] There is a fragment to handle [proto=%d][frag_off=%u]"
-	     "[ip_id=%u][network_header=%d][displ=%d]\n",
-	     iphdr->protocol, offset,
-	     ntohs(iphdr->id),
-	     hdr.extended_hdr.parsed_pkt.pkt_detail.offset.
-	     l3_offset - displ, displ);
-#endif
-	  skk = ring_gather_frags(cloned);
-
-	  if(skk != NULL) {
-#if defined (RING_DEBUG)
-	    printk("[PF_RING] IP reasm on new skb [skb_len=%d]"
-	       "[head_len=%d][nr_frags=%d][frag_list=%p]\n",
-	       (int)skk->len,
-	       skb_headlen(skk),
-	       skb_shinfo(skk)->nr_frags,
-	       skb_shinfo(skk)->frag_list);
-#endif
-	    skb = skk;
-	    parse_pkt(skb, displ, &hdr);
-	    hdr.len = hdr.caplen = skb->len + displ;
-	  } else {
-	    //printk("[PF_RING] Fragment queued \n");
-	    return(0);	/* mask rcvd fragments */
-	  }
-	}
-      } else {
-#if defined (RING_DEBUG)
-	printk("[PF_RING] Do not seems to be a fragmented ip_pkt[iphdr=%p]\n",
-	       iphdr);
-#endif
-      }
-    } else if(iphdr && iphdr->version == 6)
-      {
-	/* Re-assembling fragmented IPv6 packets has not been
-	   implemented. Probability of observing fragmented IPv6
-	   packets is extremely low. */
-#if defined (RING_DEBUG)
-	printk("[PF_RING] Re-assembling fragmented IPv6 packet hs not been implemented\n");
-#endif
-      }
+      if(skb == NULL) 
+	return(0);
+    }
   }
 
   /* BD - API changed for time keeping */
@@ -3683,8 +3735,7 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr)
     cluster_ptr = list_entry(ptr, ring_cluster_element, list);
 
     if(cluster_ptr->cluster.cluster_id == pfr->cluster_id) {
-      return(remove_from_cluster_list
-	     (&cluster_ptr->cluster, sock));
+      return(remove_from_cluster_list(&cluster_ptr->cluster, sock));
     }
   }
 

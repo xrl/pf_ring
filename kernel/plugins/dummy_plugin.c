@@ -69,6 +69,8 @@
 
 static struct pfring_plugin_registration reg;
 
+#define DEBUG
+
 /* ************************************ */
 
 static int dummy_plugin_handle_skb(struct ring_opt *pfr,
@@ -138,8 +140,7 @@ static int dummy_plugin_filter(struct ring_opt *the_ring,
 
   if(rule_filter) {
 #ifdef DEBUG
-    printk("->l3_proto=%d / protocol=%d\n",
-	   hdr->extended_hdr.parsed_pkt.l3_proto, rule_filter->protocol);
+    printk("->l3_proto=%d / protocol=%d\n", hdr->extended_hdr.parsed_pkt.l3_proto, rule_filter->protocol);
 #endif
 
     if(hdr->extended_hdr.parsed_pkt.l3_proto != rule_filter->protocol)

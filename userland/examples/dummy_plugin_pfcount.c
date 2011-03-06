@@ -40,14 +40,13 @@
 #include <arpa/inet.h>
 
 #include "pfring.h"
+#include "../../kernel/plugins/dummy_plugin.h"
 
 #define ALARM_SLEEP       1
 #define DEFAULT_SNAPLEN 128
 pfring  *pd;
 int verbose = 0;
 pfring_stat pfringStats;
-
-#define DUMMY_PLUGIN_ID   1
 
 static struct timeval startTime;
 unsigned long long numPkts = 0, numBytes = 0;
@@ -320,6 +319,7 @@ int main(int argc, char* argv[]) {
   char *device = NULL, c, *string = NULL;
   int promisc, add_rule = 1;
   filtering_rule rule;
+  struct dummy_filter *filter;
 
   thiszone = gmt2local(0);
 
@@ -376,6 +376,8 @@ int main(int argc, char* argv[]) {
   rule.core_fields.proto = 6 /* tcp */;
   rule.plugin_action.plugin_id = DUMMY_PLUGIN_ID; /* Dummy plugin */
   rule.extended_fields.filter_plugin_id = DUMMY_PLUGIN_ID; /* Enable packet parsing/filtering */
+  filter = (struct dummy_filter*)rule.extended_fields.filter_plugin_data;
+  filter->protocol = 6 /* tcp */; 
 
   if(add_rule) {
     if(pfring_add_filtering_rule(pd, &rule) < 0) {

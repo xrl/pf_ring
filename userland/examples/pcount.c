@@ -422,8 +422,6 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  pfring_enable_ring(pd);
-
   signal(SIGINT, sigproc);
 
   if(!verbose) {
