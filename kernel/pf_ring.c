@@ -4560,6 +4560,9 @@ static int ring_setsockopt(struct socket *sock,
       if(pfr->poll_num_pkts_watermark > threshold)
 	pfr->poll_num_pkts_watermark = threshold;
 
+      if(pfr->poll_num_pkts_watermark == 0)
+	pfr->poll_num_pkts_watermark = 1;
+
 #ifdef RING_DEBUG
       printk("[PF_RING] --> SO_SET_POLL_WATERMARK=%d\n", pfr->poll_num_pkts_watermark);
 #endif
