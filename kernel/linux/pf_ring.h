@@ -642,7 +642,7 @@ typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
 				 filtering_rule_element *rule,       /* In case the match is on the list */
 				 filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
 				 struct pfring_pkthdr *hdr,
-				 struct sk_buff *skb,
+				 struct sk_buff *skb, int displ,
 				 u_int16_t filter_plugin_id,
 				 struct parse_buffer **filter_rule_memory_storage,
 				 rule_action_behaviour *behaviour);
@@ -650,7 +650,7 @@ typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
 typedef int (*plugin_filter_skb)(struct ring_opt *the_ring,
 				 filtering_rule_element *rule,
 				 struct pfring_pkthdr *hdr,
-				 struct sk_buff *skb,
+				 struct sk_buff *skb, int displ,
 				 struct parse_buffer **filter_rule_memory_storage);
 /* Get stats about the rule */
 typedef int (*plugin_get_stats)(struct ring_opt *pfr,

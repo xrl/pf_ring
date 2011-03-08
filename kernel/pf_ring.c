@@ -1546,7 +1546,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
     rc = plugin_registration[rule->rule.extended_fields.
 			     filter_plugin_id]->pfring_plugin_filter_skb
-      (the_ring, rule, hdr, skb,
+      (the_ring, rule, hdr, skb, displ,
        &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
 
     if(parse_memory_buffer
@@ -1582,9 +1582,8 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 	 rule->rule.plugin_action.plugin_id);
 
     plugin_registration[rule->rule.plugin_action.plugin_id]
-      ->pfring_plugin_handle_skb(the_ring, rule, NULL, hdr, skb,
-				 rule->rule.extended_fields.
-				 filter_plugin_id,
+      ->pfring_plugin_handle_skb(the_ring, rule, NULL, hdr, skb, displ,
+				 rule->rule.extended_fields.filter_plugin_id,
 				 &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id],
 				 behaviour);
 
@@ -1900,9 +1899,8 @@ int check_perfect_rules(struct sk_buff *skb,
 	   pfring_plugin_handle_skb != NULL)
        ) {
       plugin_registration[hash_bucket->rule.plugin_action.plugin_id]
-	->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, 0, /* no plugin */
-				   &parse_memory_buffer
-				   [hash_bucket->rule.plugin_action.plugin_id],
+	->pfring_plugin_handle_skb(pfr, NULL, hash_bucket, hdr, skb, displ, 0, /* no plugin */
+				   &parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id],
 				   &behaviour);
 
       if(parse_memory_buffer[hash_bucket->rule.plugin_action.plugin_id])
@@ -5229,7 +5227,7 @@ int add_device_to_ring_list(struct net_device *dev) {
 /* ************************************ */
 
 void pf_ring_add_module_dependency(void) {
-     /* Don't actually do anything */
+  /* Don't actually do anything */
 }
 EXPORT_SYMBOL(pf_ring_add_module_dependency);
 

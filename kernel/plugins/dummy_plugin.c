@@ -77,7 +77,7 @@ static int dummy_plugin_handle_skb(struct ring_opt *pfr,
 				   filtering_rule_element *rule,
 				   filtering_hash_bucket *hash_rule,
 				   struct pfring_pkthdr *hdr,
-				   struct sk_buff *skb,
+				   struct sk_buff *skb, int displ,
 				   u_int16_t filter_plugin_id,
 				   struct parse_buffer **filter_rule_memory_storage,
 				   rule_action_behaviour *behaviour)
@@ -133,7 +133,7 @@ static int dummy_plugin_get_stats(struct ring_opt *pfr,
 static int dummy_plugin_filter(struct ring_opt *the_ring,
 			       filtering_rule_element *rule,
 			       struct pfring_pkthdr *hdr,
-			       struct sk_buff *skb,
+			       struct sk_buff *skb, int displ,
 			       struct parse_buffer **parse_memory)
 {
   struct dummy_filter *rule_filter = (struct dummy_filter*)rule->rule.extended_fields.filter_plugin_data;
@@ -178,6 +178,7 @@ static int __init dummy_plugin_init(void)
 
   register_plugin(&reg);
 
+  /* Make sure that PF_RING is loaded when this plugin is loaded */
   pf_ring_add_module_dependency();
 
   printk("Dummy plugin started [id=%d]\n", DUMMY_PLUGIN_ID);
