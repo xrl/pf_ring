@@ -532,7 +532,8 @@ typedef int (*do_handle_filtering_hash_bucket)(struct ring_opt *pfr,
 					       u_char add_rule);
 
 typedef int (*do_add_packet_to_ring)(struct ring_opt *pfr, 
-				     struct pfring_pkthdr *hdr, struct sk_buff *skb);
+				     struct pfring_pkthdr *hdr, struct sk_buff *skb,
+				     int displ, u_int8_t parse_pkt_first);
 
 /* ************************************************* */
 
@@ -760,7 +761,7 @@ typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet,
 typedef int (*handle_ring_buffer)(struct net_device *dev,
 				  char *data, int len);
 typedef int (*handle_add_hdr_to_ring)(struct ring_opt *pfr,
-				      struct pfring_pkthdr *hdr);
+				      struct pfring_pkthdr *hdr);				      
 
 /* Hack to jump from a device directly to PF_RING */
 struct pfring_hooks {

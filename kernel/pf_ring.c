@@ -1089,17 +1089,16 @@ static int parse_pkt(struct sk_buff *skb,
   struct ethhdr *eh = (struct ethhdr *)(skb->data - skb_displ);
   u_int16_t displ, ip_len;
 
-  memset(&hdr->extended_hdr.parsed_pkt, 0, sizeof(struct pkt_parsing_info));
-  hdr->extended_hdr.parsed_header_len = 9;
+  memset(&hdr->extended_hdr, 0, sizeof(hdr->extended_hdr));
 
-  /* MAC adderess */
+  /* MAC address */
   memcpy(&hdr->extended_hdr.parsed_pkt.dmac, eh->h_dest, sizeof(eh->h_dest));
   memcpy(&hdr->extended_hdr.parsed_pkt.smac, eh->h_source, sizeof(eh->h_source));
 
   hdr->extended_hdr.parsed_pkt.eth_type = ntohs(eh->h_proto);
   hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset = -skb_displ;
 
-  if(hdr->extended_hdr.parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */ ) {
+  if(hdr->extended_hdr.parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */) {
     hdr->extended_hdr.parsed_pkt.pkt_detail.offset.vlan_offset =
       hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset + sizeof(struct ethhdr);
     hdr->extended_hdr.parsed_pkt.vlan_id =
@@ -1746,8 +1745,6 @@ static void add_pkt_to_ring(struct sk_buff *skb,
   if((!pfr->ring_active) || (!skb))
     return;
 
-
-
   if((pfr->channel_id != RING_ANY_CHANNEL)
      && (channel_id != RING_ANY_CHANNEL)
      && ((pfr->channel_id & the_bit) != the_bit))
@@ -1769,10 +1766,15 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
-static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr, struct sk_buff *skb)
+static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr, 
+			      struct sk_buff *skb,
+			      int displ, u_int8_t parse_pkt_first)
 {
+  if(parse_pkt_first)
+    parse_pkt(skb, displ, hdr);
+
   read_lock_bh(&ring_mgmt_lock);
-  add_pkt_to_ring(skb, pfr, hdr, 0, RING_ANY_CHANNEL, 0, NULL);
+  add_pkt_to_ring(skb, pfr, hdr, 0, RING_ANY_CHANNEL, displ, NULL);
   read_unlock_bh(&ring_mgmt_lock);
   return(0);
 }
@@ -1781,7 +1783,7 @@ static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr, s
 
 static int add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr)
 {
-  return(add_packet_to_ring(pfr, hdr, NULL));
+  return(add_packet_to_ring(pfr, hdr, NULL, 0, 0));
 }
 
 /* ********************************** */
@@ -2214,8 +2216,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
       if((last_matched_plugin > 0)
 	 && (parse_memory_buffer[last_matched_plugin] != NULL)) {
-	offset = hdr->extended_hdr.parsed_header_len =
-	  parse_memory_buffer[last_matched_plugin]->mem_len;
+	offset = hdr->extended_hdr.parsed_header_len = parse_memory_buffer[last_matched_plugin]->mem_len;
 
 	hdr->extended_hdr.parsed_pkt.last_matched_plugin_id = last_matched_plugin;
 #if defined(RING_DEBUG)
