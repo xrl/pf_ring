@@ -1544,17 +1544,14 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 	     rule->rule.plugin_action.plugin_id,
 	     plugin_registration[rule->rule.plugin_action.plugin_id]);
 
-    rc = plugin_registration[rule->rule.extended_fields.
-			     filter_plugin_id]->pfring_plugin_filter_skb
-      (the_ring, rule, hdr, skb, displ,
-       &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
+    rc = plugin_registration[rule->rule.extended_fields.filter_plugin_id]->pfring_plugin_filter_skb
+      (the_ring, rule, hdr, skb, displ, &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id]);
 
-    if(parse_memory_buffer
-       [rule->rule.extended_fields.filter_plugin_id])
+    if(parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id])
       *free_parse_mem = 1;
 
     if(rc <= 0) {
-      return(0);	/* No match */
+      return(0); /* No match */
     } else {
       *last_matched_plugin = rule->rule.extended_fields.filter_plugin_id;
       hdr->extended_hdr.parsed_pkt.last_matched_plugin_id =
@@ -1576,16 +1573,19 @@ static int match_filtering_rule(struct ring_opt *the_ring,
      && (plugin_registration[rule->rule.plugin_action.plugin_id] != NULL)
      && (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_handle_skb != NULL)
      ) {
+    int rc;
+
     if(debug)
-      printk
-	("[PF_RING] Calling pfring_plugin_handle_skb(pluginId=%d)\n",
+      printk("[PF_RING] Calling pfring_plugin_handle_skb(pluginId=%d)\n",
 	 rule->rule.plugin_action.plugin_id);
 
-    plugin_registration[rule->rule.plugin_action.plugin_id]
+    rc = plugin_registration[rule->rule.plugin_action.plugin_id]
       ->pfring_plugin_handle_skb(the_ring, rule, NULL, hdr, skb, displ,
 				 rule->rule.extended_fields.filter_plugin_id,
 				 &parse_memory_buffer[rule->rule.extended_fields.filter_plugin_id],
 				 behaviour);
+    if(rc <= 0)
+      return(0); /* No match */
 
     if(*last_matched_plugin == 0)
       *last_matched_plugin = rule->rule.plugin_action.plugin_id;
@@ -1745,6 +1745,8 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
   if((!pfr->ring_active) || (!skb))
     return;
+
+
 
   if((pfr->channel_id != RING_ANY_CHANNEL)
      && (channel_id != RING_ANY_CHANNEL)
@@ -1957,8 +1959,7 @@ int check_wildcard_rules(struct sk_buff *skb,
 
    list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
      filtering_rule_element *entry;
-     rule_action_behaviour behaviour =
-       forward_packet_and_stop_rule_evaluation;
+     rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
 
      entry = list_entry(ptr, filtering_rule_element, list);
 
