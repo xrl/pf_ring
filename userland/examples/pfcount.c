@@ -379,10 +379,10 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
 	     "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
 	     h->extended_hdr.parsed_pkt.ipv4_tos, h->extended_hdr.parsed_pkt.tcp.seq_num,
 	     h->caplen, h->len, h->extended_hdr.parsed_header_len,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset);
+	     h->extended_hdr.parsed_pkt.offset.eth_offset,
+	     h->extended_hdr.parsed_pkt.offset.l3_offset,
+	     h->extended_hdr.parsed_pkt.offset.l4_offset,
+	     h->extended_hdr.parsed_pkt.offset.payload_offset);
       
     } else {
       if(eth_type == 0x0806)
@@ -393,10 +393,10 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
       printf("[caplen=%d][len=%d][parsed_header_len=%d]"
 	     "[eth_offset=%d][l3_offset=%d][l4_offset=%d][payload_offset=%d]\n",
 	     h->caplen, h->len, h->extended_hdr.parsed_header_len,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset,
-	     h->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset);
+	     h->extended_hdr.parsed_pkt.offset.eth_offset,
+	     h->extended_hdr.parsed_pkt.offset.l3_offset,
+	     h->extended_hdr.parsed_pkt.offset.l4_offset,
+	     h->extended_hdr.parsed_pkt.offset.payload_offset);
     }
   }
 

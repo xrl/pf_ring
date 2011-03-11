@@ -417,11 +417,11 @@ PPCODE:
 	  PUSHs (sv_2mortal (newSVpv (inet_ntoa (addr), FALSE)));
 	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . l4_dst_port)));
 
-	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . eth_offset)));
-	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . vlan_offset)));
-	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . l3_offset)));
-	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . l4_offset)));
-	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . payload_offset)));
+	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . offset . eth_offset)));
+	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . offset . vlan_offset)));
+	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . offset . l3_offset)));
+	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . offset . l4_offset)));
+	  PUSHs (sv_2mortal (newSViv (header . extended_hdr . parsed_pkt . offset . payload_offset)));
 
 	  len = header . caplen;
 	  s = packet;
@@ -436,8 +436,8 @@ PPCODE:
 	  * d = '\0';
 	  PUSHs (sv_2mortal (newSVpv (tutto, FALSE)));
 
-	  len = header . caplen - header . extended_hdr . parsed_pkt . pkt_detail . offset . payload_offset - header . extended_hdr . parsed_pkt . pkt_detail . offset . eth_offset;
-	  s = packet + header . extended_hdr . parsed_pkt . pkt_detail . offset . payload_offset;
+	  len = header . caplen - header . extended_hdr . parsed_pkt . offset . payload_offset - header . extended_hdr . parsed_pkt . offset . eth_offset;
+	  s = packet + header . extended_hdr . parsed_pkt . offset . payload_offset;
 	  d = payload;
 	  while (len)
 	    {
@@ -493,14 +493,14 @@ void xs_pfring_header (pfref, h)
 	  hv_store (info, "k-l4_src_port", strlen ("k-l4_src_port"), newSViv (header . extended_hdr . parsed_pkt . l4_src_port), 0);
 	  hv_store (info, "l-l4_dst_port", strlen ("l-l4_dst_port"), newSViv (header . extended_hdr . parsed_pkt . l4_dst_port), 0);
 	  hv_store (info, "m-tcp_flags", strlen ("m-tcp_flags"), newSViv (header . extended_hdr . parsed_pkt . tcp.flags), 0);
-	  hv_store (info, "n-eth_offset", strlen ("n-eth_offset"), newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . eth_offset), 0);
-	  hv_store (info, "o-vlan_offset", strlen ("o-vlan_offset"), newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . vlan_offset), 0);
-	  hv_store (info, "p-l3_offset", strlen ("p-l3_offset"), newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . l3_offset), 0);
-	  hv_store (info, "q-l4_offset", strlen ("q-l4_offset"), newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . l4_offset), 0);
-	  hv_store (info, "r-payload_offset", strlen ("r-payload_offset"), newSViv (header . extended_hdr . parsed_pkt . pkt_detail . offset . payload_offset), 0);
+	  hv_store (info, "n-eth_offset", strlen ("n-eth_offset"), newSViv (header . extended_hdr . parsed_pkt . offset . eth_offset), 0);
+	  hv_store (info, "o-vlan_offset", strlen ("o-vlan_offset"), newSViv (header . extended_hdr . parsed_pkt . offset . vlan_offset), 0);
+	  hv_store (info, "p-l3_offset", strlen ("p-l3_offset"), newSViv (header . extended_hdr . parsed_pkt . offset . l3_offset), 0);
+	  hv_store (info, "q-l4_offset", strlen ("q-l4_offset"), newSViv (header . extended_hdr . parsed_pkt . offset . l4_offset), 0);
+	  hv_store (info, "r-payload_offset", strlen ("r-payload_offset"), newSViv (header . extended_hdr . parsed_pkt . offset . payload_offset), 0);
 
-	  len = header . caplen - header . extended_hdr . parsed_pkt . pkt_detail . offset . payload_offset - header . extended_hdr . parsed_pkt . pkt_detail . offset . eth_offset;
-	  s = packet + header . extended_hdr . parsed_pkt . pkt_detail . offset . payload_offset;
+	  len = header . caplen - header . extended_hdr . parsed_pkt . offset . payload_offset - header . extended_hdr . parsed_pkt . offset . eth_offset;
+	  s = packet + header . extended_hdr . parsed_pkt . offset . payload_offset;
 	  d = payload;
 	  while (len)
 	    {

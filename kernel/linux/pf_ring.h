@@ -25,7 +25,7 @@
 
 #define RING_MAGIC
 #define RING_MAGIC_VALUE             0x88
-#define RING_FLOWSLOT_VERSION          12
+#define RING_FLOWSLOT_VERSION          13
 
 #define DEFAULT_BUCKET_LEN            128
 #define MAX_NUM_DEVICES               256
@@ -135,6 +135,11 @@ typedef union {
 #define host6_peer_a host_peer_a.v6
 #define host6_peer_b host_peer_b.v6
 
+typedef union {
+  struct pkt_flow_info flow; /* Flow Information */
+  struct pkt_aggregation_info aggregation; /* Future or plugin use */
+} packet_user_detail;
+
 struct pkt_parsing_info {
   /* Core fields (also used by NetFlow) */
   u_int8_t dmac[ETH_ALEN], smac[ETH_ALEN];  /* MAC src/dst addresses */
@@ -150,12 +155,10 @@ struct pkt_parsing_info {
   } tcp;
   u_int16_t last_matched_plugin_id; /* If > 0 identifies a plugin to that matched the packet */
   u_int16_t last_matched_rule_id; /* If > 0 identifies a rule that matched the packet */
-
-  union {
-    struct pkt_offset offset; /* Offsets of L3/L4/payload elements */
-    struct pkt_flow_info flow; /* Flow Information */
-    struct pkt_aggregation_info aggregation; /* Future or plugin use */
-  } pkt_detail;
+  struct pkt_offset offset; /* Offsets of L3/L4/payload elements */
+  
+  /* Leave it at the end of the structure */
+  packet_user_detail pkt_detail;
 };
 
 #define UNKNOWN_INTERFACE          -1
@@ -168,8 +171,10 @@ struct pfring_extended_pkthdr {
 			     hardware timestamp, this is the place to read timestamp from */
   int if_index;           /* index of the interface on which the packet has been received. 
                              It can be also used to report other information */
-  struct pkt_parsing_info parsed_pkt; /* packet parsing info */
   u_int16_t parsed_header_len; /* Extra parsing data before packet */
+
+  /* NOTE: leave it as last field of the memset on parse_pkt() will fail */
+  struct pkt_parsing_info parsed_pkt; /* packet parsing info */
 };
 
 struct pfring_pkthdr {
@@ -237,6 +242,11 @@ typedef enum {
   bounce_packet_and_stop_rule_evaluation,
   bounce_packet_and_continue_rule_evaluation 
 } rule_action_behaviour;
+
+typedef enum {
+  pkt_detail_flow,
+  pkt_detail_aggregation
+} pkt_detail_mode;
 
 typedef enum {
   rx_and_tx_direction = 0,

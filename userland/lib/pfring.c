@@ -905,15 +905,15 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
 
   hdr->extended_hdr.parsed_header_len = 0;
   hdr->extended_hdr.parsed_pkt.eth_type = ntohs(eh->h_proto);
-  hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset = 0;
+  hdr->extended_hdr.parsed_pkt.offset.eth_offset = 0;
 
   if(hdr->extended_hdr.parsed_pkt.eth_type == 0x8100 /* 802.1q (VLAN) */)
     {
-      hdr->extended_hdr.parsed_pkt.pkt_detail.offset.vlan_offset = hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset + sizeof(struct eth_hdr);
-      hdr->extended_hdr.parsed_pkt.vlan_id = (pkt[hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset + 14] & 15) * 256
-	+ pkt[hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset + 15];
-      hdr->extended_hdr.parsed_pkt.eth_type = (pkt[hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset + 16]) * 256
-	+ pkt[hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset + 17];
+      hdr->extended_hdr.parsed_pkt.offset.vlan_offset = hdr->extended_hdr.parsed_pkt.offset.eth_offset + sizeof(struct eth_hdr);
+      hdr->extended_hdr.parsed_pkt.vlan_id = (pkt[hdr->extended_hdr.parsed_pkt.offset.eth_offset + 14] & 15) * 256
+	+ pkt[hdr->extended_hdr.parsed_pkt.offset.eth_offset + 15];
+      hdr->extended_hdr.parsed_pkt.eth_type = (pkt[hdr->extended_hdr.parsed_pkt.offset.eth_offset + 16]) * 256
+	+ pkt[hdr->extended_hdr.parsed_pkt.offset.eth_offset + 17];
       displ = 4;
     }
   else
@@ -923,8 +923,8 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
     }
 
   if(hdr->extended_hdr.parsed_pkt.eth_type == 0x0800 /* IP */) {
-    hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset = hdr->extended_hdr.parsed_pkt.pkt_detail.offset.eth_offset+displ+sizeof(struct eth_hdr);
-    ip = (struct iphdr*)(pkt+hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset);
+    hdr->extended_hdr.parsed_pkt.offset.l3_offset = hdr->extended_hdr.parsed_pkt.offset.eth_offset+displ+sizeof(struct eth_hdr);
+    ip = (struct iphdr*)(pkt+hdr->extended_hdr.parsed_pkt.offset.l3_offset);
 
     hdr->extended_hdr.parsed_pkt.ipv4_src = ntohl(ip->saddr), hdr->extended_hdr.parsed_pkt.ipv4_dst = ntohl(ip->daddr), hdr->extended_hdr.parsed_pkt.l3_proto = ip->protocol;
     hdr->extended_hdr.parsed_pkt.ipv4_tos = ip->tos;
@@ -932,22 +932,22 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
     if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP)) {
 	u_int16_t ip_len = ip->ihl*4;
 
-	hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset = hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l3_offset+ip_len;
+	hdr->extended_hdr.parsed_pkt.offset.l4_offset = hdr->extended_hdr.parsed_pkt.offset.l3_offset+ip_len;
 
 	if(ip->protocol == IPPROTO_TCP) {
-	    struct tcphdr *tcp = (struct tcphdr*)(pkt+hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset);
+	    struct tcphdr *tcp = (struct tcphdr*)(pkt+hdr->extended_hdr.parsed_pkt.offset.l4_offset);
 	    hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(tcp->dest);
-	    hdr->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset = hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset+(tcp->doff * 4);
+	    hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset+(tcp->doff * 4);
 	    hdr->extended_hdr.parsed_pkt.tcp.seq_num = ntohl(tcp->seq);
 	    hdr->extended_hdr.parsed_pkt.tcp.ack_num = ntohl(tcp->ack_seq);
 	    hdr->extended_hdr.parsed_pkt.tcp.flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
 	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
 	  } else if(ip->protocol == IPPROTO_UDP) {
-	    struct udphdr *udp = (struct udphdr*)(pkt+hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset);
+	    struct udphdr *udp = (struct udphdr*)(pkt+hdr->extended_hdr.parsed_pkt.offset.l4_offset);
 	    hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(udp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(udp->dest);
-	    hdr->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset = hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset+sizeof(struct udphdr);
+	    hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset+sizeof(struct udphdr);
 	  } else
-	  hdr->extended_hdr.parsed_pkt.pkt_detail.offset.payload_offset = hdr->extended_hdr.parsed_pkt.pkt_detail.offset.l4_offset;
+	  hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset;
       } else
       hdr->extended_hdr.parsed_pkt.l4_src_port = hdr->extended_hdr.parsed_pkt.l4_dst_port = 0;
 
