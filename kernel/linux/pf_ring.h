@@ -105,6 +105,10 @@ struct pkt_offset {
 };
 
 
+struct pkt_flow_info {
+  u_int32_t in_iface, out_iface, samplingPopulation;
+};
+
 #ifndef ETH_ALEN
 #define ETH_ALEN  6
 #endif
@@ -149,6 +153,7 @@ struct pkt_parsing_info {
 
   union {
     struct pkt_offset offset; /* Offsets of L3/L4/payload elements */
+    struct pkt_flow_info flow; /* Flow Information */
     struct pkt_aggregation_info aggregation; /* Future or plugin use */
   } pkt_detail;
 };
