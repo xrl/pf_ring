@@ -1084,12 +1084,16 @@ static inline void ring_remove(struct sock *sk)
 /* ******************************************************* */
 
 static int parse_pkt(struct sk_buff *skb,
-		     u_int16_t skb_displ, struct pfring_pkthdr *hdr)
+		     u_int16_t skb_displ, 
+		     struct pfring_pkthdr *hdr, u_int8_t reset_all)
 {
   struct ethhdr *eh = (struct ethhdr *)(skb->data - skb_displ);
   u_int16_t displ, ip_len;
 
-  memset(&hdr->extended_hdr, 0, sizeof(hdr->extended_hdr)-sizeof(packet_user_detail) /* Preserve user data */);
+  if(reset_all)
+    memset(&hdr->extended_hdr, 0, sizeof(hdr->extended_hdr));
+  else
+    memset(&hdr->extended_hdr, 0, sizeof(hdr->extended_hdr)-sizeof(packet_user_detail) /* Preserve user data */);
 
   /* MAC address */
   memcpy(&hdr->extended_hdr.parsed_pkt.dmac, eh->h_dest, sizeof(eh->h_dest));
@@ -1771,7 +1775,7 @@ static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr,
 			      int displ, u_int8_t parse_pkt_first)
 {
   if(parse_pkt_first)
-    parse_pkt(skb, displ, hdr);
+    parse_pkt(skb, displ, hdr, 0 /* Do not reset user-specified fields */);
 
   read_lock_bh(&ring_mgmt_lock);
   add_pkt_to_ring(skb, pfr, hdr, 0, RING_ANY_CHANNEL, displ, NULL);
@@ -2422,7 +2426,7 @@ static struct sk_buff* defrag_skb(struct sk_buff *skb,
 		 skb_shinfo(skk)->frag_list);
 #endif
 	  skb = skk;
-	  parse_pkt(skb, displ, hdr);
+	  parse_pkt(skb, displ, hdr, 1);
 	  hdr->len = hdr->caplen = skb->len + displ;
 	  return(skb);
 	} else {
@@ -2536,7 +2540,7 @@ static int skb_ring_handler(struct sk_buff *skb,
   } else
     displ = 0;
 
-  is_ip_pkt = parse_pkt(skb, displ, &hdr);
+  is_ip_pkt = parse_pkt(skb, displ, &hdr, 1);
 
   if(enable_ip_defrag) {
     if(real_skb
