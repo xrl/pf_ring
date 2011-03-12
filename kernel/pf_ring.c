@@ -174,7 +174,6 @@ static u_int dna_devices_list_size = 0;
 static u_int plugin_registration_size = 0;
 static struct pfring_plugin_registration *plugin_registration[MAX_PLUGIN_ID] = { NULL };
 static u_short max_registered_plugin_id = 0;
-static rwlock_t ring_mgmt_lock = RW_LOCK_UNLOCKED;
 
 /* ********************************** */
 
@@ -195,6 +194,50 @@ static int reflect_packet(struct sk_buff *skb,
 			  struct ring_opt *pfr,
 			  struct net_device *reflector_dev,
 			  int displ, rule_action_behaviour behaviour);
+
+/* ********************************** */
+
+#if 0
+
+static rwlock_t ring_mgmt_lock;
+
+inline void init_ring_readers(void)      { ring_mgmt_lock = RW_LOCK_UNLOCKED; } 
+inline void ring_write_lock(void)        { write_lock_bh(&ring_mgmt_lock);    }
+inline void ring_write_unlock(void)      { write_unlock_bh(&ring_mgmt_lock);  }
+inline void ring_read_lock(void)         { read_lock_bh(&ring_mgmt_lock);     }
+inline void ring_read_unlock(void)       { read_unlock_bh(&ring_mgmt_lock);   }
+
+#else
+
+static atomic_t num_ring_readers, ring_stop;
+
+inline void init_ring_readers(void) { 
+  atomic_set(&num_ring_readers, 0);
+  atomic_set(&ring_stop, 0);  
+}
+
+inline void ring_write_lock(void) {
+  atomic_set(&ring_stop, 1);
+
+  while(atomic_read(&num_ring_readers) > 0) { schedule(); }
+}
+
+inline void ring_write_unlock(void) {
+  atomic_set(&ring_stop, 0);
+}
+
+inline void ring_read_lock(void) {
+  while(atomic_read(&ring_stop) == 1) { schedule(); }
+  atomic_inc(&num_ring_readers);
+}
+
+inline void ring_read_unlock(void) {
+  atomic_dec(&num_ring_readers);
+}
+
+#endif
+
+/* ********************************** */
 
 /*
   Caveat
@@ -1011,9 +1054,9 @@ static inline void ring_insert(struct sock *sk)
   next = kmalloc(sizeof(struct ring_element), GFP_ATOMIC);
   if(next != NULL) {
     next->sk = sk;
-    write_lock_bh(&ring_mgmt_lock);
+    ring_write_lock();
     list_add(&next->list, &ring_table);
-    write_unlock_bh(&ring_mgmt_lock);
+    ring_write_unlock();
   } else {
     if(net_ratelimit())
       printk("[PF_RING] net_ratelimit() failure\n");
@@ -1777,9 +1820,9 @@ static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr,
   if(parse_pkt_first)
     parse_pkt(skb, displ, hdr, 0 /* Do not reset user-specified fields */);
 
-  read_lock_bh(&ring_mgmt_lock);
+  ring_read_lock();
   add_pkt_to_ring(skb, pfr, hdr, 0, RING_ANY_CHANNEL, displ, NULL);
-  read_unlock_bh(&ring_mgmt_lock);
+  ring_read_unlock();
   return(0);
 }
 
@@ -2319,7 +2362,7 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
     plugin_registration[pfring_plugin_id] = NULL;
     plugin_registration_size--;
 
-    read_lock_bh(&ring_mgmt_lock);
+    ring_read_lock();
     list_for_each_safe(ring_ptr, ring_tmp_ptr, &ring_table) {
       struct ring_element *entry =
 	list_entry(ring_ptr, struct ring_element, list);
@@ -2347,7 +2390,7 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
 	}
       }
     }
-    read_unlock_bh(&ring_mgmt_lock);
+    ring_read_unlock();
 
     for(i = MAX_PLUGIN_ID - 1; i > 0; i--) {
       if(plugin_registration[i] != NULL) {
@@ -2593,7 +2636,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     hdr.extended_hdr.if_index = -1;
 
   /* Avoid the ring to be manipulated while playing with it */
-  read_lock_bh(&ring_mgmt_lock);
+  ring_read_lock();
 
   /* [1] Check unclustered sockets */
   list_for_each(ptr, &ring_table) {
@@ -2680,7 +2723,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     }
   } /* Clustering */
 
-  read_unlock_bh(&ring_mgmt_lock);
+  ring_read_unlock();
 
 #ifdef PROFILING
   rdt1 = _rdtsc() - rdt1;
@@ -3079,7 +3122,7 @@ static int ring_release(struct socket *sock)
   */
   sock_orphan(sk);
   ring_proc_remove(pfr);
-  write_lock_bh(&ring_mgmt_lock);
+  ring_write_lock();
 
   if(pfr->ring_netdev && pfr->ring_netdev == &any_dev)
     num_any_rings--;
@@ -3161,7 +3204,7 @@ static int ring_release(struct socket *sock)
   skb_queue_purge(&sk->sk_write_queue);
 
   sock_put(sk);
-  write_unlock_bh(&ring_mgmt_lock);
+  ring_write_unlock();
 
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   /* Release the vPFRing eventfd */
@@ -3766,7 +3809,7 @@ static int set_master_ring(struct sock *sock,
 #endif
 
   /* Avoid the ring to be manipulated while playing with it */
-  read_lock_bh(&ring_mgmt_lock);
+  ring_read_lock();
 
   list_for_each(ptr, &ring_table) {
     struct ring_opt *sk_pfr;
@@ -3798,7 +3841,7 @@ static int set_master_ring(struct sock *sock,
     }
   }
 
-  read_unlock_bh(&ring_mgmt_lock);
+  ring_read_unlock();
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] set_master_ring(%s, socket_id=%d) = %d\n",
@@ -5449,6 +5492,8 @@ static int __init ring_init(void)
 
   for(i = 0; i < MAX_NUM_DEVICES; i++)
     INIT_LIST_HEAD(&device_ring_list[i]);
+
+  init_ring_readers();
 
   memset(&any_dev, 0, sizeof(any_dev));
   strcpy(any_dev.name, "any");
