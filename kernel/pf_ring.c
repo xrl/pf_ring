@@ -611,40 +611,40 @@ static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
 
 /* ********************************** */
 
-static void init_five_tuple_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
-					   u_int8_t proto,
-					   u_int32_t s_addr, u_int32_t d_addr,
-					   u_int16_t s_port, u_int16_t d_port,
-					   hw_filtering_rule *rule) {
+static void init_intel_82599_five_tuple_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
+						       u_int8_t proto,
+						       u_int32_t s_addr, u_int32_t d_addr,
+						       u_int16_t s_port, u_int16_t d_port,
+						       hw_filtering_rule *rule) {
 
-  /* printk("init_five_tuple_filter_hw_rule()\n"); */
+  /* printk("init_intel_82599_five_tuple_filter_hw_rule()\n"); */
 
   memset(rule, 0, sizeof(hw_filtering_rule));
 
-  rule->rule_type = five_tuple_rule, rule->rule_id = rule_id, rule->queue_id = queue_id;
+  rule->rule_type = intel_82599_five_tuple_rule, rule->rule_id = rule_id;
+  rule->rule.five_tuple_rule.queue_id = queue_id;
   rule->rule.five_tuple_rule.proto = proto;
-  rule->rule.five_tuple_rule.s_addr = s_addr,  rule->rule.five_tuple_rule.d_addr = d_addr;
+  rule->rule.five_tuple_rule.s_addr = s_addr, rule->rule.five_tuple_rule.d_addr = d_addr;
   rule->rule.five_tuple_rule.s_port = s_port, rule->rule.five_tuple_rule.d_port = d_port;
 }
 
 /* ********************************** */
 
-static void init_perfect_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
-					u_int8_t proto,
-					u_int16_t vlan,
-					u_int32_t s_addr, u_int8_t s_mask,
-					u_int32_t d_addr, u_int8_t d_mask,
-					u_int16_t s_port, u_int16_t d_port,
-					hw_filtering_rule *rule) {
+static void init_intel_82599_perfect_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
+						    u_int8_t proto, u_int16_t vlan,
+						    u_int32_t s_addr, u_int8_t s_mask,
+						    u_int32_t d_addr, u_int8_t d_mask,
+						    u_int16_t s_port, u_int16_t d_port,
+						    hw_filtering_rule *rule) {
   u_int32_t netmask;
 
-  /* printk("init_perfect_filter_hw_rule()\n"); */
+  /* printk("init_intel_82599_perfect_filter_hw_rule()\n"); */
 
   memset(rule, 0, sizeof(hw_filtering_rule));
 
-  rule->rule_type = perfect_filter_rule, rule->rule_id = rule_id, rule->queue_id = queue_id;
+  rule->rule_type = intel_82599_perfect_filter_rule, rule->rule_id = rule_id;
 
-  rule->rule.perfect_rule.vlan_id = vlan;
+  rule->rule.perfect_rule.queue_id = queue_id, rule->rule.perfect_rule.vlan_id = vlan;
   rule->rule.perfect_rule.proto = proto;
   rule->rule.perfect_rule.s_addr = s_addr;
   if(s_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> s_mask);
@@ -695,10 +695,10 @@ static int ring_proc_dev_rule_write(struct file *file,
     else /* if(proto[0] == 'u') */
       protocol = 17; /* UDP */
 
-    init_perfect_filter_hw_rule(queue_id, rule_id, protocol, vlan,
-				((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff), s_mask,
-				((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff), d_mask,
-				s_port, d_port, &rule);
+    init_intel_82599_perfect_filter_hw_rule(queue_id, rule_id, protocol, vlan,
+					    ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff), s_mask,
+					    ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff), d_mask,
+					    s_port, d_port, &rule);
     found = 1;
   }
 
@@ -720,10 +720,10 @@ static int ring_proc_dev_rule_write(struct file *file,
       else
 	protocol = 0; /* any */
 
-      init_five_tuple_filter_hw_rule(queue_id, rule_id, protocol,
-				     ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff),
-				     ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff),
-				     s_port, d_port, &rule);
+      init_intel_82599_five_tuple_filter_hw_rule(queue_id, rule_id, protocol,
+						 ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff),
+						 ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff),
+						 s_port, d_port, &rule);
       found = 1;
     }
   }
@@ -1580,7 +1580,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
 
     if(debug)
       printk("[PF_RING] Calling pfring_plugin_handle_skb(pluginId=%d)\n",
-	 rule->rule.plugin_action.plugin_id);
+	     rule->rule.plugin_action.plugin_id);
 
     rc = plugin_registration[rule->rule.plugin_action.plugin_id]
       ->pfring_plugin_handle_skb(the_ring, rule, NULL, hdr, skb, displ,
@@ -1717,7 +1717,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   /* Signaling on vPFRing's eventfd ctx when needed */
   if(pfr->vpfring_ctx && (!(pfr->slots_info->vpfring_guest_flags & VPFRING_GUEST_NO_INTERRUPT))) {
-     eventfd_signal(pfr->vpfring_ctx, 1);
+    eventfd_signal(pfr->vpfring_ctx, 1);
   }
 #endif
 }
@@ -1961,36 +1961,36 @@ int check_wildcard_rules(struct sk_buff *skb,
 			 int displ, u_int *last_matched_plugin)
 {
   struct list_head *ptr, *tmp_ptr;
-   int debug = 0;
+  int debug = 0;
 
-   list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-     filtering_rule_element *entry;
-     rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
+  list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
+    filtering_rule_element *entry;
+    rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
 
-     entry = list_entry(ptr, filtering_rule_element, list);
+    entry = list_entry(ptr, filtering_rule_element, list);
 
-     if(match_filtering_rule(pfr, entry, hdr, skb, displ,
-			     parse_memory_buffer, free_parse_mem,
-			     last_matched_plugin, &behaviour)) {
-       if(debug)
-	 printk("[PF_RING] behaviour=%d\n", behaviour);
+    if(match_filtering_rule(pfr, entry, hdr, skb, displ,
+			    parse_memory_buffer, free_parse_mem,
+			    last_matched_plugin, &behaviour)) {
+      if(debug)
+	printk("[PF_RING] behaviour=%d\n", behaviour);
 
-       hdr->extended_hdr.parsed_pkt.last_matched_rule_id = entry->rule.rule_id;
+      hdr->extended_hdr.parsed_pkt.last_matched_rule_id = entry->rule.rule_id;
 
-       if(behaviour == forward_packet_and_stop_rule_evaluation) {
-	 *fwd_pkt = 1;
-	 break;
-       } else if(behaviour == forward_packet_add_rule_and_stop_rule_evaluation) {
-	 filtering_hash_bucket *hash_bucket;
+      if(behaviour == forward_packet_and_stop_rule_evaluation) {
+	*fwd_pkt = 1;
+	break;
+      } else if(behaviour == forward_packet_add_rule_and_stop_rule_evaluation) {
+	filtering_hash_bucket *hash_bucket;
 
-	 *fwd_pkt = 1;
-	 hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
+	*fwd_pkt = 1;
+	hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
 
-	 if(hash_bucket) {
-	   int rc = 0;
+	if(hash_bucket) {
+	  int rc = 0;
 
-	   if(*last_matched_plugin
-	      && plugin_registration[*last_matched_plugin] != NULL
+	  if(*last_matched_plugin
+	     && plugin_registration[*last_matched_plugin] != NULL
 	     && plugin_registration[*last_matched_plugin]->pfring_plugin_add_rule != NULL
 	     && (plugin_registration[*last_matched_plugin]->pfring_plugin_add_rule(entry, hdr, hash_bucket) == 0) ) {
 	    if(debug) {
@@ -2061,7 +2061,7 @@ int check_wildcard_rules(struct sk_buff *skb,
     }
   }  /* for */
 
-   return(0);
+  return(0);
 }
 
 /* ********************************** */
@@ -3013,7 +3013,7 @@ static int ring_create(
   pfr->num_rx_channels = UNKNOWN_NUM_RX_CHANNELS;
   pfr->channel_id = RING_ANY_CHANNEL;
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
-  pfr->poll_num_pkts_watermark = DEFAULT_MIN_PKT_QUEUED;
+  pfr->poll_num_pkts_watermark = 1; // DEFAULT_MIN_PKT_QUEUED;
   pfr->handle_hash_rule = handle_filtering_hash_bucket;
   pfr->add_packet_to_ring = add_packet_to_ring;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
@@ -4065,9 +4065,9 @@ static int add_filtering_rule_element(struct ring_opt *pfr, filtering_rule_eleme
 
     rule->rule.internals.reflector_dev = dev_get_by_name(
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
-		      &init_net,
+							 &init_net,
 #endif
-		      rule->rule.reflector_device_name);
+							 rule->rule.reflector_device_name);
 
     if(rule->rule.internals.reflector_dev == NULL) {
       printk("[PF_RING] Unable to find device %s\n",
@@ -4193,9 +4193,9 @@ static int add_filtering_hash_bucket(struct ring_opt *pfr, filtering_hash_bucket
 
     rule->rule.internals.reflector_dev = dev_get_by_name(
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24))
-		      &init_net,
+							 &init_net,
 #endif
-		      rule->rule.reflector_device_name);
+							 rule->rule.reflector_device_name);
 
     if(rule->rule.internals.reflector_dev == NULL) {
       printk("[PF_RING] Unable to find device %s\n",
@@ -4636,8 +4636,8 @@ static int ring_setsockopt(struct socket *sock,
           if(optname == SO_ADD_HW_FILTERING_RULE)
             dev_ptr->num_hw_filters++;
           else {
-           if(dev_ptr->num_hw_filters > 0)
-             dev_ptr->num_hw_filters--;
+	    if(dev_ptr->num_hw_filters > 0)
+	      dev_ptr->num_hw_filters--;
           }
           break;
         }
@@ -4693,18 +4693,18 @@ static int ring_setsockopt(struct socket *sock,
     break;
 
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
-    case SO_SET_VPFRING_EVENTFD:
-      if(optlen != sizeof(eventfd_i))
-        return -EINVAL;
+  case SO_SET_VPFRING_EVENTFD:
+    if(optlen != sizeof(eventfd_i))
+      return -EINVAL;
     
-      if(copy_from_user(&eventfd_i, optval, sizeof(eventfd_i)))
-         return -EFAULT;
+    if(copy_from_user(&eventfd_i, optval, sizeof(eventfd_i)))
+      return -EFAULT;
     
-      if (IS_ERR(eventfp = eventfd_fget(eventfd_i.fd))) {
-        return -EFAULT;
-      }
+    if (IS_ERR(eventfp = eventfd_fget(eventfd_i.fd))) {
+      return -EFAULT;
+    }
     
-      pfr->vpfring_ctx = eventfd_ctx_fileget(eventfp);
+    pfr->vpfring_ctx = eventfd_ctx_fileget(eventfp);
     break;
 #endif
 

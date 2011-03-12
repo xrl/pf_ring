@@ -195,7 +195,7 @@ struct pfring_pkthdr {
 
 typedef struct {
   u_int8_t dmac[ETH_ALEN], smac[ETH_ALEN]; /* Use '0' (zero-ed MAC address) for any MAC address.
-				  This is applied to both source and destination. */
+					      This is applied to both source and destination. */
   u_int16_t vlan_id;                 /* Use '0' for any vlan */
   u_int8_t  proto;                   /* Use 0 for 'any' protocol */
   ip_addr   host_low, host_high;     /* User '0' for any host. This is applied to both source
@@ -285,26 +285,29 @@ typedef struct {
   u_int8_t  proto;
   u_int32_t s_addr, d_addr;
   u_int16_t s_port, d_port;
-} five_tuple_filter_hw_rule;
+  u_int16_t queue_id;
+} intel_82599_five_tuple_filter_hw_rule;
 
 typedef struct {
   u_int16_t vlan_id;
   u_int8_t  proto;
   u_int32_t s_addr, d_addr;
   u_int16_t s_port, d_port;
-} perfect_filter_hw_rule;
+  u_int16_t queue_id;
+} intel_82599_perfect_filter_hw_rule;
 
 typedef enum {
-  five_tuple_rule,
-  perfect_filter_rule
+  intel_82599_five_tuple_rule,
+  intel_82599_perfect_filter_rule
 } hw_filtering_rule_type;
 
 typedef struct {
   hw_filtering_rule_type rule_type;
-  u_int16_t rule_id, queue_id;
+  u_int16_t rule_id;
+
   union {
-    five_tuple_filter_hw_rule five_tuple_rule;
-    perfect_filter_hw_rule perfect_rule;
+    intel_82599_five_tuple_filter_hw_rule five_tuple_rule;
+    intel_82599_perfect_filter_hw_rule perfect_rule;
   } rule;
 } hw_filtering_rule;
 

@@ -969,12 +969,12 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	    }
 
 	    /* determine if we need to drop or route the packet */
-	    if(element->rule.queue_id >= (MAX_RX_QUEUES - 1))
+	    if(element->rule.rule.perfect_rule.queue_id >= (MAX_RX_QUEUES - 1))
 	      target_queue = MAX_RX_QUEUES - 1;
 	    else
-	      target_queue = element->rule.queue_id;
+	      target_queue = element->rule.rule.perfect_rule.queue_id;
 
-	    if(element->rule.rule_type == perfect_filter_rule) {
+	    if(element->rule.rule_type == intel_82599_perfect_filter_rule) {
 	      memset(&input_struct, 0, sizeof(union ixgbe_atr_input));
 	      memset(&input_masks, 0, sizeof(struct ixgbe_atr_input_masks));
 
@@ -1024,14 +1024,14 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	      spin_lock(&adapter->fdir_perfect_lock);
 	      if(debug)
 		printk("--> ixgbe_fdir_add_perfect_filter_82599(id=%d,target_queue=%d/%d/%d) called\n",
-		       element->rule.rule_id, target_queue, element->rule.queue_id, MAX_RX_QUEUES);
+		       element->rule.rule_id, target_queue, element->rule.rule.five_tuple_rule.queue_id, MAX_RX_QUEUES);
 	      ixgbe_fdir_add_perfect_filter_82599(&adapter->hw, &input_struct, &input_masks, element->rule.rule_id, element->add_rule ? target_queue : 0); 
 	      spin_unlock(&adapter->fdir_perfect_lock);
 	    } else {
 	      spin_lock(&adapter->fdir_perfect_lock);
 	      if(debug)
 		printk("--> ixgbe_ftqf_add_filter(id=%d,target_queue=%d) called\n",
-		       element->rule.rule_id, element->rule.queue_id);
+		       element->rule.rule_id, element->rule.rule.five_tuple_rule.queue_id);
 
 	      if(element->add_rule)
 		ixgbe_ftqf_add_filter(&adapter->hw,
