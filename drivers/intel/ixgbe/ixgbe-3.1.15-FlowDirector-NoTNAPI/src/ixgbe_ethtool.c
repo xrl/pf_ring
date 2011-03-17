@@ -499,7 +499,7 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 		netdev->features |= feature_list;
 	else
 		netdev->features &= ~feature_list;
-		
+
 	return 0;
 }
 
@@ -929,17 +929,22 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 #ifdef HAVE_PF_RING
 	{
 	  /* Let's see if we can cast this structure to a filter */
-	  hw_filtering_rule_element *element = (hw_filtering_rule_element*)bytes;
 	  int debug = 0;
+	  u8 rule_type = eeprom->len;
 
 	  if((bytes != NULL)
-	     && (eeprom->len == 0)
-	     && (eeprom->magic == MAGIC_HW_FILTERING_RULE_ELEMENT)) {
+	     && ((rule_type == 0 /* ckeck */)
+		 || (rule_type == 1    /* intel_82599_five_tuple_filter_hw_rule */)
+		 || (rule_type == 2 /* intel_82599_perfect_filter_hw_rule */))
+	     && (eeprom->magic == MAGIC_HW_FILTERING_RULE_REQUEST)) {
 	    /* Here we go! */
 	    struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	    union ixgbe_atr_input input_struct;
 	    struct ixgbe_atr_input_masks input_masks;
 	    int target_queue;
+	    hw_filtering_rule_command request = (hw_filtering_rule_command)eeprom->offset;
+	    intel_82599_perfect_filter_hw_rule *perfect_rule;
+	    intel_82599_five_tuple_filter_hw_rule *ftfq_rule;
 
 	    /* printk("--> ixgbe_set_eeprom(command=%d)\n", element->command); */
 
@@ -948,75 +953,107 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	      return -EOPNOTSUPP;
 	    }
 
-	    /*
-	     * Don't allow programming if we're not in perfect filter mode, or
-	     * if the action is a queue greater than the number of online Tx
-	     * queues.
-	     */
-	    if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) {
-	      if(debug) {
-		printk("--> IXGBE_FLAG_FDIR_PERFECT_CAPABLE=%d\n", (adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE) ? 1 : 0);
+	    if(rule_type == 2 /* intel_82599_perfect_filter_hw_rule */) {
+	      /*
+	       * Don't allow programming if we're not in perfect filter mode, or
+	       * if the action is a queue greater than the number of online Tx
+	       * queues.
+	       */
+	      if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) {
+		if(debug) {
+		  printk("--> IXGBE_FLAG_FDIR_PERFECT_CAPABLE=%d\n", (adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE) ? 1 : 0);
+		}
+		return -EINVAL;
 	      }
-	      return -EINVAL;
 	    }
 
-	    if(element->command == CHECK_COMMAND) {
+	    switch(rule_type) {
+	    case 0: /* ckeck */
 	      /*
 		We just want to check if this interface
 		supports hardware filtering
 	      */
 	      return(0);
-	    }
+	    case 1: /* intel_82599_five_tuple_filter_hw_rule */
+	      ftfq_rule = (intel_82599_five_tuple_filter_hw_rule*)bytes;
 
-	    /* determine if we need to drop or route the packet */
-	    if(element->rule.rule.perfect_rule.queue_id >= (MAX_RX_QUEUES - 1))
-	      target_queue = MAX_RX_QUEUES - 1;
-	    else
-	      target_queue = element->rule.rule.perfect_rule.queue_id;
+	      /* determine if we need to drop or route the packet */
+	      if(ftfq_rule->queue_id >= (MAX_RX_QUEUES - 1))
+		target_queue = MAX_RX_QUEUES - 1;
+	      else
+		target_queue = ftfq_rule->queue_id;
 
-	    if(element->rule.rule_type == intel_82599_perfect_filter_rule) {
+	      if(debug)
+		printk("--> ixgbe_ftqf_add_filter(id=%d,target_queue=%d) called\n",
+		       ftfq_rule->rule_id, target_queue);
+
+	      spin_lock(&adapter->fdir_perfect_lock);
+	      if(request == add_hw_rule) {
+		ixgbe_ftqf_add_filter(&adapter->hw, ftfq_rule->proto,
+				      ftfq_rule->s_addr, ftfq_rule->s_port,
+				      ftfq_rule->d_addr, ftfq_rule->d_port,
+				      target_queue, ftfq_rule->rule_id);
+	      } else { /* Remove */
+		/* Set the rule to accept all */
+		ixgbe_ftqf_add_filter(&adapter->hw,
+				      0, 0, 0, 0, 0,
+				      0, ftfq_rule->rule_id);
+	      }
+
+	      spin_unlock(&adapter->fdir_perfect_lock);
+	      break;
+
+	    case 2: /* intel_82599_perfect_filter_hw_rule */
+	      perfect_rule = (intel_82599_perfect_filter_hw_rule*)bytes;
+
+	      /* determine if we need to drop or route the packet */
+	      if(perfect_rule->queue_id >= (MAX_RX_QUEUES - 1))
+		target_queue = MAX_RX_QUEUES - 1;
+	      else
+		target_queue = perfect_rule->queue_id;
+
 	      memset(&input_struct, 0, sizeof(union ixgbe_atr_input));
 	      memset(&input_masks, 0, sizeof(struct ixgbe_atr_input_masks));
 
 	      if(debug)
-		printk("--> ixgbe_set_rx_ntuple(rule_id=%d, add_filter=%d, proto=%d, vlan=%d, ips=%08X, sport=%d, ipd=%08X, dport=%d)\n",
-		       element->rule.rule_id, element->add_rule,
-		       element->rule.rule.perfect_rule.proto, element->rule.rule.perfect_rule.vlan_id,
-		       element->rule.rule.perfect_rule.s_addr, element->rule.rule.perfect_rule.s_port, 
-		       element->rule.rule.perfect_rule.d_addr, element->rule.rule.perfect_rule.d_port);
+		printk("--> ixgbe_set_rx_ntuple(rule_id=%d, request=%d, proto=%d, vlan=%d, ips=%08X, sport=%d, ipd=%08X, dport=%d)\n",
+		       perfect_rule->rule_id, request,
+		       perfect_rule->proto, perfect_rule->vlan_id,
+		       perfect_rule->s_addr, perfect_rule->s_port,
+		       perfect_rule->d_addr, perfect_rule->d_port);
 
-	      if(element->rule.rule.perfect_rule.proto == 6 /* TCP */) {
+	      if(perfect_rule->proto == 6 /* TCP */) {
 		ixgbe_atr_set_l4type_82599(&input_struct, IXGBE_ATR_L4TYPE_TCP);
 	      } else {
 		ixgbe_atr_set_l4type_82599(&input_struct, IXGBE_ATR_L4TYPE_UDP);
-	      } 
+	      }
 
-	      if(element->add_rule) {
+	      if(request == add_hw_rule) {
 		/* Mask bits from the inputs based on user-supplied mask */
-		if(element->rule.rule.perfect_rule.s_addr) {
-		  element->rule.rule.perfect_rule.s_addr = htonl(element->rule.rule.perfect_rule.s_addr);
-		  ixgbe_atr_set_src_ipv4_82599(&input_struct, (element->rule.rule.perfect_rule.s_addr & ~element->rule.rule.perfect_rule.s_addr));
+		if(perfect_rule->s_addr) {
+		  perfect_rule->s_addr = htonl(perfect_rule->s_addr);
+		  ixgbe_atr_set_src_ipv4_82599(&input_struct, (perfect_rule->s_addr & ~perfect_rule->s_addr));
 		}
 
-		if(element->rule.rule.perfect_rule.d_addr) {
-		  element->rule.rule.perfect_rule.d_addr = htonl(element->rule.rule.perfect_rule.d_addr);
-		  ixgbe_atr_set_dst_ipv4_82599(&input_struct, (element->rule.rule.perfect_rule.d_addr & ~element->rule.rule.perfect_rule.d_addr));
+		if(perfect_rule->d_addr) {
+		  perfect_rule->d_addr = htonl(perfect_rule->d_addr);
+		  ixgbe_atr_set_dst_ipv4_82599(&input_struct, (perfect_rule->d_addr & ~perfect_rule->d_addr));
 		}
-		
+
 		/* 82599 expects these to be byte-swapped for perfect filtering */
-		if(element->rule.rule.perfect_rule.s_port) {
-		  element->rule.rule.perfect_rule.s_port = element->rule.rule.perfect_rule.s_port;
-		  ixgbe_atr_set_src_port_82599(&input_struct, ((ntohs(element->rule.rule.perfect_rule.s_port)) & ~element->rule.rule.perfect_rule.s_port));
+		if(perfect_rule->s_port) {
+		  perfect_rule->s_port = perfect_rule->s_port;
+		  ixgbe_atr_set_src_port_82599(&input_struct, ((ntohs(perfect_rule->s_port)) & ~perfect_rule->s_port));
 		}
 
-		if(element->rule.rule.perfect_rule.d_port) {
-		  element->rule.rule.perfect_rule.d_port = element->rule.rule.perfect_rule.d_port;
-		  ixgbe_atr_set_dst_port_82599(&input_struct, ((ntohs(element->rule.rule.perfect_rule.d_port)) & ~element->rule.rule.perfect_rule.d_port));
+		if(perfect_rule->d_port) {
+		  perfect_rule->d_port = perfect_rule->d_port;
+		  ixgbe_atr_set_dst_port_82599(&input_struct, ((ntohs(perfect_rule->d_port)) & ~perfect_rule->d_port));
 		}
 
 		/* VLAN and Flex bytes are either completely masked or not */
-		if (element->rule.rule.perfect_rule.vlan_id) {
-		  input_struct.formatted.vlan_id = htons(element->rule.rule.perfect_rule.vlan_id & 0xEFFF);
+		if (perfect_rule->vlan_id) {
+		  input_struct.formatted.vlan_id = htons(perfect_rule->vlan_id & 0xEFFF);
 		  input_masks.vlan_id_mask = htons(0xFFF);
 		}
 	      }
@@ -1024,36 +1061,12 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	      spin_lock(&adapter->fdir_perfect_lock);
 	      if(debug)
 		printk("--> ixgbe_fdir_add_perfect_filter_82599(id=%d,target_queue=%d/%d/%d) called\n",
-		       element->rule.rule_id, target_queue, element->rule.rule.five_tuple_rule.queue_id, MAX_RX_QUEUES);
-	      ixgbe_fdir_add_perfect_filter_82599(&adapter->hw, &input_struct, &input_masks, element->rule.rule_id, element->add_rule ? target_queue : 0); 
+		       perfect_rule->rule_id, target_queue, target_queue, MAX_RX_QUEUES);
+	      ixgbe_fdir_add_perfect_filter_82599(&adapter->hw, &input_struct, &input_masks, perfect_rule->rule_id,
+						  (request == add_hw_rule) ? target_queue : 0);
 	      spin_unlock(&adapter->fdir_perfect_lock);
-	    } else {
-	      spin_lock(&adapter->fdir_perfect_lock);
-	      if(debug)
-		printk("--> ixgbe_ftqf_add_filter(id=%d,target_queue=%d) called\n",
-		       element->rule.rule_id, element->rule.rule.five_tuple_rule.queue_id);
-
-	      if(element->add_rule)
-		ixgbe_ftqf_add_filter(&adapter->hw,
-				      element->rule.rule.five_tuple_rule.proto,
-				      element->rule.rule.five_tuple_rule.s_addr,
-				      element->rule.rule.five_tuple_rule.s_port,
-				      element->rule.rule.five_tuple_rule.d_addr,
-				      element->rule.rule.five_tuple_rule.d_port,
-				      target_queue, element->rule.rule_id);
-	      else {
-		/* Set the rule to accept all */
-		ixgbe_ftqf_add_filter(&adapter->hw,
-				      0,
-				      0,
-				      0,
-				      0,
-				      0,
-				      0, element->rule.rule_id);
-	      }
-
-	      spin_unlock(&adapter->fdir_perfect_lock);
-	    }
+	      break;
+	    } /* switch */
 
 	    return 0;
 	  }
@@ -2669,7 +2682,7 @@ static int ixgbe_set_rx_ntuple(struct net_device *dev,
 				"supported by hardware\n");
 			return -1;
 		}
-	} 
+	}
 
 	/*
 	 * Copy input into formatted structures

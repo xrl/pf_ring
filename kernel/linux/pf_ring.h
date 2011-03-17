@@ -37,8 +37,8 @@
 #define pfring_ptr ec_ptr
 
 /* Versioning */
-#define RING_VERSION                "4.6.2"
-#define RING_VERSION_NUM           0x040602
+#define RING_VERSION                "4.6.3"
+#define RING_VERSION_NUM           0x040603
 
 /* Set */
 #define SO_ADD_TO_CLUSTER                 99
@@ -120,9 +120,9 @@ typedef union {
   u_int32_t v4;        /* IPv4 src/dst IP addresses */
 } ip_addr;
 
-#define ipv4_tos ip_tos
-#define ipv6_tos ip_tos
-#define ipv4_src ip_src.v4
+#define ipv4_tos     ip_tos
+#define ipv6_tos     ip_tos
+#define ipv4_src     ip_src.v4
 #define ipv4_dst     ip_dst.v4
 #define ipv6_src     ip_src.v6
 #define ipv6_dst     ip_dst.v6
@@ -146,7 +146,7 @@ struct pkt_parsing_info {
   u_int16_t eth_type;   /* Ethernet type */
   u_int16_t vlan_id;    /* VLAN Id or NO_VLAN */
   u_int8_t  ip_version;
-  u_int8_t  l3_proto, ip_tos;   /* Layer 3 protocol/TOS */
+  u_int8_t  l3_proto, ip_tos; /* Layer 3 protocol/TOS */
   ip_addr   ip_src, ip_dst;   /* IPv4 src/dst IP addresses */
   u_int16_t l4_src_port, l4_dst_port; /* Layer 4 src/dst ports */
   struct {
@@ -260,17 +260,17 @@ typedef enum {
   driver2pf_ring_non_transparent = 2 /* Packets not delivered to the kernel */
 } direct2pf_ring;
 
+
 typedef struct {
   unsigned long jiffies_last_match;  /* Jiffies of the last rule match (updated by pf_ring) */
-  void *reflector_dev; /* Reflector device (struct net_device*) */
+  struct net_device *reflector_dev;  /* Reflector device */
 } filtering_internals;
 
 typedef struct {
   u_int16_t rule_id;                 /* Rules are processed in order from lowest to higest id */
   rule_action_behaviour rule_action; /* What to do in case of match */
   u_int8_t balance_id, balance_pool; /* If balance_pool > 0, then pass the packet above only if the
-					(hash(proto, sip, sport, dip, dport) % balance_pool)
-					= balance_id */
+					(hash(proto, sip, sport, dip, dport) % balance_pool) = balance_id */
   filtering_rule_core_fields     core_fields;
   filtering_rule_extended_fields extended_fields;
   filtering_rule_plugin_action   plugin_action;
@@ -281,7 +281,10 @@ typedef struct {
 
 /* *********************************** */
 
+/* 82599 packet steering filters */
+
 typedef struct {
+  u_int16_t rule_id;
   u_int8_t  proto;
   u_int32_t s_addr, d_addr;
   u_int16_t s_port, d_port;
@@ -289,6 +292,7 @@ typedef struct {
 } intel_82599_five_tuple_filter_hw_rule;
 
 typedef struct {
+  u_int16_t rule_id;
   u_int16_t vlan_id;
   u_int8_t  proto;
   u_int32_t s_addr, d_addr;
@@ -296,30 +300,102 @@ typedef struct {
   u_int16_t queue_id;
 } intel_82599_perfect_filter_hw_rule;
 
+/*
+  Rules are defined per port. Each redirector device
+  has 4 ports (numbeder 0..3):
+
+         0   +--------------+   2   +--------------+
+  LAN  <===> |              | <===> |   1/10G      |
+             |  Redirector  |       |   Ethernet   |
+  LAN  <===> |    Switch    | <===> |   Adapter    |
+         1   +--------------+   3   +--------------+
+
+  Drop Rule
+  Discard incoming packets matching the filter 
+  on 'rule_port'
+
+  Redirect Rule
+  Divert incoming packets matching the filter 
+  on 'rule_port' to 'rule_target_port'.
+
+  Mirror Rule
+  Copy incoming packets matching the filter 
+  on 'rule_port' to 'rule_target_port'. The original
+  packet will continue its journey (i.e. packet are
+  actually duplicated)
+*/
+
+typedef enum {
+  drop_rule,
+  redirect_rule,
+  mirror_rule
+} silicom_redirector_rule_type;
+
+typedef struct {
+  u_int16_t rule_id;
+  silicom_redirector_rule_type rule_type;
+  u_int8_t rule_port; /* Port on which the rule is defined */
+  u_int8_t rule_target_port; /* Target port (ignored for drop rules) */
+  u_int16_t vlan_id_low, vlan_id_high;
+  u_int8_t l3_proto;
+  ip_addr src_addr, dst_addr;
+  u_int32_t src_mask, dst_mask;
+  u_int16_t src_port_low, src_port_high;
+  u_int16_t dst_port_low, dst_port_high;
+} silicom_redirector_hw_rule;
+
 typedef enum {
   intel_82599_five_tuple_rule,
-  intel_82599_perfect_filter_rule
+  intel_82599_perfect_filter_rule,
+  silicom_redirector_rule
 } hw_filtering_rule_type;
 
 typedef struct {
-  hw_filtering_rule_type rule_type;
-  u_int16_t rule_id;
+  hw_filtering_rule_type rule_family_type;
 
   union {
     intel_82599_five_tuple_filter_hw_rule five_tuple_rule;
     intel_82599_perfect_filter_hw_rule perfect_rule;
-  } rule;
+    silicom_redirector_hw_rule redirector_rule;
+  } rule_family;
 } hw_filtering_rule;
 
-#define MAGIC_HW_FILTERING_RULE_ELEMENT  0x29010020
+#define MAGIC_HW_FILTERING_RULE_REQUEST  0x29010020
 
 #define RULE_COMMAND        1
 #define CHECK_COMMAND       2
 
+typedef enum {
+  add_hw_rule,
+  remove_hw_rule
+} hw_filtering_rule_command;
+
 typedef struct {
-  u_int8_t add_rule, command;
+  hw_filtering_rule_command command;
   hw_filtering_rule rule;
-} hw_filtering_rule_element;
+} hw_filtering_rule_request;
+
+/* *********************************** */
+
+extern struct pf_ring_socket *pfr; /* Forward */
+
+/* *********************************** */
+
+typedef int (*five_tuple_rule_handler)(struct pf_ring_socket *pfr, 
+				       intel_82599_five_tuple_filter_hw_rule *rule,
+				       hw_filtering_rule_command request);
+typedef int (*perfect_filter_hw_rule_handler)(struct pf_ring_socket *pfr, 
+					      intel_82599_perfect_filter_hw_rule *rule, 
+					      hw_filtering_rule_command request);
+typedef int (*silicom_redirector_hw_rule_handler)(struct pf_ring_socket *pfr, 
+						  silicom_redirector_hw_rule *rule,
+						  hw_filtering_rule_command request);
+
+typedef struct {
+  five_tuple_rule_handler five_tuple_handler;
+  perfect_filter_hw_rule_handler perfect_filter_handler;
+  silicom_redirector_hw_rule_handler redirector_rule_handler;
+} hw_filtering_device_handler;
 
 /* *********************************** */
 
@@ -523,12 +599,33 @@ typedef struct {
 
 #define MAX_NUM_IFIDX  1024
 
+typedef enum {
+  standard_nic_family = 0, /* No Hw Filtering */
+  intel_82599_family,
+  silicom_redirector_family,
+} pfring_device_type;
+
 typedef struct {
+  pfring_device_type device_type; /* Device Type */
+
+  /*
+    NOTE
+     
+    Some device types (e.g. redirector) might NOT
+    have a net_device handler but a dummy pointer
+  */
   struct net_device *dev;
+
+  /* Entry in the /proc filesystem */
   struct proc_dir_entry *proc_entry;
-  u_int8_t has_hw_filtering;
-  u_int16_t num_hw_filters;
-  struct list_head list;
+
+  /* Hardware Filters */
+  struct {
+    u_int16_t num_filters;
+    hw_filtering_device_handler filter_handlers;
+  } hw_filters;
+
+  struct list_head device_list;
 } ring_device_element;
 
 /* ************************************************* */
@@ -543,13 +640,11 @@ struct ring_element {
 
 /* ************************************************* */
 
-extern struct ring_opt *pfr; /* Forward */
-
-typedef int (*do_handle_filtering_hash_bucket)(struct ring_opt *pfr,
+typedef int (*do_handle_filtering_hash_bucket)(struct pf_ring_socket *pfr,
 					       filtering_hash_bucket* rule,
 					       u_char add_rule);
 
-typedef int (*do_add_packet_to_ring)(struct ring_opt *pfr, 
+typedef int (*do_add_packet_to_ring)(struct pf_ring_socket *pfr, 
 				     struct pfring_pkthdr *hdr, struct sk_buff *skb,
 				     int displ, u_int8_t parse_pkt_first);
 
@@ -558,9 +653,9 @@ typedef int (*do_add_packet_to_ring)(struct ring_opt *pfr,
 /*
  * Ring options
  */
-struct ring_opt {
+struct pf_ring_socket {
   u_int8_t ring_active, num_rx_channels;
-  struct net_device *ring_netdev;
+  ring_device_element *ring_netdev;
   u_short ring_pid;
   u_int32_t ring_id;
   char *appl_name; /* String that identifies the application bound to the socket */
@@ -570,7 +665,7 @@ struct ring_opt {
   u_int16_t poll_num_pkts_watermark;
 
   /* Master Ring */
-  struct ring_opt *master_ring;
+  struct pf_ring_socket *master_ring;
 
   /* Direct NIC Access */
   u_int8_t mmap_count;
@@ -628,7 +723,7 @@ struct ring_opt {
  * Linked-list of device rings
  */
 typedef struct {
-  struct ring_opt *the_ring;
+  struct pf_ring_socket *the_ring;
   struct list_head list;
 } device_ring_list_element;
 
@@ -657,7 +752,7 @@ struct parse_buffer {
 
 /* Plugins */
 /* Execute an action (e.g. update rule stats) */
-typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
+typedef int (*plugin_handle_skb)(struct pf_ring_socket *the_ring,
 				 filtering_rule_element *rule,       /* In case the match is on the list */
 				 filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
 				 struct pfring_pkthdr *hdr,
@@ -666,13 +761,13 @@ typedef int (*plugin_handle_skb)(struct ring_opt *the_ring,
 				 struct parse_buffer **filter_rule_memory_storage,
 				 rule_action_behaviour *behaviour);
 /* Return 1/0 in case of match/no match for the given skb */
-typedef int (*plugin_filter_skb)(struct ring_opt *the_ring,
+typedef int (*plugin_filter_skb)(struct pf_ring_socket *the_ring,
 				 filtering_rule_element *rule,
 				 struct pfring_pkthdr *hdr,
 				 struct sk_buff *skb, int displ,
 				 struct parse_buffer **filter_rule_memory_storage);
 /* Get stats about the rule */
-typedef int (*plugin_get_stats)(struct ring_opt *pfr,
+typedef int (*plugin_get_stats)(struct pf_ring_socket *pfr,
 				filtering_rule_element *rule,
 				filtering_hash_bucket  *hash_bucket,
 				u_char* stats_buffer, u_int stats_buffer_len);
@@ -687,14 +782,14 @@ typedef void (*plugin_register)(u_int8_t register_plugin);
 /* Called when a ring is disposed */
 typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
 
-typedef void (*copy_raw_data_2ring)(struct ring_opt *pfr,
+typedef void (*copy_raw_data_2ring)(struct pf_ring_socket *pfr,
 				    struct pfring_pkthdr *dummy_hdr,
 				    void *raw_data, uint raw_data_len);
 
 /* Kernel packet poller */
-typedef void (*kernel_packet_start)(struct ring_opt *pfr, copy_raw_data_2ring raw_copier);
-typedef void (*kernel_packet_term)(struct ring_opt *pfr);
-typedef void (*kernel_packet_reader)(struct ring_opt *pfr, struct sk_buff *skb, 
+typedef void (*kernel_packet_start)(struct pf_ring_socket *pfr, copy_raw_data_2ring raw_copier);
+typedef void (*kernel_packet_term)(struct pf_ring_socket *pfr);
+typedef void (*kernel_packet_reader)(struct pf_ring_socket *pfr, struct sk_buff *skb, 
 				     u_int8_t channel_id, struct pfring_pkthdr *hdr, int displ);
 
 struct pfring_plugin_registration {
@@ -778,7 +873,7 @@ typedef int (*handle_ring_skb)(struct sk_buff *skb, u_char recv_packet,
 			       u_int8_t num_rx_channels);
 typedef int (*handle_ring_buffer)(struct net_device *dev,
 				  char *data, int len);
-typedef int (*handle_add_hdr_to_ring)(struct ring_opt *pfr,
+typedef int (*handle_add_hdr_to_ring)(struct pf_ring_socket *pfr,
 				      struct pfring_pkthdr *hdr);				      
 
 /* Hack to jump from a device directly to PF_RING */
@@ -797,6 +892,7 @@ struct pfring_hooks {
   read_device_pfring_free_slots pfring_free_device_slots;
 };
 
+/* *************************************************************** */
 
 #ifdef PF_RING_PLUGIN
 
@@ -815,10 +911,10 @@ int add_plugin_to_device_list(struct net_device *dev) {
 			 GFP_KERNEL)) == NULL)
     return (-ENOMEM);
 
-  INIT_LIST_HEAD(&dev_ptr->list);
+  INIT_LIST_HEAD(&dev_ptr->device_list);
   dev_ptr->dev = dev;
 
-  list_add(&dev_ptr->list, &plugin_registered_devices_list);
+  list_add(&dev_ptr->device_list, &plugin_registered_devices_list);
 
   return(0);
 }
@@ -834,7 +930,7 @@ void remove_plugin_from_device_list(struct net_device *dev) {
   list_for_each_safe(ptr, tmp_ptr, &plugin_registered_devices_list) {
     ring_device_element *dev_ptr;
 
-    dev_ptr = list_entry(ptr, ring_device_element, list);
+    dev_ptr = list_entry(ptr, ring_device_element, device_list);
     if(dev_ptr->dev == dev) {
       list_del(ptr);
       kfree(dev_ptr);
@@ -876,19 +972,28 @@ static void register_plugin(struct pfring_plugin_registration *reg_info) {
   INIT_LIST_HEAD(&plugin_registered_devices_list);
   memcpy(&plugin_reg, reg_info, sizeof(struct pfring_plugin_registration));
   pfring_plugin_id = reg_info->plugin_id;
+
+  /*
+    Trick to push the kernel to call the above ring_plugin_notifier()
+    and this to register the plugin in PF_RING
+  */
   register_netdevice_notifier(&ring_netdev_notifier);
 }
 
 static void unregister_plugin(int pfring_plugin_id) {
   struct list_head *ptr, *tmp_ptr;
-
+  
+  /*
+    Trick to push the kernel to call the above ring_plugin_notifier()
+    and this to register the plugin in PF_RING
+  */
   unregister_netdevice_notifier(&ring_netdev_notifier);
 
   list_for_each_safe(ptr, tmp_ptr, &plugin_registered_devices_list) {
     ring_device_element *dev_ptr;
     struct pfring_hooks *hook;
 
-    dev_ptr = list_entry(ptr, ring_device_element, list);
+    dev_ptr = list_entry(ptr, ring_device_element, device_list);
     hook = (struct pfring_hooks*)dev_ptr->dev->pfring_ptr;
     if(hook && (hook->magic == PF_RING)) {
       printk("[PF_RING] Unregister plugin_id %d for %s\n",

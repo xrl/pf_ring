@@ -109,7 +109,7 @@
 
 #include <linux/pf_ring.h>
 
-/* #define RING_DEBUG */
+#define RING_DEBUG 
 
 #ifndef SVN_REV
 #define SVN_REV ""
@@ -138,8 +138,7 @@ const static ip_addr ip_zero = { IN6ADDR_ANY_INIT };
 static u_int8_t pfring_enabled = 0;
 
 /* Dummy 'any' device */
-static struct net_device any_dev, none_dev;
-
+static ring_device_element any_device_element, none_device_element;
 
 /* List of all ring sockets. */
 static struct list_head ring_table;
@@ -160,7 +159,7 @@ static struct list_head device_ring_list[MAX_NUM_DEVICES];
 static struct list_head ring_cluster_list;
 
 /* List of all devices on which PF_RING has been registered */
-static struct list_head ring_aware_device_list;
+static struct list_head ring_aware_device_list; /* List of ring_device_element */
 
 /* Keep track of number of rings per device (plus any) */
 static u_int8_t num_rings_per_device[MAX_NUM_IFIDX] = { 0 };
@@ -185,13 +184,13 @@ struct proc_dir_entry *ring_proc_plugins_info = NULL;
 static int ring_proc_get_info(char *, char **, off_t, int, int *, void *);
 static int ring_proc_get_plugin_info(char *, char **, off_t, int, int *,
 				     void *);
-static void ring_proc_add(struct ring_opt *pfr);
-static void ring_proc_remove(struct ring_opt *pfr);
+static void ring_proc_add(struct pf_ring_socket *pfr);
+static void ring_proc_remove(struct pf_ring_socket *pfr);
 static void ring_proc_init(void);
 static void ring_proc_term(void);
 
 static int reflect_packet(struct sk_buff *skb,
-			  struct ring_opt *pfr,
+			  struct pf_ring_socket *pfr,
 			  struct net_device *reflector_dev,
 			  int displ, rule_action_behaviour behaviour);
 
@@ -201,7 +200,7 @@ static int reflect_packet(struct sk_buff *skb,
 
 static rwlock_t ring_mgmt_lock;
 
-inline void init_ring_readers(void)      { ring_mgmt_lock = RW_LOCK_UNLOCKED; } 
+inline void init_ring_readers(void)      { ring_mgmt_lock = RW_LOCK_UNLOCKED; }
 inline void ring_write_lock(void)        { write_lock_bh(&ring_mgmt_lock);    }
 inline void ring_write_unlock(void)      { write_unlock_bh(&ring_mgmt_lock);  }
 inline void ring_read_lock(void)         { read_lock_bh(&ring_mgmt_lock);     }
@@ -211,9 +210,9 @@ inline void ring_read_unlock(void)       { read_unlock_bh(&ring_mgmt_lock);   }
 
 static atomic_t num_ring_readers, ring_stop;
 
-inline void init_ring_readers(void) { 
+inline void init_ring_readers(void) {
   atomic_set(&num_ring_readers, 0);
-  atomic_set(&ring_stop, 0);  
+  atomic_set(&ring_stop, 0);
 }
 
 inline void ring_write_lock(void) {
@@ -267,7 +266,7 @@ inline void ring_read_unlock(void) {
 /* Forward */
 static struct proto_ops ring_ops;
 
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
 static struct proto ring_proto;
 #endif
 
@@ -276,7 +275,7 @@ static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
 			    u_int8_t channel_id,
 			    u_int8_t num_rx_channels);
 static int buffer_ring_handler(struct net_device *dev, char *data, int len);
-static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr);
+static int remove_from_cluster(struct sock *sock, struct pf_ring_socket *pfr);
 
 /* Extern */
 extern
@@ -302,7 +301,7 @@ static u_int32_t ring_id_serial = 0;
 #endif
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16)) || defined(REDHAT_PATCHED_KERNEL)
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16)) || defined(REDHAT_PATCHED_KERNEL)
 module_param(min_num_slots, uint, 0644);
 module_param(transparent_mode, uint, 0644);
 module_param(enable_tx_capture, uint, 0644);
@@ -328,7 +327,7 @@ MODULE_PARM_DESC(enable_ip_defrag,
 #define MIN_QUEUED_PKTS      64
 #define MAX_QUEUE_LOOPS      64
 
-#define ring_sk_datatype(__sk) ((struct ring_opt *)__sk)
+#define ring_sk_datatype(__sk) ((struct pf_ring_socket *)__sk)
 #define ring_sk(__sk) ((__sk)->sk_protinfo)
 
 #define _rdtsc() ({ uint64_t x; asm volatile("rdtsc" : "=A" (x)); x; })
@@ -367,7 +366,7 @@ static inline struct iphdr *ip_hdr(const struct sk_buff *skb)
   return(struct iphdr *)skb->nh.iph;
 }
 
-#if (!defined(REDHAT_PATCHED_KERNEL)) || ((RHEL_MAJOR == 5) && (RHEL_MINOR < 2))
+#if(!defined(REDHAT_PATCHED_KERNEL)) || ((RHEL_MAJOR == 5) && (RHEL_MINOR < 2))
 static inline void skb_set_network_header(struct sk_buff *skb, const int offset)
 {
   skb->nh.iph = (struct iphdr *)skb->data + offset;
@@ -387,11 +386,11 @@ static inline void skb_reset_transport_header(struct sk_buff *skb)
 
 /* ************************************************** */
 
-static inline char* get_slot(struct ring_opt *pfr, u_int32_t off) { return(&(pfr->ring_slots[off])); }
+static inline char* get_slot(struct pf_ring_socket *pfr, u_int32_t off) { return(&(pfr->ring_slots[off])); }
 
 /* ********************************** */
 
-static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_int32_t *real_off)
+static inline int get_next_slot_offset(struct pf_ring_socket *pfr, u_int32_t off, u_int32_t *real_off)
 {
   struct pfring_pkthdr *hdr;
   u_int32_t real_slot_size;
@@ -401,7 +400,7 @@ static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_in
   hdr = (struct pfring_pkthdr*)get_slot(pfr, off);
   real_slot_size = pfr->slot_header_len + hdr->extended_hdr.parsed_header_len + hdr->caplen;
 
-  if((off + real_slot_size + pfr->slots_info->slot_len) > (pfr->slots_info->tot_mem - sizeof(FlowSlotInfo))){
+  if((off + real_slot_size + pfr->slots_info->slot_len) > (pfr->slots_info->tot_mem - sizeof(FlowSlotInfo))) {
     *real_off = pfr->slots_info->tot_mem - sizeof(FlowSlotInfo) - off;
     return 0;
   }
@@ -412,7 +411,7 @@ static inline int get_next_slot_offset(struct ring_opt *pfr, u_int32_t off, u_in
 
 /* ********************************** */
 
-static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
+static inline u_int32_t num_queued_pkts(struct pf_ring_socket *pfr)
 {
   // smp_rmb();
 
@@ -435,10 +434,10 @@ static inline u_int32_t num_queued_pkts(struct ring_opt *pfr)
 
 /* ************************************* */
 
-inline u_int get_num_ring_free_slots(struct ring_opt * pfr)
+inline u_int get_num_ring_free_slots(struct pf_ring_socket * pfr)
 {
   u_int32_t nqpkts = num_queued_pkts(pfr);
-  
+
   if(nqpkts < (pfr->slots_info->min_num_slots))
     return(pfr->slots_info->min_num_slots - nqpkts);
   else
@@ -447,7 +446,7 @@ inline u_int get_num_ring_free_slots(struct ring_opt * pfr)
 
 /* ********************************** */
 
-static inline int check_and_init_free_slot(struct ring_opt *pfr, int off)
+static inline int check_and_init_free_slot(struct pf_ring_socket *pfr, int off)
 {
   // smp_rmb();
 
@@ -456,7 +455,7 @@ static inline int check_and_init_free_slot(struct ring_opt *pfr, int off)
       Both insert and remove offset are set on the same slot.
       We need to find out whether the memory is full or empty
     */
-    
+
     if(num_queued_pkts(pfr) >= min_num_slots)
       return(0); /* Memory is full */
   } else {
@@ -502,7 +501,7 @@ static struct sk_buff *ring_gather_frags(struct sk_buff *skb)
 
 static void ring_sock_destruct(struct sock *sk)
 {
-  struct ring_opt *pfr;
+  struct pf_ring_socket *pfr;
 
   skb_queue_purge(&sk->sk_receive_queue);
 
@@ -522,7 +521,7 @@ static void ring_sock_destruct(struct sock *sk)
 
 /* ********************************** */
 
-static void ring_proc_add(struct ring_opt *pfr)
+static void ring_proc_add(struct pf_ring_socket *pfr)
 {
   int debug = 0;
 
@@ -530,7 +529,7 @@ static void ring_proc_add(struct ring_opt *pfr)
     char name[64];
 
     snprintf(name, sizeof(name), "%d-%s.%d", pfr->ring_pid,
-	     pfr->ring_netdev->name, pfr->ring_id);
+	     pfr->ring_netdev->dev->name, pfr->ring_id);
 
     create_proc_read_entry(name, 0 /* read-only */,
 			   ring_proc_dir,
@@ -542,15 +541,15 @@ static void ring_proc_add(struct ring_opt *pfr)
 
 /* ********************************** */
 
-static void ring_proc_remove(struct ring_opt *pfr)
+static void ring_proc_remove(struct pf_ring_socket *pfr)
 {
   int debug = 0;
 
   if(ring_proc_dir != NULL) {
     char name[64];
-    
+
     snprintf(name, sizeof(name), "%d-%s.%d",
-	     pfr->ring_pid, pfr->ring_netdev->name,
+	     pfr->ring_pid, pfr->ring_netdev->dev->name,
 	     pfr->ring_id);
 
     printk("[PF_RING] Removing /proc/net/pf_ring/%s\n", name);
@@ -571,8 +570,14 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
   if(data != NULL) {
     ring_device_element *dev_ptr = (ring_device_element*)data;
     struct net_device *dev = dev_ptr->dev;
-    char dev_buf[16] = { 0 };
+    char dev_buf[16] = { 0 }, *dev_family = "???";
 
+    switch(dev_ptr->device_type) {
+    case standard_nic_family: dev_family = "Standard NIC"; break;
+    case intel_82599_family:  dev_family = "Intel 82599"; break;
+    case silicom_redirector_family: dev_family = "Silicom Redirector"; break;
+    }
+    
     rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
     rlen += sprintf(buf+rlen, "Index:             %d\n", dev->ifindex);
 
@@ -583,6 +588,7 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
     }
 
     rlen += sprintf(buf+rlen, "Type:              %s\n", dev_buf);
+    rlen += sprintf(buf+rlen, "Family:            %s\n", dev_family);
 
     if(dev->ifindex < MAX_NUM_IFIDX)
       rlen += sprintf(buf+rlen, "# bound sockets:   %d\n",
@@ -597,38 +603,85 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
   return rlen;
 }
 
-/* ************************************* */
+/* **************** 82599 ****************** */
 
-int handle_hw_filtering_rule(struct net_device *dev, hw_filtering_rule *rule,
-			     u_int8_t add_rule) {
+static int i82599_generic_handler(u8 rule_type, struct pf_ring_socket *pfr,
+				  u8 *rule, hw_filtering_rule_command request) {
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
+  struct net_device *dev = pfr->ring_netdev->dev;
   int debug = 0;
-  struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
-  hw_filtering_rule_element element;
+  struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_REQUEST] */
 
   if(dev == NULL) return(-1);
 
   if((dev->ethtool_ops == NULL) || (dev->ethtool_ops->set_eeprom == NULL)) return(-1);
 
-  if(debug) printk("[PF_RING] hw_filtering_rule[%s][add=%d][id=%d][%p]\n",
-		   dev->name, add_rule ? 1 : 0, rule->rule_id,
-		   dev->ethtool_ops->set_eeprom);
+  if(debug) printk("[PF_RING] hw_filtering_rule[%s][request=%d][%p]\n",
+		   dev->name, request, dev->ethtool_ops->set_eeprom);
 
-  memset(&element, 0, sizeof(element));
-  eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+  eeprom.len = rule_type, eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST, eeprom.offset = request;
 
-  element.command = RULE_COMMAND;
-  element.add_rule = add_rule;
-  memcpy(&element.rule, rule, sizeof(hw_filtering_rule));
-
-  return(dev->ethtool_ops->set_eeprom(dev, &eeprom, (u8*)&element));
+  return(dev->ethtool_ops->set_eeprom(dev, &eeprom, rule));
 #else
   return(-1);
 #endif
 }
 
-/* ********************************** */
+/* ************************************* */
 
+static int i82599_five_tuple_handler(struct pf_ring_socket *pfr,
+				     intel_82599_five_tuple_filter_hw_rule *rule,
+				     hw_filtering_rule_command request) {
+  return(i82599_generic_handler(1 /* FTFQ */, pfr, (u8*)rule, request));
+}
+
+/* ************************************* */
+
+static int i82599_perfect_filter_handler(struct pf_ring_socket *pfr,
+					 intel_82599_perfect_filter_hw_rule *rule, 
+					 hw_filtering_rule_command request) {
+  return(i82599_generic_handler(2 /* Perfect */, pfr, (u8*)rule, request));
+}
+
+/* ************************************* */
+
+/* FIX FIX FIX  *** ADD MUTEX *** FIX FIX FIX */
+static int handle_hw_filtering_rule(struct pf_ring_socket *pfr, hw_filtering_rule_request *rule) {
+  switch(rule->rule.rule_family_type) {
+  case intel_82599_five_tuple_rule:
+    if(pfr->ring_netdev->hw_filters.filter_handlers.five_tuple_handler == NULL)
+      return(-EINVAL);
+    else
+      return(pfr->ring_netdev->hw_filters.filter_handlers.five_tuple_handler(pfr, 
+									    &rule->rule.rule_family.five_tuple_rule, 
+									    rule->command));
+    break;
+
+  case intel_82599_perfect_filter_rule:
+    if(pfr->ring_netdev->hw_filters.filter_handlers.perfect_filter_handler == NULL)
+      return(-EINVAL);
+    else
+      return(pfr->ring_netdev->hw_filters.filter_handlers.perfect_filter_handler(pfr, 
+										&rule->rule.rule_family.perfect_rule, 
+										rule->command));
+    break;
+
+  case silicom_redirector_rule:
+    if(pfr->ring_netdev->hw_filters.filter_handlers.redirector_rule_handler == NULL)
+      return(-EINVAL);
+    else
+      return(pfr->ring_netdev->hw_filters.filter_handlers.redirector_rule_handler(pfr, 
+										 &rule->rule.rule_family.redirector_rule, 
+										 rule->command));
+    break;
+  }
+
+  return(-EINVAL);
+}
+
+/* ***************************************** */
+
+#ifdef ENABLE_PROC_WRITE_RULE
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
 static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
 				   int len, int *unused, void *data)
@@ -640,7 +693,7 @@ static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
     struct net_device *dev = dev_ptr->dev;
 
     rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
-    rlen += sprintf(buf+rlen, "# Filters:         %d\n", dev_ptr->num_hw_filters);
+    rlen += sprintf(buf+rlen, "# Filters:         %d\n", dev_ptr->hw_filters.num_filters);
     rlen += sprintf(buf+rlen, "\nFiltering Rules:\n"
 		    "[perfect rule]  +|-(rule_id,queue_id,vlan,tcp|udp,src_ip/mask,src_port,dst_ip/mask,dst_port)\n"
 		    "Example:\t+(1,-1,0,tcp,192.168.0.10/32,25,10.6.0.0/16,0) (queue_id = -1 => drop)\n\n"
@@ -651,57 +704,57 @@ static int ring_proc_dev_rule_read(char *buf, char **start, off_t offset,
 
   return rlen;
 }
+#endif
 
 /* ********************************** */
 
-static void init_intel_82599_five_tuple_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
-						       u_int8_t proto,
+#ifdef ENABLE_PROC_WRITE_RULE
+static void init_intel_82599_five_tuple_filter_hw_rule(u_int8_t queue_id, u_int8_t proto,
 						       u_int32_t s_addr, u_int32_t d_addr,
 						       u_int16_t s_port, u_int16_t d_port,
-						       hw_filtering_rule *rule) {
+						       intel_82599_five_tuple_filter_hw_rule *rule) {
 
   /* printk("init_intel_82599_five_tuple_filter_hw_rule()\n"); */
 
-  memset(rule, 0, sizeof(hw_filtering_rule));
+  memset(rule, 0, sizeof(intel_82599_five_tuple_filter_hw_rule));
 
-  rule->rule_type = intel_82599_five_tuple_rule, rule->rule_id = rule_id;
-  rule->rule.five_tuple_rule.queue_id = queue_id;
-  rule->rule.five_tuple_rule.proto = proto;
-  rule->rule.five_tuple_rule.s_addr = s_addr, rule->rule.five_tuple_rule.d_addr = d_addr;
-  rule->rule.five_tuple_rule.s_port = s_port, rule->rule.five_tuple_rule.d_port = d_port;
+  rule->queue_id = queue_id, rule->proto = proto;
+  rule->s_addr = s_addr, rule->d_addr = d_addr;
+  rule->s_port = s_port, rule->d_port = d_port;
 }
 
 /* ********************************** */
 
-static void init_intel_82599_perfect_filter_hw_rule(u_int8_t queue_id, u_int16_t rule_id,
+static void init_intel_82599_perfect_filter_hw_rule(u_int8_t queue_id,
 						    u_int8_t proto, u_int16_t vlan,
 						    u_int32_t s_addr, u_int8_t s_mask,
 						    u_int32_t d_addr, u_int8_t d_mask,
 						    u_int16_t s_port, u_int16_t d_port,
-						    hw_filtering_rule *rule) {
+						    intel_82599_perfect_filter_hw_rule *rule) {
   u_int32_t netmask;
 
   /* printk("init_intel_82599_perfect_filter_hw_rule()\n"); */
 
-  memset(rule, 0, sizeof(hw_filtering_rule));
+  memset(rule, 0, sizeof(intel_82599_perfect_filter_hw_rule));
 
-  rule->rule_type = intel_82599_perfect_filter_rule, rule->rule_id = rule_id;
+  rule->queue_id = queue_id, rule->vlan_id = vlan, rule->proto = proto;
 
-  rule->rule.perfect_rule.queue_id = queue_id, rule->rule.perfect_rule.vlan_id = vlan;
-  rule->rule.perfect_rule.proto = proto;
-  rule->rule.perfect_rule.s_addr = s_addr;
+  rule->s_addr = s_addr;
   if(s_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> s_mask);
-  rule->rule.perfect_rule.s_addr &= netmask;
+  rule->s_addr &= netmask;
 
-  rule->rule.perfect_rule.d_addr = d_addr;
+  rule->d_addr = d_addr;
   if(d_mask == 32) netmask = 0xFFFFFFFF; else netmask = ~(0xFFFFFFFF >> d_mask);
-  rule->rule.perfect_rule.d_addr &= netmask;
+  rule->d_addr &= netmask;
 
-  rule->rule.perfect_rule.s_port = s_port, rule->rule.perfect_rule.d_port = d_port;
+  rule->s_port = s_port, rule->d_port = d_port;
 }
+
+#endif /* ENABLE_PROC_WRITE_RULE */
 
 /* ********************************** */
 
+#ifdef ENABLE_PROC_WRITE_RULE
 static int ring_proc_dev_rule_write(struct file *file,
 				    const char __user *buffer,
 				    unsigned long count, void *data)
@@ -711,7 +764,7 @@ static int ring_proc_dev_rule_write(struct file *file,
   int num, queue_id, vlan, rc, rule_id, protocol;
   int s_a, s_b, s_c, s_d, s_mask, s_port;
   int d_a, d_b, d_c, d_d, d_mask, d_port;
-  hw_filtering_rule rule;
+  hw_filtering_rule_request rule;
   u_int8_t found = 0;
   int debug = 0;
 
@@ -738,10 +791,12 @@ static int ring_proc_dev_rule_write(struct file *file,
     else /* if(proto[0] == 'u') */
       protocol = 17; /* UDP */
 
-    init_intel_82599_perfect_filter_hw_rule(queue_id, rule_id, protocol, vlan,
+    rule.rule.rule_id = rule_id;
+    init_intel_82599_perfect_filter_hw_rule(queue_id, protocol, vlan,
 					    ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff), s_mask,
 					    ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff), d_mask,
-					    s_port, d_port, &rule);
+					    s_port, d_port, &rule.rule.rule_family.perfect_rule);
+    rule.rule.rule_family_type = intel_82599_perfect_filter_rule;
     found = 1;
   }
 
@@ -763,10 +818,12 @@ static int ring_proc_dev_rule_write(struct file *file,
       else
 	protocol = 0; /* any */
 
-      init_intel_82599_five_tuple_filter_hw_rule(queue_id, rule_id, protocol,
+      rule.rule.rule_id = rule_id;
+      init_intel_82599_five_tuple_filter_hw_rule(queue_id, protocol,
 						 ((s_a & 0xff) << 24) + ((s_b & 0xff) << 16) + ((s_c & 0xff) << 8) + (s_d & 0xff),
 						 ((d_a & 0xff) << 24) + ((d_b & 0xff) << 16) + ((d_c & 0xff) << 8) + (d_d & 0xff),
-						 s_port, d_port, &rule);
+						 s_port, d_port, &rule.rule.rule_family.five_tuple_rule);
+      rule.rule.rule_family_type = intel_82599_five_tuple_rule;
       found = 1;
     }
   }
@@ -774,21 +831,24 @@ static int ring_proc_dev_rule_write(struct file *file,
   if(!found)
     return(-1);
 
-  rc = handle_hw_filtering_rule(dev_ptr->dev, &rule, (add == '+') ? 1 : 0);
+  rule.command = (add == '+') ? add_hw_rule : remove_hw_rule;
+  rc = handle_hw_filtering_rule(dev_ptr->dev, &rule);
 
   if(rc != -1) {
     /* Rule programmed successfully */
 
     if(add == '+')
-      dev_ptr->num_hw_filters++;
+      dev_ptr->hw_filters.num_filters++;
     else {
-      if(dev_ptr->num_hw_filters > 0)
-	dev_ptr->num_hw_filters--;
+      if(dev_ptr->hw_filters.num_filters > 0)
+	dev_ptr->hw_filters.num_filters--;
     }
   }
 
   return((int)count);
 }
+#endif
+
 #endif
 
 /* ********************************** */
@@ -797,7 +857,7 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 			      int len, int *unused, void *data)
 {
   int rlen = 0;
-  struct ring_opt *pfr;
+  struct pf_ring_socket *pfr;
   FlowSlotInfo *fsi;
 
   if(data == NULL) {
@@ -807,18 +867,20 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
     rlen += sprintf(buf + rlen, "Slot version        : %d\n", RING_FLOWSLOT_VERSION);
     rlen += sprintf(buf + rlen, "Capture TX          : %s\n", enable_tx_capture ? "Yes [RX+TX]" : "No [RX only]");
     rlen += sprintf(buf + rlen, "IP Defragment       : %s\n", enable_ip_defrag ? "Yes" : "No");
-    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n", (transparent_mode == standard_linux_path ? "Yes (mode 0)" : (transparent_mode == driver2pf_ring_transparent ? "Yes (mode 1)" : "No (mode 2)")));
+    rlen += sprintf(buf + rlen, "Transparent mode    : %s\n",
+		    (transparent_mode == standard_linux_path ? "Yes (mode 0)" :
+		     (transparent_mode == driver2pf_ring_transparent ? "Yes (mode 1)" : "No (mode 2)")));
     rlen += sprintf(buf + rlen, "Total rings         : %d\n", ring_table_size);
     rlen += sprintf(buf + rlen, "Total plugins       : %d\n", plugin_registration_size);
   } else {
     /* detailed statistics about a PF_RING */
-    pfr = (struct ring_opt *)data;
+    pfr = (struct pf_ring_socket *)data;
 
     if(data) {
       fsi = pfr->slots_info;
 
       if(fsi) {
-	rlen = sprintf(buf,         "Bound Device       : %s\n", pfr->ring_netdev->name);
+	rlen = sprintf(buf,         "Bound Device       : %s\n", pfr->ring_netdev->dev->name);
 	rlen += sprintf(buf + rlen, "Slot Version       : %d [%s]\n", fsi->version, RING_VERSION);
 	rlen += sprintf(buf + rlen, "Active             : %d\n", pfr->ring_active);
 	rlen += sprintf(buf + rlen, "Sampling Rate      : %d\n", pfr->sample_rate);
@@ -952,7 +1014,7 @@ static int ring_alloc_mem(struct sock *sk)
 {
   u_int the_slot_len, num_pages;
   u_int32_t tot_mem;
-  struct ring_opt *pfr = ring_sk(sk);
+  struct pf_ring_socket *pfr = ring_sk(sk);
 
   /* Check if the memory has been already allocated */
   if(pfr->ring_memory != NULL) return(0);
@@ -1045,7 +1107,7 @@ static int ring_alloc_mem(struct sock *sk)
 static inline void ring_insert(struct sock *sk)
 {
   struct ring_element *next;
-  struct ring_opt *pfr;
+  struct pf_ring_socket *pfr;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_insert()\n");
@@ -1064,7 +1126,7 @@ static inline void ring_insert(struct sock *sk)
 
   ring_table_size++;
 
-  pfr = (struct ring_opt *)ring_sk(sk);
+  pfr = (struct pf_ring_socket *)ring_sk(sk);
   pfr->ring_pid = current->pid;
 }
 
@@ -1086,14 +1148,14 @@ static inline void ring_remove(struct sock *sk)
 {
   struct list_head *ptr, *tmp_ptr;
   struct ring_element *entry, *to_delete = NULL;
-  struct ring_opt *pfr_to_delete = ring_sk(sk);
+  struct pf_ring_socket *pfr_to_delete = ring_sk(sk);
   u_int8_t master_found = 0, socket_found = 0;
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_remove()\n");
 #endif
 
   list_for_each_safe(ptr, tmp_ptr, &ring_table) {
-    struct ring_opt *pfr;
+    struct pf_ring_socket *pfr;
 
     entry = list_entry(ptr, struct ring_element, list);
     pfr = ring_sk(entry->sk);
@@ -1102,7 +1164,7 @@ static inline void ring_remove(struct sock *sk)
 #if defined(RING_DEBUG)
       printk("[PF_RING] Removing master ring\n");
 #endif
-      pfr->master_ring = NULL, master_found = 1;      
+      pfr->master_ring = NULL, master_found = 1;
     } else if(entry->sk == sk) {
 #if defined(RING_DEBUG)
       printk("[PF_RING] Found socket to remove\n");
@@ -1127,7 +1189,7 @@ static inline void ring_remove(struct sock *sk)
 /* ******************************************************* */
 
 static int parse_pkt(struct sk_buff *skb,
-		     u_int16_t skb_displ, 
+		     u_int16_t skb_displ,
 		     struct pfring_pkthdr *hdr, u_int8_t reset_all)
 {
   struct ethhdr *eh = (struct ethhdr *)(skb->data - skb_displ);
@@ -1173,7 +1235,7 @@ static int parse_pkt(struct sk_buff *skb,
     hdr->extended_hdr.parsed_pkt.ipv4_tos = ip->tos;
     hdr->extended_hdr.parsed_pkt.ip_version = 4;
     ip_len  = ip->ihl*4;
-  } else if (hdr->extended_hdr.parsed_pkt.eth_type == 0x86DD /* IPv6 */) {
+  } else if(hdr->extended_hdr.parsed_pkt.eth_type == 0x86DD /* IPv6 */) {
     struct ipv6hdr *ipv6;
 
     hdr->extended_hdr.parsed_pkt.ip_version = 6;
@@ -1212,13 +1274,13 @@ static int parse_pkt(struct sk_buff *skb,
 	struct ipv6_opt_hdr *ipv6_opt;
 	ipv6_opt = (struct ipv6_opt_hdr *)(skb->data+hdr->extended_hdr.parsed_pkt.offset.l3_offset+ip_len);
 	ip_len += 8;
-	if (hdr->extended_hdr.parsed_pkt.l3_proto == NEXTHDR_AUTH)
+	if(hdr->extended_hdr.parsed_pkt.l3_proto == NEXTHDR_AUTH)
 	  /*
 	    RFC4302 2.2. Payload Length: This 8-bit field specifies the
 	    length of AH in 32-bit words (4-byte units), minus "2".
 	  */
 	  ip_len += ipv6_opt->hdrlen * 4;
-	else if (hdr->extended_hdr.parsed_pkt.l3_proto != NEXTHDR_FRAGMENT)
+	else if(hdr->extended_hdr.parsed_pkt.l3_proto != NEXTHDR_FRAGMENT)
 	  ip_len += ipv6_opt->hdrlen;
 
 	hdr->extended_hdr.parsed_pkt.l3_proto = ipv6_opt->nexthdr;
@@ -1332,8 +1394,8 @@ static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
 	  && (hash_bucket->rule.port_peer_a == (mask_dst ? 0 : hdr->extended_hdr.parsed_pkt.l4_dst_port))
 	  && (hash_bucket->rule.port_peer_b == (mask_src ? 0 : hdr->extended_hdr.parsed_pkt.l4_src_port)))))
     {
-      if (hdr->extended_hdr.parsed_pkt.ip_version == 6) {
-	if (((memcmp(&hash_bucket->rule.host6_peer_a,
+      if(hdr->extended_hdr.parsed_pkt.ip_version == 6) {
+	if(((memcmp(&hash_bucket->rule.host6_peer_a,
 		     (mask_src ? &ip_zero.v6 : &hdr->extended_hdr.parsed_pkt.ipv6_src),
 		     sizeof(ip_addr) == 0))
 	     && (memcmp(&hash_bucket->rule.host6_peer_b,
@@ -1456,7 +1518,7 @@ inline int hash_filtering_rule_match(hash_filtering_rule * a,
 /* ********************************** */
 
 /* 0 = no match, 1 = match */
-static int match_filtering_rule(struct ring_opt *the_ring,
+static int match_filtering_rule(struct pf_ring_socket *the_ring,
 				filtering_rule_element * rule,
 				struct pfring_pkthdr *hdr,
 				struct sk_buff *skb,
@@ -1612,7 +1674,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
     }
   }
 
-  /* Step 2 - Handle skb */  
+  /* Step 2 - Handle skb */
   /* Action to be performed in case of match */
   if((rule->rule.plugin_action.plugin_id != NO_PLUGIN_ID)
      && (rule->rule.plugin_action.plugin_id < MAX_PLUGIN_ID)
@@ -1675,7 +1737,7 @@ static int match_filtering_rule(struct ring_opt *the_ring,
   memory block to the ring buffer
 */
 inline void copy_data_to_ring(struct sk_buff *skb,
-			      struct ring_opt *pfr,
+			      struct pf_ring_socket *pfr,
 			      struct pfring_pkthdr *hdr,
 			      int displ, int offset, void *plugin_mem,
 			      void *raw_data, uint raw_data_len) {
@@ -1767,7 +1829,7 @@ inline void copy_data_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
-static void copy_raw_data_to_ring(struct ring_opt *pfr,
+static void copy_raw_data_to_ring(struct pf_ring_socket *pfr,
 				  struct pfring_pkthdr *dummy_hdr,
 				  void *raw_data, uint raw_data_len) {
   copy_data_to_ring(NULL, pfr, dummy_hdr, 0, 0, NULL, raw_data, raw_data_len);
@@ -1776,12 +1838,12 @@ static void copy_raw_data_to_ring(struct ring_opt *pfr,
 /* ********************************** */
 
 static void add_pkt_to_ring(struct sk_buff *skb,
-			    struct ring_opt *_pfr,
+			    struct pf_ring_socket *_pfr,
 			    struct pfring_pkthdr *hdr,
 			    int displ, u_int8_t channel_id,
 			    int offset, void *plugin_mem)
 {
-  struct ring_opt *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
+  struct pf_ring_socket *pfr = (_pfr->master_ring != NULL) ? _pfr->master_ring : _pfr;
   int32_t the_bit = 1 << channel_id;
 
 #if defined(RING_DEBUG)
@@ -1813,7 +1875,7 @@ static void add_pkt_to_ring(struct sk_buff *skb,
 
 /* ********************************** */
 
-static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr, 
+static int add_packet_to_ring(struct pf_ring_socket *pfr, struct pfring_pkthdr *hdr,
 			      struct sk_buff *skb,
 			      int displ, u_int8_t parse_pkt_first)
 {
@@ -1828,7 +1890,7 @@ static int add_packet_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr,
 
 /* ********************************** */
 
-static int add_hdr_to_ring(struct ring_opt *pfr, struct pfring_pkthdr *hdr)
+static int add_hdr_to_ring(struct pf_ring_socket *pfr, struct pfring_pkthdr *hdr)
 {
   return(add_packet_to_ring(pfr, hdr, NULL, 0, 0));
 }
@@ -1853,7 +1915,7 @@ static void free_parse_memory(struct parse_buffer *parse_memory_buffer[])
 /* ********************************** */
 
 static int reflect_packet(struct sk_buff *skb,
-			  struct ring_opt *pfr,
+			  struct pf_ring_socket *pfr,
 			  struct net_device *reflector_dev,
 			  int displ,
 			  rule_action_behaviour behaviour)
@@ -1918,7 +1980,7 @@ static int reflect_packet(struct sk_buff *skb,
 /* ********************************** */
 
 int check_perfect_rules(struct sk_buff *skb,
-			struct ring_opt *pfr,
+			struct pf_ring_socket *pfr,
 			struct pfring_pkthdr *hdr,
 			int *fwd_pkt,
 			u_int8_t *free_parse_mem,
@@ -1989,14 +2051,14 @@ int check_perfect_rules(struct sk_buff *skb,
   } else {
     /* printk("[PF_RING] Packet not found\n"); */
   }
-    
+
   return(hash_found);
 }
 
 /* ********************************** */
 
 int check_wildcard_rules(struct sk_buff *skb,
-			 struct ring_opt *pfr,
+			 struct pf_ring_socket *pfr,
 			 struct pfring_pkthdr *hdr,
 			 int *fwd_pkt,
 			 u_int8_t *free_parse_mem,
@@ -2117,12 +2179,12 @@ int check_wildcard_rules(struct sk_buff *skb,
  *
  * Return code:
  * 0   packet successully processed
- * -1  processing error (e.g. the packet has been discarded by 
- *                       filter, ring not active...) 
+ * -1  processing error (e.g. the packet has been discarded by
+ *                       filter, ring not active...)
  *
  */
 static int add_skb_to_ring(struct sk_buff *skb,
-			   struct ring_opt *pfr,
+			   struct pf_ring_socket *pfr,
 			   struct pfring_pkthdr *hdr,
 			   int is_ip_pkt, int displ,
 			   u_int8_t channel_id,
@@ -2141,7 +2203,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #if defined(RING_DEBUG)
   printk("[PF_RING] --> add_skb_to_ring(len=%d) [channel_id=%d/%d][active=%d][%s]\n",
 	 hdr->len, channel_id, num_rx_channels,
-	 pfr->ring_active, pfr->ring_netdev->name);
+	 pfr->ring_active, pfr->ring_netdev->dev->name);
 #endif
 
   if((!pfring_enabled) || ((!pfr->ring_active) && (pfr->master_ring == NULL)))
@@ -2210,16 +2272,16 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	   skb->pkt_type, skb->cloned);
 
   /* [2.1] Search the hash */
-  if(pfr->filtering_hash != NULL) 
-    hash_found = check_perfect_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem, 
+  if(pfr->filtering_hash != NULL)
+    hash_found = check_perfect_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem,
 				     parse_memory_buffer, displ, &last_matched_plugin);
 
   /* [2.2] Search rules list */
   if((!hash_found) && (pfr->num_filtering_rules > 0)) {
-    int rc = check_wildcard_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem, 
+    int rc = check_wildcard_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem,
 				  parse_memory_buffer, displ, &last_matched_plugin);
 
-    if(rc != 0) 
+    if(rc != 0)
       return(rc);
   }
 
@@ -2334,10 +2396,10 @@ static int register_plugin(struct pfring_plugin_registration *reg)
 
   plugin_registration[reg->plugin_id] = reg;
   plugin_registration_size++;
-  
+
   max_registered_plugin_id =
     max(max_registered_plugin_id, reg->plugin_id);
-  
+
   printk("[PF_RING] registered plugin [id=%d][max=%d][%p]\n",
 	 reg->plugin_id, max_registered_plugin_id,
 	 plugin_registration[reg->plugin_id]);
@@ -2366,7 +2428,7 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
     list_for_each_safe(ring_ptr, ring_tmp_ptr, &ring_table) {
       struct ring_element *entry =
 	list_entry(ring_ptr, struct ring_element, list);
-      struct ring_opt *pfr = ring_sk(entry->sk);
+      struct pf_ring_socket *pfr = ring_sk(entry->sk);
 
       list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
 	filtering_rule_element *rule;
@@ -2454,8 +2516,7 @@ static struct sk_buff* defrag_skb(struct sk_buff *skb,
 	       "[ip_id=%u][network_header=%d][displ=%d]\n",
 	       iphdr->protocol, offset,
 	       ntohs(iphdr->id),
-	       hdr.extended_hdr.parsed_pkt.pkt_detail.offset.
-	       l3_offset - displ, displ);
+	       hdr->extended_hdr.parsed_pkt.offset.l3_offset - displ, displ);
 #endif
 	skk = ring_gather_frags(cloned);
 
@@ -2490,13 +2551,14 @@ static struct sk_buff* defrag_skb(struct sk_buff *skb,
 #if defined (RING_DEBUG)
     printk("[PF_RING] Re-assembling fragmented IPv6 packet hs not been implemented\n");
 #endif
-  }  
+  }
 
   return(NULL);
 }
 
 /* ********************************** */
 
+/* PF_RING main entry point */
 static int skb_ring_handler(struct sk_buff *skb,
 			    u_char recv_packet,
 			    u_char real_skb /* 1=real skb, 0=faked skb */ ,
@@ -2513,21 +2575,21 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   /* Check if there's at least one PF_RING ring defined that
      could receive the packet: if none just stop here */
-  
+
   if(ring_table_size == 0) return(rc);
 
 #if defined(RING_DEBUG)
   if(1) {
     if(skb->dev && (skb->dev->ifindex < MAX_NUM_IFIDX))
-      printk("[PF_RING] --> skb_ring_handler(%s): %d rings [num_any_rings=%d]\n", 
-	     skb->dev->name, 
+      printk("[PF_RING] --> skb_ring_handler(%s): %d rings [num_any_rings=%d]\n",
+	     skb->dev->name,
 	     num_rings_per_device[skb->dev->ifindex],
 	     num_any_rings);
   }
 #endif
 
   if((num_any_rings == 0)
-     && (skb->dev 
+     && (skb->dev
 	 && (skb->dev->ifindex < MAX_NUM_IFIDX)
 	 && (num_rings_per_device[skb->dev->ifindex] == 0)))
     return(rc);
@@ -2589,10 +2651,10 @@ static int skb_ring_handler(struct sk_buff *skb,
     if(real_skb
        && is_ip_pkt
        && recv_packet
-       && (ring_table_size > 0)) {      
+       && (ring_table_size > 0)) {
       skb = defrag_skb(skb, displ, &hdr);
 
-      if(skb == NULL) 
+      if(skb == NULL)
 	return(0);
     }
   }
@@ -2619,7 +2681,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     hdr.extended_hdr.timestamp_ns = ktime_to_ns(skb_hwtstamps(skb)->hwtstamp);
 #ifdef RING_DEBUG
     printk("[PF_RING] hwts=%llu/dev=%s\n",
-	   hdr.extended_hdr.timestamp_ns, 
+	   hdr.extended_hdr.timestamp_ns,
 	   skb->dev ? skb->dev->name : "???");
 #endif
   }
@@ -2640,7 +2702,7 @@ static int skb_ring_handler(struct sk_buff *skb,
 
   /* [1] Check unclustered sockets */
   list_for_each(ptr, &ring_table) {
-    struct ring_opt *pfr;
+    struct pf_ring_socket *pfr;
     struct ring_element *entry;
 
     entry = list_entry(ptr, struct ring_element, list);
@@ -2651,17 +2713,17 @@ static int skb_ring_handler(struct sk_buff *skb,
 #if defined (RING_DEBUG)
     if(0)
       printk("[PF_RING] Scanning ring [%s][cluster=%d]\n",
-	     pfr->ring_netdev->name, pfr->cluster_id);
+	     pfr->ring_netdev->dev->name, pfr->cluster_id);
 #endif
 
     if((pfr != NULL)
-       && (pfr->ring_netdev != &none_dev) /* Not a dummy socket bound to "none" */
+       && (pfr->ring_netdev != &none_device_element) /* Not a dummy socket bound to "none" */
        && (pfr->cluster_id == 0 /* No cluster */ )
        && (pfr->ring_slots != NULL)
        && is_valid_skb_direction(pfr->direction, recv_packet)
-       && ((pfr->ring_netdev == skb->dev)
-	   || (pfr->ring_netdev == &any_dev) /* Socket bound to 'any' */
-	   || ((skb->dev->flags & IFF_SLAVE) && (pfr->ring_netdev == skb->dev->master)))) {
+       && ((pfr->ring_netdev->dev == skb->dev)
+	   || (pfr->ring_netdev == &any_device_element) /* Socket bound to 'any' */
+	   || ((skb->dev->flags & IFF_SLAVE) && (pfr->ring_netdev->dev == skb->dev->master)))) {
       /* We've found the ring where the packet can be stored */
       int old_caplen = hdr.caplen;  /* Keep old lenght */
       hdr.caplen = min(hdr.caplen, pfr->bucket_len);
@@ -2674,7 +2736,7 @@ static int skb_ring_handler(struct sk_buff *skb,
   /* [2] Check socket clusters */
   list_for_each(ptr, &ring_cluster_list) {
     ring_cluster_element *cluster_ptr;
-    struct ring_opt *pfr;
+    struct pf_ring_socket *pfr;
 
     cluster_ptr = list_entry(ptr, ring_cluster_element, list);
 
@@ -2701,9 +2763,9 @@ static int skb_ring_handler(struct sk_buff *skb,
 
 	  if((pfr != NULL)
 	     && (pfr->ring_slots != NULL)
-	     && ((pfr->ring_netdev == skb->dev)
+	     && ((pfr->ring_netdev->dev == skb->dev)
 		 || ((skb->dev->flags & IFF_SLAVE)
-		     && (pfr->ring_netdev == skb->dev->master)))
+		     && (pfr->ring_netdev->dev == skb->dev->master)))
 	     && is_valid_skb_direction(pfr->direction, recv_packet)
 	     ) {
 	    if(check_and_init_free_slot(pfr, pfr->slots_info->insert_off) /* Not full */) {
@@ -2840,7 +2902,7 @@ static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
 
 /* ************************************* */
 
-static int handle_filtering_hash_bucket(struct ring_opt *pfr,
+static int handle_filtering_hash_bucket(struct pf_ring_socket *pfr,
 					filtering_hash_bucket * rule,
 					u_char add_rule)
 {
@@ -2957,7 +3019,7 @@ static int handle_filtering_hash_bucket(struct ring_opt *pfr,
 
 static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 		      struct packet_type *pt
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,16))
 		      , struct net_device *orig_dev
 #endif
 		      )
@@ -3006,7 +3068,7 @@ static int ring_create(
 		       )
 {
   struct sock *sk;
-  struct ring_opt *pfr;
+  struct pf_ring_socket *pfr;
   int err = -ENOMEM;
 
 #if defined(RING_DEBUG)
@@ -3070,7 +3132,7 @@ static int ring_create(
   ring_insert(sk);
 
   pfr->master_ring = NULL;
-  pfr->ring_netdev = &none_dev; /* Unbound socket */
+  pfr->ring_netdev = &none_device_element; /* Unbound socket */
   pfr->sample_rate = 1;	/* No sampling */
   pfr->ring_id = ring_id_serial++;
 
@@ -3090,7 +3152,7 @@ static int ring_create(
 static int ring_release(struct socket *sock)
 {
   struct sock *sk = sock->sk;
-  struct ring_opt *pfr = ring_sk(sk);
+  struct pf_ring_socket *pfr = ring_sk(sk);
   struct list_head *ptr, *tmp_ptr;
   void *ring_memory_ptr;
 
@@ -3111,7 +3173,7 @@ static int ring_release(struct socket *sock)
   }
 
 #if defined(RING_DEBUG)
-  printk("[PF_RING] called ring_release(%s)\n", pfr->ring_netdev->name);
+  printk("[PF_RING] called ring_release(%s)\n", pfr->ring_netdev->dev->name);
 #endif
 
   if(pfr->kernel_consumer_options) kfree(pfr->kernel_consumer_options);
@@ -3124,15 +3186,15 @@ static int ring_release(struct socket *sock)
   ring_proc_remove(pfr);
   ring_write_lock();
 
-  if(pfr->ring_netdev && pfr->ring_netdev == &any_dev)
+  if(pfr->ring_netdev->dev && pfr->ring_netdev == &any_device_element)
     num_any_rings--;
-  else {    
+  else {
     if(pfr->ring_netdev
-       && (pfr->ring_netdev->ifindex < MAX_NUM_IFIDX))
-      num_rings_per_device[pfr->ring_netdev->ifindex]--;
+       && (pfr->ring_netdev->dev->ifindex < MAX_NUM_IFIDX))
+      num_rings_per_device[pfr->ring_netdev->dev->ifindex]--;
   }
 
-  if(pfr->ring_netdev != &none_dev) {
+  if(pfr->ring_netdev != &none_device_element) {
     if(pfr->cluster_id != 0)
       remove_from_cluster(sk, pfr);
   }
@@ -3142,7 +3204,7 @@ static int ring_release(struct socket *sock)
   sock->sk = NULL;
 
   /* Free rules */
-  if(pfr->ring_netdev != &none_dev) {
+  if(pfr->ring_netdev != &none_device_element) {
     list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
       filtering_rule_element *rule;
 #ifdef CONFIG_TEXTSEARCH
@@ -3208,7 +3270,7 @@ static int ring_release(struct socket *sock)
 
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   /* Release the vPFRing eventfd */
-  if (pfr->vpfring_ctx)
+  if(pfr->vpfring_ctx)
     eventfd_ctx_put(pfr->vpfring_ctx);
 #endif
 
@@ -3232,16 +3294,31 @@ static int ring_release(struct socket *sock)
 /*
  * We create a ring for this socket and bind it to the specified device
  */
-static int packet_ring_bind(struct sock *sk, struct net_device *dev)
+static int packet_ring_bind(struct sock *sk, char *dev_name)
 {
-  struct ring_opt *pfr = ring_sk(sk);
+  struct pf_ring_socket *pfr = ring_sk(sk);
+  struct list_head *ptr, *tmp_ptr;
+  ring_device_element *dev = NULL;
 
-  if((!dev) || (dev->type != ARPHRD_ETHER))
-    return(-1);
+  if(dev_name == NULL)     
+    return(-EINVAL);
+
+  list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
+    ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
+    
+    if(strcmp(dev_ptr->dev->name, dev_name) == 0) {
+      dev = dev_ptr;
+      break;
+    }
+  }
+
+  if((dev == NULL) || (dev->dev->type != ARPHRD_ETHER))
+    return(-EINVAL);
+   
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] packet_ring_bind(%s, bucket_len=%d) called\n",
-	 dev->name, pfr->bucket_len);
+	 dev->dev->name, pfr->bucket_len);
 #endif
 
   /* Remove old binding (by default binding to none)
@@ -3252,7 +3329,7 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
   /*
     IMPORTANT
     Leave this statement here as last one. In fact when
-    the ring_netdev != &none_dev the socket is ready to be used.
+    the ring_netdev != &none_device_element the socket is ready to be used.
   */
   pfr->ring_netdev = dev;
 
@@ -3266,23 +3343,21 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
     the num of RX queues is updated with the real value
   */
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
-  pfr->num_rx_channels = pfr->ring_netdev->real_num_tx_queues;
+  pfr->num_rx_channels = pfr->ring_netdev->dev->real_num_tx_queues;
 #else
   pfr->num_rx_channels = 1;
 #endif
 
-  if(dev) {
-    if(dev == &any_dev)
-      num_any_rings++;
-    else {
-      if(dev->ifindex < MAX_NUM_IFIDX)
-	num_rings_per_device[dev->ifindex]++;
-      else 
-	printk("[PF_RING] INTERNAL ERROR: ifindex %d for %s is > than MAX_NUM_IFIDX\n",
-	       dev->ifindex, dev->name);
-    }
+  if(dev == &any_device_element)
+    num_any_rings++;
+  else {
+    if(dev->dev->ifindex < MAX_NUM_IFIDX)
+      num_rings_per_device[dev->dev->ifindex]++;
+    else
+      printk("[PF_RING] INTERNAL ERROR: ifindex %d for %s is > than MAX_NUM_IFIDX\n",
+	     dev->dev->ifindex, dev->dev->name);
   }
-  
+
   return(0);
 }
 
@@ -3292,7 +3367,6 @@ static int packet_ring_bind(struct sock *sk, struct net_device *dev)
 static int ring_bind(struct socket *sock, struct sockaddr *sa, int addr_len)
 {
   struct sock *sk = sock->sk;
-  struct net_device *dev = NULL;
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] ring_bind() called\n");
@@ -3315,6 +3389,7 @@ static int ring_bind(struct socket *sock, struct sockaddr *sa, int addr_len)
   printk("[PF_RING] searching device %s\n", sa->sa_data);
 #endif
 
+#if 0
   if(strcmp(sa->sa_data, "any") == 0)
     dev = &any_dev;
   else {
@@ -3327,15 +3402,16 @@ static int ring_bind(struct socket *sock, struct sockaddr *sa, int addr_len)
       printk("[PF_RING] search failed\n");
 #endif
       return(-EINVAL);
-    }
+    }    
   }
+#endif
 
-  return(packet_ring_bind(sk, dev));
+  return(packet_ring_bind(sk, sa->sa_data));
 }
 
 /* ************************************* */
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11))
+#if(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11))
 /*
  * rvmalloc / rvfree / kvirt_to_pa copied from usbvideo.c
  */
@@ -3370,7 +3446,7 @@ static int do_memory_mmap(struct vm_area_struct *vma,
     int rc;
 
     if(mode == 0) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11))
       rc = remap_vmalloc_range(vma, ptr, 0);
       break; /* Do not iterate */
 #else
@@ -3407,7 +3483,7 @@ static int ring_mmap(struct file *file,
 		     struct socket *sock, struct vm_area_struct *vma)
 {
   struct sock *sk = sock->sk;
-  struct ring_opt *pfr = ring_sk(sk);
+  struct pf_ring_socket *pfr = ring_sk(sk);
   int rc;
   unsigned long size = (unsigned long)(vma->vm_end - vma->vm_start);
 
@@ -3454,7 +3530,7 @@ static int ring_mmap(struct file *file,
     printk("[PF_RING] mmap [slot_len=%d]"
 	   "[tot_slots=%d] for ring on device %s\n",
 	   pfr->slots_info->slot_len, pfr->slots_info->min_num_slots,
-	   pfr->ring_netdev->name);
+	   pfr->ring_netdev->dev->name);
 #endif
 
     if((rc = do_memory_mmap(vma, size, pfr->ring_memory, VM_LOCKED, 0)) < 0)
@@ -3503,7 +3579,7 @@ static int ring_mmap(struct file *file,
 static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 			struct msghdr *msg, size_t len, int flags)
 {
-  struct ring_opt *pfr = ring_sk(sock->sk);
+  struct pf_ring_socket *pfr = ring_sk(sock->sk);
   u_int32_t queued_pkts, num_loops = 0;
 
 #if defined(RING_DEBUG)
@@ -3536,7 +3612,7 @@ static int ring_recvmsg(struct kiocb *iocb, struct socket *sock,
 static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
 			struct msghdr *msg, size_t len)
 {
-  struct ring_opt *pfr = ring_sk(sock->sk);
+  struct pf_ring_socket *pfr = ring_sk(sock->sk);
   struct sockaddr_pkt *saddr=(struct sockaddr_pkt *)msg->msg_name;
   struct sk_buff *skb;
   __be16 proto=0;
@@ -3545,13 +3621,13 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
   /*
    *	Get and verify the address.
    */
-  if (saddr)
+  if(saddr)
     {
-      if (saddr == NULL) proto = htons(ETH_P_ALL);
+      if(saddr == NULL) proto = htons(ETH_P_ALL);
 
-      if (msg->msg_namelen < sizeof(struct sockaddr))
+      if(msg->msg_namelen < sizeof(struct sockaddr))
 	return(-EINVAL);
-      if (msg->msg_namelen == sizeof(struct sockaddr_pkt))
+      if(msg->msg_namelen == sizeof(struct sockaddr_pkt))
 	proto = saddr->spkt_protocol;
     }
   else
@@ -3560,11 +3636,11 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
   /*
    *	Find the device first to size check it
    */
-  if (pfr->ring_netdev == NULL)
+  if(pfr->ring_netdev->dev == NULL)
     goto out_unlock;
 
   err = -ENETDOWN;
-  if (!(pfr->ring_netdev->flags & IFF_UP))
+  if(!(pfr->ring_netdev->dev->flags & IFF_UP))
     goto out_unlock;
 
   /*
@@ -3572,11 +3648,11 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
    *	raw protocol and you must do your own fragmentation at this level.
    */
   err = -EMSGSIZE;
-  if (len > pfr->ring_netdev->mtu + pfr->ring_netdev->hard_header_len)
+  if(len > pfr->ring_netdev->dev->mtu + pfr->ring_netdev->dev->hard_header_len)
     goto out_unlock;
 
   err = -ENOBUFS;
-  skb = sock_wmalloc(sock->sk, len + LL_RESERVED_SPACE(pfr->ring_netdev), 0, GFP_KERNEL);
+  skb = sock_wmalloc(sock->sk, len + LL_RESERVED_SPACE(pfr->ring_netdev->dev), 0, GFP_KERNEL);
 
   /*
    *	If the write buffer is full, then tough. At this level the user gets to
@@ -3584,7 +3660,7 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
    *	more flexible.
    */
 
-  if (skb == NULL)
+  if(skb == NULL)
     goto out_unlock;
 
   /*
@@ -3595,22 +3671,22 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
    * hard header at transmission time by themselves. PPP is the
    * notable one here. This should really be fixed at the driver level.
    */
-  skb_reserve(skb, LL_RESERVED_SPACE(pfr->ring_netdev));
+  skb_reserve(skb, LL_RESERVED_SPACE(pfr->ring_netdev->dev));
   skb_reset_network_header(skb);
 
   /* Try to align data part correctly */
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,23))
-  if(pfr->ring_netdev->header_ops) {
-    skb->data -= pfr->ring_netdev->hard_header_len;
-    skb->tail -= pfr->ring_netdev->hard_header_len;
-    if (len < pfr->ring_netdev->hard_header_len)
+  if(pfr->ring_netdev->dev->header_ops) {
+    skb->data -= pfr->ring_netdev->dev->hard_header_len;
+    skb->tail -= pfr->ring_netdev->dev->hard_header_len;
+    if(len < pfr->ring_netdev->dev->hard_header_len)
       skb_reset_network_header(skb);
   }
 #else
-  if(pfr->ring_netdev->hard_header) {
-    skb->data -= pfr->ring_netdev->hard_header_len;
-    skb->tail -= pfr->ring_netdev->hard_header_len;
-    if (len < pfr->ring_netdev->hard_header_len) {
+  if(pfr->ring_netdev->dev->hard_header) {
+    skb->data -= pfr->ring_netdev->dev->hard_header_len;
+    skb->tail -= pfr->ring_netdev->dev->hard_header_len;
+    if(len < pfr->ring_netdev->dev->hard_header_len) {
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,18))
       skb_reset_network_header(skb);
 #else
@@ -3623,9 +3699,9 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
   /* Returns -EFAULT on error */
   err = memcpy_fromiovec(skb_put(skb,len), msg->msg_iov, len);
   skb->protocol = proto;
-  skb->dev = pfr->ring_netdev;
+  skb->dev = pfr->ring_netdev->dev;
   skb->priority = sock->sk->sk_priority;
-  if (err)
+  if(err)
     goto out_free;
 
   /*
@@ -3633,15 +3709,15 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
    */
 
   dev_queue_xmit(skb);
-  dev_put(pfr->ring_netdev);
+  dev_put(pfr->ring_netdev->dev);
   return(len);
 
  out_free:
   kfree_skb(skb);
 
  out_unlock:
-  if (pfr->ring_netdev)
-    dev_put(pfr->ring_netdev);
+  if(pfr->ring_netdev)
+    dev_put(pfr->ring_netdev->dev);
   return err;
 }
 
@@ -3650,7 +3726,7 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
 unsigned int ring_poll(struct file *file,
 		       struct socket *sock, poll_table * wait)
 {
-  struct ring_opt *pfr = ring_sk(sock->sk);
+  struct pf_ring_socket *pfr = ring_sk(sock->sk);
   int rc, mask = 0;
 
 #if defined(RING_DEBUG)
@@ -3667,9 +3743,9 @@ unsigned int ring_poll(struct file *file,
     pfr->ring_active = 1;
     // smp_rmb();
 
-    //if(pfr->slots_info->tot_read == pfr->slots_info->tot_insert) 
+    //if(pfr->slots_info->tot_read == pfr->slots_info->tot_insert)
     if(num_queued_pkts(pfr) < pfr->poll_num_pkts_watermark)
-      poll_wait(file, &pfr->ring_slots_waitqueue, wait);    
+      poll_wait(file, &pfr->ring_slots_waitqueue, wait);
 
     if(num_queued_pkts(pfr) >= pfr->poll_num_pkts_watermark)
       mask |= POLLIN | POLLRDNORM;
@@ -3713,7 +3789,7 @@ unsigned int ring_poll(struct file *file,
 
 #if defined(RING_DEBUG)
     printk("[PF_RING] poll %s return [%d]\n",
-	   pfr->ring_netdev->name,
+	   pfr->ring_netdev->dev->name,
 	   *pfr->dna_device->interrupt_received);
 #endif
 
@@ -3767,7 +3843,7 @@ int remove_from_cluster_list(struct ring_cluster *el, struct sock *sock)
 
 /* ************************************* */
 
-static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr)
+static int remove_from_cluster(struct sock *sock, struct pf_ring_socket *pfr)
 {
   struct list_head *ptr, *tmp_ptr;
 
@@ -3796,7 +3872,7 @@ static int remove_from_cluster(struct sock *sock, struct ring_opt *pfr)
 // #define RING_DEBUG 1
 
 static int set_master_ring(struct sock *sock,
-			   struct ring_opt *pfr,
+			   struct pf_ring_socket *pfr,
 			   u_int32_t master_socket_id)
 {
   int rc = -1;
@@ -3804,7 +3880,7 @@ static int set_master_ring(struct sock *sock,
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] set_master_ring(%s=%d)\n",
-	 pfr->ring_netdev ? pfr->ring_netdev->name : "none",
+	 pfr->ring_netdev->dev ? pfr->ring_netdev->dev->name : "none",
 	 master_socket_id);
 #endif
 
@@ -3812,7 +3888,7 @@ static int set_master_ring(struct sock *sock,
   ring_read_lock();
 
   list_for_each(ptr, &ring_table) {
-    struct ring_opt *sk_pfr;
+    struct pf_ring_socket *sk_pfr;
     struct ring_element *entry;
     struct sock *skElement;
 
@@ -3826,8 +3902,8 @@ static int set_master_ring(struct sock *sock,
 
 #if defined(RING_DEBUG)
       printk("[PF_RING] Found set_master_ring(%s) -> %s\n",
-	     sk_pfr->ring_netdev ? sk_pfr->ring_netdev->name : "none",
-	     pfr->master_ring->ring_netdev->name);
+	     sk_pfr->ring_netdev->dev ? sk_pfr->ring_netdev->dev->name : "none",
+	     pfr->master_ring->ring_netdev->dev->name);
 #endif
 
       rc = 0;
@@ -3835,7 +3911,7 @@ static int set_master_ring(struct sock *sock,
     } else {
 #if defined(RING_DEBUG)
       printk("[PF_RING] Skipping socket(%s)=%d\n",
-	     sk_pfr->ring_netdev ? sk_pfr->ring_netdev->name : "none",
+	     sk_pfr->ring_netdev->dev ? sk_pfr->ring_netdev->dev->name : "none",
 	     sk_pfr->ring_id);
 #endif
     }
@@ -3845,7 +3921,7 @@ static int set_master_ring(struct sock *sock,
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] set_master_ring(%s, socket_id=%d) = %d\n",
-	 pfr->ring_netdev ? pfr->ring_netdev->name : "none",
+	 pfr->ring_netdev->dev ? pfr->ring_netdev->dev->name : "none",
 	 master_socket_id, rc);
 #endif
 
@@ -3857,7 +3933,7 @@ static int set_master_ring(struct sock *sock,
 /* ************************************* */
 
 static int add_sock_to_cluster(struct sock *sock,
-			       struct ring_opt *pfr,
+			       struct pf_ring_socket *pfr,
 			       struct add_to_cluster *cluster)
 {
   struct list_head *ptr, *tmp_ptr;
@@ -3902,7 +3978,7 @@ static int add_sock_to_cluster(struct sock *sock,
 
 /* ************************************* */
 
-static int ring_map_dna_device(struct ring_opt *pfr,
+static int ring_map_dna_device(struct pf_ring_socket *pfr,
 			       dna_device_mapping * mapping)
 {
   int debug = 1;
@@ -3924,7 +4000,7 @@ static int ring_map_dna_device(struct ring_opt *pfr,
 
       if((!strcmp(entry->dev.netdev->name, mapping->device_name))
 	 && (entry->dev.channel_id == mapping->channel_id)) {
-	pfr->dna_device = &entry->dev, pfr->ring_netdev = entry->dev.netdev;
+	pfr->dna_device = &entry->dev, pfr->ring_netdev->dev = entry->dev.netdev;
 
 	if(debug)
 	  printk("[PF_RING] ring_map_dna_device(%s, %u): added mapping\n",
@@ -3936,7 +4012,7 @@ static int ring_map_dna_device(struct ring_opt *pfr,
     }
   }
 
-  printk("[PF_RING] ring_map_dna_device(%s, %u): mapping failed\n", 
+  printk("[PF_RING] ring_map_dna_device(%s, %u): mapping failed\n",
 	 mapping->device_name, mapping->channel_id);
 
   return(-1);
@@ -3944,7 +4020,7 @@ static int ring_map_dna_device(struct ring_opt *pfr,
 
 /* ************************************* */
 
-static void purge_idle_hash_rules(struct ring_opt *pfr,
+static void purge_idle_hash_rules(struct pf_ring_socket *pfr,
 				  uint16_t rule_inactivity)
 {
   int i, num_purged_rules = 0, debug = 0;
@@ -4015,7 +4091,7 @@ static void purge_idle_hash_rules(struct ring_opt *pfr,
 
 /* ************************************* */
 
-static int remove_filtering_rule_element(struct ring_opt *pfr, u_int16_t rule_id) 
+static int remove_filtering_rule_element(struct pf_ring_socket *pfr, u_int16_t rule_id)
 {
   int rule_found = 0, debug = 0;
   struct list_head *ptr, *tmp_ptr;
@@ -4055,7 +4131,7 @@ static int remove_filtering_rule_element(struct ring_opt *pfr, u_int16_t rule_id
 
 /* ************************************* */
 
-static int add_filtering_rule_element(struct ring_opt *pfr, filtering_rule_element *rule) 
+static int add_filtering_rule_element(struct pf_ring_socket *pfr, filtering_rule_element *rule)
 {
   struct list_head *ptr, *tmp_ptr;
   int idx = 0, debug = 0;
@@ -4098,8 +4174,8 @@ static int add_filtering_rule_element(struct ring_opt *pfr, filtering_rule_eleme
   }
 
   if(rule->rule.reflector_device_name[0] != '\0') {
-    if((pfr->ring_netdev != NULL)
-       && (strcmp(rule->rule.reflector_device_name, pfr->ring_netdev->name) == 0)) {
+    if((pfr->ring_netdev->dev != NULL)
+       && (strcmp(rule->rule.reflector_device_name, pfr->ring_netdev->dev->name) == 0)) {
       if(debug)
 	printk("[PF_RING] You cannot use as reflection device the same device on which this ring is bound\n");
       kfree(rule);
@@ -4113,8 +4189,7 @@ static int add_filtering_rule_element(struct ring_opt *pfr, filtering_rule_eleme
 							 rule->rule.reflector_device_name);
 
     if(rule->rule.internals.reflector_dev == NULL) {
-      printk("[PF_RING] Unable to find device %s\n",
-	     rule->rule.reflector_device_name);
+      printk("[PF_RING] Unable to find device %s\n", rule->rule.reflector_device_name);
       kfree(rule);
       return(-EFAULT);
     }
@@ -4222,12 +4297,12 @@ static int add_filtering_rule_element(struct ring_opt *pfr, filtering_rule_eleme
 
 /* ************************************* */
 
-static int add_filtering_hash_bucket(struct ring_opt *pfr, filtering_hash_bucket *rule) {
+static int add_filtering_hash_bucket(struct pf_ring_socket *pfr, filtering_hash_bucket *rule) {
   int rc = 0, debug = 0;
 
   if(rule->rule.reflector_device_name[0] != '\0') {
-    if((pfr->ring_netdev != NULL)
-       && (strcmp(rule->rule.reflector_device_name, pfr->ring_netdev->name) == 0)) {
+    if((pfr->ring_netdev->dev != NULL)
+       && (strcmp(rule->rule.reflector_device_name, pfr->ring_netdev->dev->name) == 0)) {
       if(debug)
 	printk("[PF_RING] You cannot use as reflection device the same device on which this ring is bound\n");
       kfree(rule);
@@ -4274,7 +4349,7 @@ static int ring_setsockopt(struct socket *sock,
 #endif
 			   int optlen)
 {
-  struct ring_opt *pfr = ring_sk(sock->sk);
+  struct pf_ring_socket *pfr = ring_sk(sock->sk);
   int val, found, ret = 0 /* OK */;
   u_int32_t ring_id;
   u_int debug = 0;
@@ -4283,7 +4358,7 @@ static int ring_setsockopt(struct socket *sock,
   char applName[32 + 1] = { 0 };
   u_int16_t rule_id, rule_inactivity;
   packet_direction direction;
-  hw_filtering_rule hw_rule;
+  hw_filtering_rule_request hw_rule;
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   struct vpfring_eventfd_info eventfd_i;
   struct file *eventfp;
@@ -4479,7 +4554,8 @@ static int ring_setsockopt(struct socket *sock,
       printk("[PF_RING] +++ SO_ADD_FILTERING_RULE(len=%d)(len=%u)\n",
 	     optlen, (unsigned int)sizeof(ip_addr));
 
-    if(pfr->ring_netdev == &none_dev) return -EFAULT;
+    if(pfr->ring_netdev == &none_device_element)
+      return -EFAULT;
 
     if(optlen == sizeof(filtering_rule)) {
       int ret;
@@ -4503,16 +4579,16 @@ static int ring_setsockopt(struct socket *sock,
       write_lock(&pfr->ring_rules_lock);
       list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
 	filtering_rule_element *entry;
-	
+
 	entry = list_entry(ptr, filtering_rule_element, list);
-	
+
 	if(entry->rule.rule_id == rule_id) {
 	  /* A rule with the same if exists */
 	  write_unlock(&pfr->ring_rules_lock);
 	  return(-EEXIST);
 	}
       }
-       
+
       ret = add_filtering_rule_element(pfr, rule);
       write_unlock(&pfr->ring_rules_lock);
 
@@ -4541,7 +4617,7 @@ static int ring_setsockopt(struct socket *sock,
     break;
 
   case SO_REMOVE_FILTERING_RULE:
-    if(pfr->ring_netdev == &none_dev) return -EFAULT;
+    if(pfr->ring_netdev == &none_device_element) return -EFAULT;
 
     if(optlen == sizeof(u_int16_t /* rule_id */ )) {
       /* This is a list rule */
@@ -4645,7 +4721,7 @@ static int ring_setsockopt(struct socket *sock,
 
   case SO_SET_MASTER_RING:
     /* Avoid using master sockets with bound rings */
-    if(pfr->ring_netdev == &none_dev) return -EFAULT;
+    if(pfr->ring_netdev == &none_device_element) return -EFAULT;
 
     if(optlen != sizeof(ring_id))
       return -EINVAL;
@@ -4660,27 +4736,27 @@ static int ring_setsockopt(struct socket *sock,
 
   case SO_ADD_HW_FILTERING_RULE:
   case SO_DEL_HW_FILTERING_RULE:
-    if(optlen != sizeof(hw_rule))
+    if(optlen != sizeof(hw_filtering_rule))
       return -EINVAL;
 
-    if(copy_from_user(&hw_rule, optval, sizeof(hw_rule)))
+    if(copy_from_user(&hw_rule.rule, optval, sizeof(hw_rule)))
       return -EFAULT;
 
-    ret = handle_hw_filtering_rule(pfr->ring_netdev, &hw_rule,
-				   (optname == SO_ADD_HW_FILTERING_RULE) ? 1 : 0);
+    hw_rule.command = (optname == SO_ADD_HW_FILTERING_RULE) ? add_hw_rule : remove_hw_rule;
+    ret = handle_hw_filtering_rule(pfr, &hw_rule);
 
-    if (ret != -1){
+    if(ret != -1) {
       struct list_head *ptr, *tmp_ptr;
-      
-      list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
-        ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
 
-        if(dev_ptr->dev == pfr->ring_netdev) {
-          if(optname == SO_ADD_HW_FILTERING_RULE)
-            dev_ptr->num_hw_filters++;
+      list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
+        ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
+
+        if(dev_ptr->dev == pfr->ring_netdev->dev) {
+          if(hw_rule.command == add_hw_rule)
+            dev_ptr->hw_filters.num_filters++;
           else {
-	    if(dev_ptr->num_hw_filters > 0)
-	      dev_ptr->num_hw_filters--;
+	    if(dev_ptr->hw_filters.num_filters > 0)
+	      dev_ptr->hw_filters.num_filters--;
           }
           break;
         }
@@ -4739,14 +4815,14 @@ static int ring_setsockopt(struct socket *sock,
   case SO_SET_VPFRING_EVENTFD:
     if(optlen != sizeof(eventfd_i))
       return -EINVAL;
-    
+
     if(copy_from_user(&eventfd_i, optval, sizeof(eventfd_i)))
       return -EFAULT;
-    
-    if (IS_ERR(eventfp = eventfd_fget(eventfd_i.fd))) {
+
+    if(IS_ERR(eventfp = eventfd_fget(eventfd_i.fd))) {
       return -EFAULT;
     }
-    
+
     pfr->vpfring_ctx = eventfd_ctx_fileget(eventfp);
     break;
 #endif
@@ -4769,7 +4845,7 @@ static int ring_getsockopt(struct socket *sock,
 			   char __user * optval, int __user * optlen)
 {
   int len, debug = 0;
-  struct ring_opt *pfr = ring_sk(sock->sk);
+  struct pf_ring_socket *pfr = ring_sk(sock->sk);
 
   if(pfr == NULL)
     return(-EINVAL);
@@ -4969,7 +5045,7 @@ static int ring_getsockopt(struct socket *sock,
     {
       u_int8_t num_rx_channels;
 
-      if(pfr->ring_netdev == &none_dev) {
+      if(pfr->ring_netdev == &none_device_element) {
 	/* Device not yet bound */
 	num_rx_channels = UNKNOWN_NUM_RX_CHANNELS;
       } else {
@@ -5068,7 +5144,7 @@ void dna_device_handler(dna_device_operation operation,
       list_add(&next->list, &ring_dna_devices_list);
       dna_devices_list_size++;
       /* Increment usage count to avoid unloading it while DNA modules are in use */
-      try_module_get(THIS_MODULE);	
+      try_module_get(THIS_MODULE);
     } else {
       printk("[PF_RING] Could not kmalloc slot!!\n");
     }
@@ -5085,7 +5161,7 @@ void dna_device_handler(dna_device_operation operation,
 	kfree(entry);
 	dna_devices_list_size--;
 	/* Decrement usage count for DNA devices */
-	module_put(THIS_MODULE); 
+	module_put(THIS_MODULE);
 	break;
       }
     }
@@ -5169,7 +5245,7 @@ static struct net_proto_family ring_family_ops = {
 
 // BD: API changed in 2.6.12, ref:
 // http://svn.clkao.org/svnweb/linux/revision/?rev=28201
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
 static struct proto ring_proto = {
   .name = "PF_RING",
   .owner = THIS_MODULE,
@@ -5196,16 +5272,25 @@ void remove_device_from_ring_list(struct net_device *dev) {
   struct list_head *ptr, *tmp_ptr;
 
   list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
-    ring_device_element *dev_ptr;
+    ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
 
-    dev_ptr = list_entry(ptr, ring_device_element, list);
     if(dev_ptr->dev == dev) {
+      struct list_head *ring_ptr, *ring_tmp_ptr;
+
       if(dev_ptr->proc_entry) {
-	if(dev_ptr->has_hw_filtering)
+	if(dev_ptr->device_type != standard_nic_family)
 	  remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
 
 	remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
 	remove_proc_entry(dev_ptr->dev->name, ring_proc_dev_dir);
+      }
+      
+      /* We now have to "un-bind" existing sockets */
+      list_for_each_safe(ring_ptr, ring_tmp_ptr, &ring_table) {
+	struct ring_element   *entry = list_entry(ring_ptr, struct ring_element, list);
+	struct pf_ring_socket *pfr = ring_sk(entry->sk);
+	
+	pfr->ring_netdev = &none_device_element; /* Unbinding socket */
       }
 
       list_del(ptr);
@@ -5224,10 +5309,10 @@ int add_device_to_ring_list(struct net_device *dev) {
     return(-ENOMEM);
 
   memset(dev_ptr, 0, sizeof(ring_device_element));
-  INIT_LIST_HEAD(&dev_ptr->list);
+  INIT_LIST_HEAD(&dev_ptr->device_list);
   dev_ptr->dev = dev;
   dev_ptr->proc_entry = proc_mkdir(dev_ptr->dev->name, ring_proc_dev_dir);
-  dev_ptr->has_hw_filtering = 0;
+  dev_ptr->device_type = standard_nic_family; /* Default */
 
   create_proc_read_entry(PROC_INFO, 0 /* read-only */,
 			 dev_ptr->proc_entry,
@@ -5235,14 +5320,14 @@ int add_device_to_ring_list(struct net_device *dev) {
 			 dev_ptr);
 
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
-  /* Dirty trick to fix at some point; FIXME */
+  /* Dirty trick to fix at some point used to discover Intel 82599 interfaces: FIXME */
   if((dev_ptr->dev->ethtool_ops != NULL) && (dev_ptr->dev->ethtool_ops->set_eeprom != NULL)) {
-    struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_ELEMENT] */
-    hw_filtering_rule_element element;
+    struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_REQUEST] */
+    hw_filtering_rule_request element;
     int rc;
 
     memset(&element, 0, sizeof(element));
-    eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_ELEMENT;
+    eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST;
     element.command = CHECK_COMMAND;
 
     rc = dev_ptr->dev->ethtool_ops->set_eeprom(dev_ptr->dev, &eeprom, (u8*)&element);
@@ -5250,25 +5335,29 @@ int add_device_to_ring_list(struct net_device *dev) {
 
     if(rc == 0) {
       /* This device supports hardware filtering */
-      struct proc_dir_entry *entry;
+      dev_ptr->device_type = intel_82599_family;
 
+      /* Setup handlers */
+      dev_ptr->hw_filters.filter_handlers.five_tuple_handler = i82599_five_tuple_handler;
+      dev_ptr->hw_filters.filter_handlers.perfect_filter_handler = i82599_perfect_filter_handler;
+
+#ifdef ENABLE_PROC_WRITE_RULE
       entry = create_proc_read_entry(PROC_RULES, 0666 /* rw */,
 				     dev_ptr->proc_entry,
-				     ring_proc_dev_rule_read,
-				     dev_ptr);
+				     ring_proc_dev_rule_read, dev_ptr);
       if(entry) {
 	entry->write_proc = ring_proc_dev_rule_write;
-	dev_ptr->has_hw_filtering = 1;
-	printk("[PF_RING] Device %s DOES support hardware packet filtering\n", dev->name);
+	printk("[PF_RING] Device %s (Intel 82599) DOES support hardware packet filtering\n", dev->name);
       } else
 	printk("[PF_RING] Error while creating /proc entry 'rules' for device %s\n", dev->name);
+#endif
     } else
       printk("[PF_RING] Device %s does NOT support hardware packet filtering [1]\n", dev->name);
   } else
     printk("[PF_RING] Device %s does NOT support hardware packet filtering [2]\n", dev->name);
 #endif
-  
-  list_add(&dev_ptr->list, &ring_aware_device_list);
+
+  list_add(&dev_ptr->device_list, &ring_aware_device_list);
 
   return(0);
 }
@@ -5306,7 +5395,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
       if(debug)
 	printk("[PF_RING] packet_notifier(%s) [REGISTER][pfring_ptr=%p][hook=%p]\n",
 	       dev->name, dev->pfring_ptr, &ring_hooks);
-      
+
       if(dev->pfring_ptr == NULL) {
 	dev->pfring_ptr = &ring_hooks;
 	if(add_device_to_ring_list(dev) != 0) {
@@ -5342,15 +5431,15 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 	if(debug) printk("[PF_RING] Device change name %s\n", dev->name);
 
 	list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
-	  ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, list);
+	  ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
 
 	  if(dev_ptr->dev == dev) {
 	    if(debug)
 	      printk("[PF_RING] ==>> FOUND device change name %s -> %s\n",
 		     dev_ptr->proc_entry->name, dev->name);
-	    
+
 	    /* Remove old entry */
-	    if(dev_ptr->has_hw_filtering)
+	    if(dev_ptr->device_type != standard_nic_family)
 	      remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
 
 	    remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
@@ -5362,8 +5451,9 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 				   ring_proc_dev_get_info /* read */,
 				   dev_ptr);
 
+#ifdef ENABLE_PROC_WRITE_RULE
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
-	    if(dev_ptr->has_hw_filtering) {
+	    if(dev_ptr->device_type != standard_nic_family) {
 	      struct proc_dir_entry *entry;
 
 	      entry= create_proc_read_entry(PROC_RULES, 0666 /* rw */,
@@ -5373,6 +5463,7 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 	      if(entry)
 		entry->write_proc = ring_proc_dev_rule_write;
 	    }
+#endif
 #endif
 
 	    dev_ptr->proc_entry->name = dev->name;
@@ -5420,11 +5511,11 @@ static void __exit ring_exit(void)
   list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
     ring_device_element *dev_ptr;
 
-    dev_ptr = list_entry(ptr, ring_device_element, list);
+    dev_ptr = list_entry(ptr, ring_device_element, device_list);
     hook = (struct pfring_hooks*)dev_ptr->dev->pfring_ptr;
 
     /* Remove /proc entry for the selected device */
-    if(dev_ptr->has_hw_filtering)
+    if(dev_ptr->device_type != standard_nic_family)
       remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
 
     remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
@@ -5458,7 +5549,7 @@ static void __exit ring_exit(void)
   }
 
   sock_unregister(PF_RING);
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
   proto_unregister(&ring_proto);
 #endif
   unregister_netdevice_notifier(&ring_netdev_notifier);
@@ -5471,8 +5562,9 @@ static void __exit ring_exit(void)
 
 static int __init ring_init(void)
 {
+  static struct net_device any_dev, none_dev;
   int i;
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
   int rc;
 #endif
 
@@ -5480,7 +5572,7 @@ static int __init ring_init(void)
 	 "(C) 2004-11 L.Deri <deri@ntop.org>\n",
 	 RING_VERSION, SVN_REV);
 
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
+#if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,11))
   if((rc = proto_register(&ring_proto, 0)) != 0)
     return(rc);
 #endif
@@ -5498,10 +5590,14 @@ static int __init ring_init(void)
   memset(&any_dev, 0, sizeof(any_dev));
   strcpy(any_dev.name, "any");
   any_dev.ifindex = MAX_NUM_IFIDX-1, any_dev.type = ARPHRD_ETHER;
-    
+  memset(&any_device_element, 0, sizeof(any_device_element));
+  any_device_element.dev = &any_dev, any_device_element.device_type = standard_nic_family;
+
   memset(&none_dev, 0, sizeof(none_dev));
   strcpy(none_dev.name, "none");
   none_dev.ifindex = MAX_NUM_IFIDX-2;
+  memset(&none_device_element, 0, sizeof(none_device_element));
+  none_device_element.dev = &none_dev, none_device_element.device_type = standard_nic_family;
 
   ring_proc_init();
   sock_register(&ring_family_ops);
