@@ -930,19 +930,17 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	{
 	  /* Let's see if we can cast this structure to a filter */
 	  int debug = 0;
-	  u8 rule_type = eeprom->len;
+	  u8 request_type = eeprom->len;
 
 	  if((bytes != NULL)
-	     && ((rule_type == 0 /* ckeck */)
-		 || (rule_type == 1    /* intel_82599_five_tuple_filter_hw_rule */)
-		 || (rule_type == 2 /* intel_82599_perfect_filter_hw_rule */))
-	     && (eeprom->magic == MAGIC_HW_FILTERING_RULE_REQUEST)) {
+	     && ((request_type == 0 /* ckeck */) || (request_type == 1 /* add/remove */))) {
 	    /* Here we go! */
 	    struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	    union ixgbe_atr_input input_struct;
 	    struct ixgbe_atr_input_masks input_masks;
 	    int target_queue;
 	    hw_filtering_rule_command request = (hw_filtering_rule_command)eeprom->offset;
+	    hw_filtering_rule *rule = (hw_filtering_rule*)bytes;
 	    intel_82599_perfect_filter_hw_rule *perfect_rule;
 	    intel_82599_five_tuple_filter_hw_rule *ftfq_rule;
 
@@ -953,7 +951,48 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	      return -EOPNOTSUPP;
 	    }
 
-	    if(rule_type == 2 /* intel_82599_perfect_filter_hw_rule */) {
+	    if(request_type == 0) {
+	      /* ckeck */
+	      /*
+		We just want to check if this interface
+		supports hardware filtering
+	      */
+	      return(0);
+	    }
+
+	    switch(rule->rule_family_type) {
+	    case intel_82599_five_tuple_rule:
+	      ftfq_rule = &rule->rule_family.five_tuple_rule;
+
+	      /* determine if we need to drop or route the packet */
+	      if(ftfq_rule->queue_id >= (MAX_RX_QUEUES - 1))
+		target_queue = MAX_RX_QUEUES - 1;
+	      else
+		target_queue = ftfq_rule->queue_id;
+
+	      if(debug)
+		printk("--> ixgbe_ftqf_add_filter(id=%d,target_queue=%d) called\n",
+		       rule->rule_id, target_queue);
+
+	      spin_lock(&adapter->fdir_perfect_lock);
+	      if(request == add_hw_rule) {
+		ixgbe_ftqf_add_filter(&adapter->hw, ftfq_rule->proto,
+				      ftfq_rule->s_addr, ftfq_rule->s_port,
+				      ftfq_rule->d_addr, ftfq_rule->d_port,
+				      target_queue, rule->rule_id);
+	      } else { /* Remove */
+		/* Set the rule to accept all */
+		ixgbe_ftqf_add_filter(&adapter->hw,
+				      0, 0, 0, 0, 0,
+				      0, rule->rule_id);
+	      }
+
+	      spin_unlock(&adapter->fdir_perfect_lock);
+	      break;
+
+	    case intel_82599_perfect_filter_rule:
+	      perfect_rule = &rule->rule_family.perfect_rule;
+
 	      /*
 	       * Don't allow programming if we're not in perfect filter mode, or
 	       * if the action is a queue greater than the number of online Tx
@@ -965,46 +1004,7 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 		}
 		return -EINVAL;
 	      }
-	    }
 
-	    switch(rule_type) {
-	    case 0: /* ckeck */
-	      /*
-		We just want to check if this interface
-		supports hardware filtering
-	      */
-	      return(0);
-	    case 1: /* intel_82599_five_tuple_filter_hw_rule */
-	      ftfq_rule = (intel_82599_five_tuple_filter_hw_rule*)bytes;
-
-	      /* determine if we need to drop or route the packet */
-	      if(ftfq_rule->queue_id >= (MAX_RX_QUEUES - 1))
-		target_queue = MAX_RX_QUEUES - 1;
-	      else
-		target_queue = ftfq_rule->queue_id;
-
-	      if(debug)
-		printk("--> ixgbe_ftqf_add_filter(id=%d,target_queue=%d) called\n",
-		       ftfq_rule->rule_id, target_queue);
-
-	      spin_lock(&adapter->fdir_perfect_lock);
-	      if(request == add_hw_rule) {
-		ixgbe_ftqf_add_filter(&adapter->hw, ftfq_rule->proto,
-				      ftfq_rule->s_addr, ftfq_rule->s_port,
-				      ftfq_rule->d_addr, ftfq_rule->d_port,
-				      target_queue, ftfq_rule->rule_id);
-	      } else { /* Remove */
-		/* Set the rule to accept all */
-		ixgbe_ftqf_add_filter(&adapter->hw,
-				      0, 0, 0, 0, 0,
-				      0, ftfq_rule->rule_id);
-	      }
-
-	      spin_unlock(&adapter->fdir_perfect_lock);
-	      break;
-
-	    case 2: /* intel_82599_perfect_filter_hw_rule */
-	      perfect_rule = (intel_82599_perfect_filter_hw_rule*)bytes;
 
 	      /* determine if we need to drop or route the packet */
 	      if(perfect_rule->queue_id >= (MAX_RX_QUEUES - 1))
@@ -1017,7 +1017,7 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 
 	      if(debug)
 		printk("--> ixgbe_set_rx_ntuple(rule_id=%d, request=%d, proto=%d, vlan=%d, ips=%08X, sport=%d, ipd=%08X, dport=%d)\n",
-		       perfect_rule->rule_id, request,
+		       rule->rule_id, request,
 		       perfect_rule->proto, perfect_rule->vlan_id,
 		       perfect_rule->s_addr, perfect_rule->s_port,
 		       perfect_rule->d_addr, perfect_rule->d_port);
@@ -1061,11 +1061,14 @@ static int ixgbe_set_eeprom(struct net_device *netdev,
 	      spin_lock(&adapter->fdir_perfect_lock);
 	      if(debug)
 		printk("--> ixgbe_fdir_add_perfect_filter_82599(id=%d,target_queue=%d/%d/%d) called\n",
-		       perfect_rule->rule_id, target_queue, target_queue, MAX_RX_QUEUES);
-	      ixgbe_fdir_add_perfect_filter_82599(&adapter->hw, &input_struct, &input_masks, perfect_rule->rule_id,
+		       rule->rule_id, target_queue, target_queue, MAX_RX_QUEUES);
+	      ixgbe_fdir_add_perfect_filter_82599(&adapter->hw, &input_struct, &input_masks, rule->rule_id,
 						  (request == add_hw_rule) ? target_queue : 0);
 	      spin_unlock(&adapter->fdir_perfect_lock);
 	      break;
+
+	    default:
+	      return -EOPNOTSUPP; /* It should not happen */
 	    } /* switch */
 
 	    return 0;

@@ -126,7 +126,8 @@ extern "C" {
   int pfring_set_master_id(pfring *ring, u_int32_t master_id);
   int pfring_set_master(pfring *ring, pfring *master);
   int pfring_set_channel_id(pfring *ring, int32_t channel_id);
-  int pfring_set_hw_rule(pfring *ring, hw_filtering_rule *rule, u_int8_t add_rule);
+  int pfring_add_hw_rule(pfring *ring, hw_filtering_rule *rule);
+  int pfring_remove_hw_rule(pfring *ring, u_int16_t rule_id);
   int pfring_set_application_name(pfring *ring, char *name);
   int pfring_remove_from_cluster(pfring *ring);
   int pfring_purge_idle_hash_rules(pfring *ring, u_int16_t inactivity_sec);  

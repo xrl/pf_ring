@@ -82,15 +82,26 @@ int pfring_set_master(pfring *ring, pfring *master) {
 
 /* ******************************* */
 
-int pfring_set_hw_rule(pfring *ring, hw_filtering_rule *rule, u_int8_t add_rule) {
+int pfring_add_hw_rule(pfring *ring, hw_filtering_rule *rule) {
 #ifdef USE_PCAP
   return(-1);
 #else
   if(ring->dna_mapped_device) return(-1);
 
-  return(ring ? setsockopt(ring->fd, 0,
-			   add_rule ? SO_ADD_HW_FILTERING_RULE : SO_DEL_HW_FILTERING_RULE,
+  return(ring ? setsockopt(ring->fd, 0, SO_ADD_HW_FILTERING_RULE,
 			   rule, sizeof(hw_filtering_rule)) : -1);
+#endif
+}
+
+/* ******************************* */
+
+int pfring_remove_hw_rule(pfring *ring, u_int16_t rule_id) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+  if(ring->dna_mapped_device) return(-1);
+
+  return(ring ? setsockopt(ring->fd, 0, SO_DEL_HW_FILTERING_RULE, &rule_id, sizeof(rule_id)) : -1);
 #endif
 }
 

@@ -284,7 +284,6 @@ typedef struct {
 /* 82599 packet steering filters */
 
 typedef struct {
-  u_int16_t rule_id;
   u_int8_t  proto;
   u_int32_t s_addr, d_addr;
   u_int16_t s_port, d_port;
@@ -292,7 +291,6 @@ typedef struct {
 } intel_82599_five_tuple_filter_hw_rule;
 
 typedef struct {
-  u_int16_t rule_id;
   u_int16_t vlan_id;
   u_int8_t  proto;
   u_int32_t s_addr, d_addr;
@@ -332,7 +330,6 @@ typedef enum {
 } silicom_redirector_rule_type;
 
 typedef struct {
-  u_int16_t rule_id;
   silicom_redirector_rule_type rule_type;
   u_int8_t rule_port; /* Port on which the rule is defined */
   u_int8_t rule_target_port; /* Target port (ignored for drop rules) */
@@ -352,6 +349,7 @@ typedef enum {
 
 typedef struct {
   hw_filtering_rule_type rule_family_type;
+  u_int16_t rule_id;
 
   union {
     intel_82599_five_tuple_filter_hw_rule five_tuple_rule;
@@ -362,18 +360,10 @@ typedef struct {
 
 #define MAGIC_HW_FILTERING_RULE_REQUEST  0x29010020
 
-#define RULE_COMMAND        1
-#define CHECK_COMMAND       2
-
 typedef enum {
   add_hw_rule,
   remove_hw_rule
 } hw_filtering_rule_command;
-
-typedef struct {
-  hw_filtering_rule_command command;
-  hw_filtering_rule rule;
-} hw_filtering_rule_request;
 
 /* *********************************** */
 
@@ -382,13 +372,13 @@ extern struct pf_ring_socket *pfr; /* Forward */
 /* *********************************** */
 
 typedef int (*five_tuple_rule_handler)(struct pf_ring_socket *pfr, 
-				       intel_82599_five_tuple_filter_hw_rule *rule,
+				       hw_filtering_rule *rule,
 				       hw_filtering_rule_command request);
 typedef int (*perfect_filter_hw_rule_handler)(struct pf_ring_socket *pfr, 
-					      intel_82599_perfect_filter_hw_rule *rule, 
+					      hw_filtering_rule *rule, 
 					      hw_filtering_rule_command request);
 typedef int (*silicom_redirector_hw_rule_handler)(struct pf_ring_socket *pfr, 
-						  silicom_redirector_hw_rule *rule,
+						  hw_filtering_rule *rule,
 						  hw_filtering_rule_command request);
 
 typedef struct {
@@ -422,13 +412,13 @@ typedef struct {
 
 /* ************************************************* */
 
-typedef struct _filtering_hash_bucket {
+typedef struct _sw_filtering_hash_bucket {
   hash_filtering_rule           rule;
   void                          *plugin_data_ptr; /* ptr to a *continuous* memory area
 						     allocated by the plugin */
   u_int16_t                     plugin_data_ptr_len;
-  struct _filtering_hash_bucket *next;
-} filtering_hash_bucket;
+  struct _sw_filtering_hash_bucket *next;
+} sw_filtering_hash_bucket;
 
 /* *********************************** */
 
@@ -640,8 +630,8 @@ struct ring_element {
 
 /* ************************************************* */
 
-typedef int (*do_handle_filtering_hash_bucket)(struct pf_ring_socket *pfr,
-					       filtering_hash_bucket* rule,
+typedef int (*do_handle_sw_filtering_hash_bucket)(struct pf_ring_socket *pfr,
+					       sw_filtering_hash_bucket* rule,
 					       u_char add_rule);
 
 typedef int (*do_add_packet_to_ring)(struct pf_ring_socket *pfr, 
@@ -690,12 +680,16 @@ struct pf_ring_socket {
   /* BPF Filter */
   struct sk_filter *bpfFilter;
 
-  /* Filtering Rules */
-  filtering_hash_bucket **filtering_hash;
-  u_int16_t num_filtering_rules;
-  u_int8_t rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
-  struct list_head rules;
+  /* Sw Filtering Rules */
+  sw_filtering_hash_bucket **sw_filtering_hash;
+  u_int16_t num_sw_filtering_rules;
+  u_int8_t sw_filtering_rules_default_accept_policy; /* 1=default policy is accept, drop otherwise */
+  struct list_head sw_filtering_rules;
 
+  /* Hw Filtering Rules */
+  u_int16_t num_hw_filtering_rules;
+  struct list_head hw_filtering_rules;
+  
   /* Locks */
   atomic_t num_ring_users;
   wait_queue_head_t ring_slots_waitqueue;
@@ -705,7 +699,7 @@ struct pf_ring_socket {
   u_int insert_page_id, insert_slot_id;
 
   /* Function pointer */
-  do_handle_filtering_hash_bucket handle_hash_rule;
+  do_handle_sw_filtering_hash_bucket handle_hash_rule;
   do_add_packet_to_ring add_packet_to_ring;
 
   /* Kernel consumer */
@@ -741,7 +735,12 @@ typedef struct {
 
   /* Plugin action */
   void *plugin_data_ptr; /* ptr to a *continuous* memory area allocated by the plugin */
-} filtering_rule_element;
+} sw_filtering_rule_element;
+
+typedef struct {
+  hw_filtering_rule rule;
+  struct list_head list;
+} hw_filtering_rule_element;
 
 struct parse_buffer {
   void      *mem;
@@ -753,8 +752,8 @@ struct parse_buffer {
 /* Plugins */
 /* Execute an action (e.g. update rule stats) */
 typedef int (*plugin_handle_skb)(struct pf_ring_socket *the_ring,
-				 filtering_rule_element *rule,       /* In case the match is on the list */
-				 filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
+				 sw_filtering_rule_element *rule,       /* In case the match is on the list */
+				 sw_filtering_hash_bucket *hash_bucket, /* In case the match is on the hash */
 				 struct pfring_pkthdr *hdr,
 				 struct sk_buff *skb, int displ,
 				 u_int16_t filter_plugin_id,
@@ -762,25 +761,25 @@ typedef int (*plugin_handle_skb)(struct pf_ring_socket *the_ring,
 				 rule_action_behaviour *behaviour);
 /* Return 1/0 in case of match/no match for the given skb */
 typedef int (*plugin_filter_skb)(struct pf_ring_socket *the_ring,
-				 filtering_rule_element *rule,
+				 sw_filtering_rule_element *rule,
 				 struct pfring_pkthdr *hdr,
 				 struct sk_buff *skb, int displ,
 				 struct parse_buffer **filter_rule_memory_storage);
 /* Get stats about the rule */
 typedef int (*plugin_get_stats)(struct pf_ring_socket *pfr,
-				filtering_rule_element *rule,
-				filtering_hash_bucket  *hash_bucket,
+				sw_filtering_rule_element *rule,
+				sw_filtering_hash_bucket  *hash_bucket,
 				u_char* stats_buffer, u_int stats_buffer_len);
 
 /* Build a new rule when forward_packet_add_rule_and_stop_rule_evaluation is specified
    return 0 in case of success , an error code (< 0) otherwise */
-typedef int (*plugin_add_rule)(filtering_rule_element *rule,
+typedef int (*plugin_add_rule)(sw_filtering_rule_element *rule,
 			       struct pfring_pkthdr *hdr,
-			       filtering_hash_bucket *hash_bucket);
+			       sw_filtering_hash_bucket *hash_bucket);
 typedef void (*plugin_register)(u_int8_t register_plugin);
 
 /* Called when a ring is disposed */
-typedef void (*plugin_free_ring_mem)(filtering_rule_element *rule);
+typedef void (*plugin_free_ring_mem)(sw_filtering_rule_element *rule);
 
 typedef void (*copy_raw_data_2ring)(struct pf_ring_socket *pfr,
 				    struct pfring_pkthdr *dummy_hdr,

@@ -109,7 +109,7 @@
 
 #include <linux/pf_ring.h>
 
-#define RING_DEBUG 
+#define RING_DEBUG
 
 #ifndef SVN_REV
 #define SVN_REV ""
@@ -577,7 +577,7 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
     case intel_82599_family:  dev_family = "Intel 82599"; break;
     case silicom_redirector_family: dev_family = "Silicom Redirector"; break;
     }
-    
+
     rlen =  sprintf(buf,      "Name:              %s\n", dev->name);
     rlen += sprintf(buf+rlen, "Index:             %d\n", dev->ifindex);
 
@@ -605,8 +605,8 @@ static int ring_proc_dev_get_info(char *buf, char **start, off_t offset,
 
 /* **************** 82599 ****************** */
 
-static int i82599_generic_handler(u8 rule_type, struct pf_ring_socket *pfr,
-				  u8 *rule, hw_filtering_rule_command request) {
+static int i82599_generic_handler(struct pf_ring_socket *pfr,
+				  hw_filtering_rule *rule, hw_filtering_rule_command request) {
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31))
   struct net_device *dev = pfr->ring_netdev->dev;
   int debug = 0;
@@ -619,9 +619,10 @@ static int i82599_generic_handler(u8 rule_type, struct pf_ring_socket *pfr,
   if(debug) printk("[PF_RING] hw_filtering_rule[%s][request=%d][%p]\n",
 		   dev->name, request, dev->ethtool_ops->set_eeprom);
 
-  eeprom.len = rule_type, eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST, eeprom.offset = request;
+  eeprom.len = 1 /* add/remove (no check) */, 
+    eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST, eeprom.offset = request;
 
-  return(dev->ethtool_ops->set_eeprom(dev, &eeprom, rule));
+  return(dev->ethtool_ops->set_eeprom(dev, &eeprom, (u8*)rule));
 #else
   return(-1);
 #endif
@@ -629,50 +630,29 @@ static int i82599_generic_handler(u8 rule_type, struct pf_ring_socket *pfr,
 
 /* ************************************* */
 
-static int i82599_five_tuple_handler(struct pf_ring_socket *pfr,
-				     intel_82599_five_tuple_filter_hw_rule *rule,
-				     hw_filtering_rule_command request) {
-  return(i82599_generic_handler(1 /* FTFQ */, pfr, (u8*)rule, request));
-}
-
-/* ************************************* */
-
-static int i82599_perfect_filter_handler(struct pf_ring_socket *pfr,
-					 intel_82599_perfect_filter_hw_rule *rule, 
-					 hw_filtering_rule_command request) {
-  return(i82599_generic_handler(2 /* Perfect */, pfr, (u8*)rule, request));
-}
-
-/* ************************************* */
-
-/* FIX FIX FIX  *** ADD MUTEX *** FIX FIX FIX */
-static int handle_hw_filtering_rule(struct pf_ring_socket *pfr, hw_filtering_rule_request *rule) {
-  switch(rule->rule.rule_family_type) {
+static int handle_hw_filtering_rule(struct pf_ring_socket *pfr, 
+				    hw_filtering_rule *rule,
+				    hw_filtering_rule_command command) {
+  switch(rule->rule_family_type) {
   case intel_82599_five_tuple_rule:
     if(pfr->ring_netdev->hw_filters.filter_handlers.five_tuple_handler == NULL)
       return(-EINVAL);
     else
-      return(pfr->ring_netdev->hw_filters.filter_handlers.five_tuple_handler(pfr, 
-									    &rule->rule.rule_family.five_tuple_rule, 
-									    rule->command));
+      return(i82599_generic_handler(pfr, rule, command));
     break;
 
   case intel_82599_perfect_filter_rule:
     if(pfr->ring_netdev->hw_filters.filter_handlers.perfect_filter_handler == NULL)
       return(-EINVAL);
     else
-      return(pfr->ring_netdev->hw_filters.filter_handlers.perfect_filter_handler(pfr, 
-										&rule->rule.rule_family.perfect_rule, 
-										rule->command));
+      return(i82599_generic_handler(pfr, rule, command));
     break;
 
   case silicom_redirector_rule:
     if(pfr->ring_netdev->hw_filters.filter_handlers.redirector_rule_handler == NULL)
       return(-EINVAL);
     else
-      return(pfr->ring_netdev->hw_filters.filter_handlers.redirector_rule_handler(pfr, 
-										 &rule->rule.rule_family.redirector_rule, 
-										 rule->command));
+      return(pfr->ring_netdev->hw_filters.filter_handlers.redirector_rule_handler(pfr, rule, command));
     break;
   }
 
@@ -887,7 +867,8 @@ static int ring_proc_get_info(char *buf, char **start, off_t offset,
 	rlen += sprintf(buf + rlen, "Appl. Name         : %s\n", pfr->appl_name ? pfr->appl_name : "<unknown>");
 	rlen += sprintf(buf + rlen, "IP Defragment      : %s\n", enable_ip_defrag ? "Yes" : "No");
 	rlen += sprintf(buf + rlen, "BPF Filtering      : %s\n", pfr->bpfFilter ? "Enabled" : "Disabled");
-	rlen += sprintf(buf + rlen, "# Filt. Rules      : %d\n", pfr->num_filtering_rules);
+	rlen += sprintf(buf + rlen, "# Sw Filt. Rules   : %d\n", pfr->num_sw_filtering_rules);
+	rlen += sprintf(buf + rlen, "# Hw Filt. Rules   : %d\n", pfr->num_hw_filtering_rules);
 	rlen += sprintf(buf + rlen, "Cluster Id         : %d\n", pfr->cluster_id);
 	rlen += sprintf(buf + rlen, "Channel Id         : %d\n", pfr->channel_id);
 	rlen += sprintf(buf + rlen, "Min Num Slots      : %d\n", fsi->min_num_slots);
@@ -1091,7 +1072,8 @@ static int ring_alloc_mem(struct sock *sk)
 #endif
 
   pfr->insert_page_id = 1, pfr->insert_slot_id = 0;
-  pfr->rules_default_accept_policy = 1, pfr->num_filtering_rules = 0;
+  pfr->sw_filtering_rules_default_accept_policy = 1;
+  pfr->num_sw_filtering_rules = pfr->num_hw_filtering_rules = 0;
 
   return(0);
 }
@@ -1346,7 +1328,7 @@ inline u_int32_t hash_pkt_header(struct pfring_pkthdr * hdr, u_char mask_src,
 
 /* ********************************** */
 
-static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
+static int hash_bucket_match(sw_filtering_hash_bucket * hash_bucket,
 			     struct pfring_pkthdr *hdr,
 			     u_char mask_src, u_char mask_dst)
 {
@@ -1422,7 +1404,7 @@ static int hash_bucket_match(filtering_hash_bucket * hash_bucket,
 
 /* ********************************** */
 
-inline int hash_bucket_match_rule(filtering_hash_bucket * hash_bucket,
+inline int hash_bucket_match_rule(sw_filtering_hash_bucket * hash_bucket,
 				  hash_filtering_rule * rule)
 {
   int debug = 0;
@@ -1519,7 +1501,7 @@ inline int hash_filtering_rule_match(hash_filtering_rule * a,
 
 /* 0 = no match, 1 = match */
 static int match_filtering_rule(struct pf_ring_socket *the_ring,
-				filtering_rule_element * rule,
+				sw_filtering_rule_element * rule,
 				struct pfring_pkthdr *hdr,
 				struct sk_buff *skb,
 				int displ,
@@ -1988,11 +1970,11 @@ int check_perfect_rules(struct sk_buff *skb,
 			int displ, u_int *last_matched_plugin)
 {
   u_int hash_idx;
-  filtering_hash_bucket *hash_bucket;
+  sw_filtering_hash_bucket *hash_bucket;
   u_int8_t hash_found = 0;
 
   hash_idx = hash_pkt_header(hdr, 0, 0) % DEFAULT_RING_HASH_SIZE;
-  hash_bucket = pfr->filtering_hash[hash_idx];
+  hash_bucket = pfr->sw_filtering_hash[hash_idx];
 
   while(hash_bucket != NULL) {
     if(hash_bucket_match(hash_bucket, hdr, 0, 0)) {
@@ -2068,11 +2050,11 @@ int check_wildcard_rules(struct sk_buff *skb,
   struct list_head *ptr, *tmp_ptr;
   int debug = 0;
 
-  list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-    filtering_rule_element *entry;
+  list_for_each_safe(ptr, tmp_ptr, &pfr->sw_filtering_rules) {
+    sw_filtering_rule_element *entry;
     rule_action_behaviour behaviour = forward_packet_and_stop_rule_evaluation;
 
-    entry = list_entry(ptr, filtering_rule_element, list);
+    entry = list_entry(ptr, sw_filtering_rule_element, list);
 
     if(match_filtering_rule(pfr, entry, hdr, skb, displ,
 			    parse_memory_buffer, free_parse_mem,
@@ -2086,10 +2068,10 @@ int check_wildcard_rules(struct sk_buff *skb,
 	*fwd_pkt = 1;
 	break;
       } else if(behaviour == forward_packet_add_rule_and_stop_rule_evaluation) {
-	filtering_hash_bucket *hash_bucket;
+	sw_filtering_hash_bucket *hash_bucket;
 
 	*fwd_pkt = 1;
-	hash_bucket = (filtering_hash_bucket *)kcalloc(1, sizeof(filtering_hash_bucket), GFP_KERNEL);
+	hash_bucket = (sw_filtering_hash_bucket *)kcalloc(1, sizeof(sw_filtering_hash_bucket), GFP_KERNEL);
 
 	if(hash_bucket) {
 	  int rc = 0;
@@ -2124,7 +2106,7 @@ int check_wildcard_rules(struct sk_buff *skb,
 	    return(-1);
 	  } else {
 	    if(rc != -EEXIST) /* Rule already existing */
-	      pfr->num_filtering_rules++;
+	      pfr->num_sw_filtering_rules++;
 
 	    write_unlock(&pfr->ring_rules_lock);
 
@@ -2134,7 +2116,7 @@ int check_wildcard_rules(struct sk_buff *skb,
 		     ((hash_bucket->rule.host4_peer_a >> 8) & 0xff), ((hash_bucket->rule.host4_peer_a >> 0) & 0xff),
 		     hash_bucket->rule.port_peer_a, ((hash_bucket->rule.host4_peer_b >> 24) & 0xff),
 		     ((hash_bucket->rule.host4_peer_b >> 16) & 0xff), ((hash_bucket->rule.host4_peer_b >> 8) & 0xff),
-		     ((hash_bucket->rule.host4_peer_b >> 0) & 0xff), hash_bucket->rule.port_peer_b, pfr->num_filtering_rules);
+		     ((hash_bucket->rule.host4_peer_b >> 0) & 0xff), hash_bucket->rule.port_peer_b, pfr->num_sw_filtering_rules);
 	  }
 	}
 	break;
@@ -2259,7 +2241,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 #endif
 
   /* Extensions */
-  fwd_pkt = pfr->rules_default_accept_policy;
+  fwd_pkt = pfr->sw_filtering_rules_default_accept_policy;
   /* printk("[PF_RING] rules_default_accept_policy: [fwd_pkt=%d]\n", fwd_pkt); */
 
   /* ************************** */
@@ -2272,12 +2254,12 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	   skb->pkt_type, skb->cloned);
 
   /* [2.1] Search the hash */
-  if(pfr->filtering_hash != NULL)
+  if(pfr->sw_filtering_hash != NULL)
     hash_found = check_perfect_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem,
 				     parse_memory_buffer, displ, &last_matched_plugin);
 
   /* [2.2] Search rules list */
-  if((!hash_found) && (pfr->num_filtering_rules > 0)) {
+  if((!hash_found) && (pfr->num_sw_filtering_rules > 0)) {
     int rc = check_wildcard_rules(skb, pfr, hdr, &fwd_pkt, &free_parse_mem,
 				  parse_memory_buffer, displ, &last_matched_plugin);
 
@@ -2430,10 +2412,10 @@ int unregister_plugin(u_int16_t pfring_plugin_id)
 	list_entry(ring_ptr, struct ring_element, list);
       struct pf_ring_socket *pfr = ring_sk(entry->sk);
 
-      list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-	filtering_rule_element *rule;
+      list_for_each_safe(ptr, tmp_ptr, &pfr->sw_filtering_rules) {
+	sw_filtering_rule_element *rule;
 
-	rule = list_entry(ptr, filtering_rule_element, list);
+	rule = list_entry(ptr, sw_filtering_rule_element, list);
 
 	if(rule->rule.plugin_action.plugin_id == pfring_plugin_id) {
 	  if(plugin_registration[pfring_plugin_id]
@@ -2878,7 +2860,7 @@ static void free_filtering_rule(filtering_rule * rule)
 
 /* ************************************* */
 
-static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
+static void free_sw_filtering_hash_bucket(sw_filtering_hash_bucket * bucket)
 {
   if(bucket->plugin_data_ptr)
     kfree(bucket->plugin_data_ptr);
@@ -2902,8 +2884,8 @@ static void free_filtering_hash_bucket(filtering_hash_bucket * bucket)
 
 /* ************************************* */
 
-static int handle_filtering_hash_bucket(struct pf_ring_socket *pfr,
-					filtering_hash_bucket * rule,
+static int handle_sw_filtering_hash_bucket(struct pf_ring_socket *pfr,
+					sw_filtering_hash_bucket * rule,
 					u_char add_rule)
 {
   u_int32_t hash_value = hash_pkt(rule->rule.vlan_id, rule->rule.proto,
@@ -2913,7 +2895,7 @@ static int handle_filtering_hash_bucket(struct pf_ring_socket *pfr,
 
   if(debug)
     printk
-      ("[PF_RING] handle_filtering_hash_bucket(vlan=%u, proto=%u, "
+      ("[PF_RING] handle_sw_filtering_hash_bucket(vlan=%u, proto=%u, "
        "sip=%d.%d.%d.%d, sport=%u, dip=%d.%d.%d.%d, dport=%u, "
        "hash_value=%u, add_rule=%d) called\n", rule->rule.vlan_id,
        rule->rule.proto, ((rule->rule.host4_peer_a >> 24) & 0xff),
@@ -2928,35 +2910,35 @@ static int handle_filtering_hash_bucket(struct pf_ring_socket *pfr,
        rule->rule.port_peer_b, hash_value, add_rule);
 
   if(add_rule) {
-    if(pfr->filtering_hash == NULL)
-      pfr->filtering_hash = (filtering_hash_bucket **)
-	kcalloc(DEFAULT_RING_HASH_SIZE, sizeof(filtering_hash_bucket *), GFP_ATOMIC);
-    if(pfr->filtering_hash == NULL) {
+    if(pfr->sw_filtering_hash == NULL)
+      pfr->sw_filtering_hash = (sw_filtering_hash_bucket **)
+	kcalloc(DEFAULT_RING_HASH_SIZE, sizeof(sw_filtering_hash_bucket *), GFP_ATOMIC);
+    if(pfr->sw_filtering_hash == NULL) {
       /* kfree(rule); */
       if(debug)
-	printk("[PF_RING] handle_filtering_hash_bucket() returned %d [0]\n", -EFAULT);
+	printk("[PF_RING] handle_sw_filtering_hash_bucket() returned %d [0]\n", -EFAULT);
       return(-EFAULT);
     }
   }
 
   if(debug)
-    printk("[PF_RING] handle_filtering_hash_bucket() allocated memory\n");
+    printk("[PF_RING] handle_sw_filtering_hash_bucket() allocated memory\n");
 
-  if(pfr->filtering_hash == NULL) {
+  if(pfr->sw_filtering_hash == NULL) {
     /* We're trying to delete a hash rule from an empty hash */
     return(-EFAULT);
   }
 
-  if(pfr->filtering_hash[hash_value] == NULL) {
+  if(pfr->sw_filtering_hash[hash_value] == NULL) {
     if(add_rule)
-      pfr->filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
+      pfr->sw_filtering_hash[hash_value] = rule, rule->next = NULL, rc = 0;
     else {
       if(debug)
-	printk("[PF_RING] handle_filtering_hash_bucket() returned %d [1]\n", -1);
+	printk("[PF_RING] handle_sw_filtering_hash_bucket() returned %d [1]\n", -1);
       return(-1);	/* Unable to find the specified rule */
     }
   } else {
-    filtering_hash_bucket *prev = NULL, *bucket = pfr->filtering_hash[hash_value];
+    sw_filtering_hash_bucket *prev = NULL, *bucket = pfr->sw_filtering_hash[hash_value];
 
     while(bucket != NULL) {
       if(hash_filtering_rule_match(&bucket->rule, &rule->rule)) {
@@ -2969,17 +2951,17 @@ static int handle_filtering_hash_bucket(struct pf_ring_socket *pfr,
 	  /* We've found the bucket to delete */
 
 	  if(debug)
-	    printk("[PF_RING] handle_filtering_hash_bucket()"
+	    printk("[PF_RING] handle_sw_filtering_hash_bucket()"
 		   " found a bucket to delete: removing it\n");
 	  if(prev == NULL)
-	    pfr->filtering_hash[hash_value] = bucket->next;
+	    pfr->sw_filtering_hash[hash_value] = bucket->next;
 	  else
 	    prev->next = bucket->next;
 
-	  free_filtering_hash_bucket(bucket);
+	  free_sw_filtering_hash_bucket(bucket);
 	  kfree(bucket);
 	  if(debug)
-	    printk("[PF_RING] handle_filtering_hash_bucket() returned %d [2]\n", 0);
+	    printk("[PF_RING] handle_sw_filtering_hash_bucket() returned %d [2]\n", 0);
 	  return(0);
 	}
       } else {
@@ -2992,15 +2974,15 @@ static int handle_filtering_hash_bucket(struct pf_ring_socket *pfr,
       /* If the flow arrived until here, then this rule is unique */
 
       if(debug)
-	printk("[PF_RING] handle_filtering_hash_bucket() "
+	printk("[PF_RING] handle_sw_filtering_hash_bucket() "
 	       "no duplicate rule found: adding the rule\n");
 
       if(rule->rule.plugin_action.plugin_id > 0) {
 	if(plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_register)
 	  plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_register(0);
       }
-      rule->next = pfr->filtering_hash[hash_value];
-      pfr->filtering_hash[hash_value] = rule;
+      rule->next = pfr->sw_filtering_hash[hash_value];
+      pfr->sw_filtering_hash[hash_value] = rule;
       rc = 0;
     } else {
       /* The rule we searched for has not been found */
@@ -3009,7 +2991,7 @@ static int handle_filtering_hash_bucket(struct pf_ring_socket *pfr,
   }
 
   if(debug)
-    printk("[PF_RING] handle_filtering_hash_bucket() returned %d [3]\n",
+    printk("[PF_RING] handle_sw_filtering_hash_bucket() returned %d [3]\n",
 	   rc);
 
   return(rc);
@@ -3119,13 +3101,14 @@ static int ring_create(
   pfr->channel_id = RING_ANY_CHANNEL;
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
   pfr->poll_num_pkts_watermark = 1; // DEFAULT_MIN_PKT_QUEUED;
-  pfr->handle_hash_rule = handle_filtering_hash_bucket;
+  pfr->handle_hash_rule = handle_sw_filtering_hash_bucket;
   pfr->add_packet_to_ring = add_packet_to_ring;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
   rwlock_init(&pfr->ring_index_lock);
   rwlock_init(&pfr->ring_rules_lock);
   atomic_set(&pfr->num_ring_users, 0);
-  INIT_LIST_HEAD(&pfr->rules);
+  INIT_LIST_HEAD(&pfr->sw_filtering_rules);
+  INIT_LIST_HEAD(&pfr->hw_filtering_rules);
   sk->sk_family = PF_RING;
   sk->sk_destruct = ring_sock_destruct;
 
@@ -3205,13 +3188,13 @@ static int ring_release(struct socket *sock)
 
   /* Free rules */
   if(pfr->ring_netdev != &none_device_element) {
-    list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-      filtering_rule_element *rule;
+    list_for_each_safe(ptr, tmp_ptr, &pfr->sw_filtering_rules) {
+      sw_filtering_rule_element *rule;
 #ifdef CONFIG_TEXTSEARCH
       int i;
 #endif
 
-      rule = list_entry(ptr, filtering_rule_element, list);
+      rule = list_entry(ptr, sw_filtering_rule_element, list);
 
       if(plugin_registration[rule->rule.plugin_action.plugin_id]
 	 && plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_free_ring_mem) {
@@ -3239,24 +3222,37 @@ static int ring_release(struct socket *sock)
     }
 
     /* Filtering hash rules */
-    if(pfr->filtering_hash) {
+    if(pfr->sw_filtering_hash) {
       int i;
 
       for(i = 0; i < DEFAULT_RING_HASH_SIZE; i++) {
-	if(pfr->filtering_hash[i] != NULL) {
-	  filtering_hash_bucket *scan = pfr->filtering_hash[i], *next;
+	if(pfr->sw_filtering_hash[i] != NULL) {
+	  sw_filtering_hash_bucket *scan = pfr->sw_filtering_hash[i], *next;
 
 	  while(scan != NULL) {
 	    next = scan->next;
 
-	    free_filtering_hash_bucket(scan);
+	    free_sw_filtering_hash_bucket(scan);
 	    kfree(scan);
 	    scan = next;
 	  }
 	}
       }
 
-      kfree(pfr->filtering_hash);
+      kfree(pfr->sw_filtering_hash);
+    }
+
+    /* Free Hw Filtering Rules */
+    if(pfr->num_hw_filtering_rules > 0) {
+      list_for_each_safe(ptr, tmp_ptr, &pfr->hw_filtering_rules) {
+	hw_filtering_rule_element *hw_rule = list_entry(ptr, hw_filtering_rule_element, list);
+
+	/* Remove hw rule */
+	handle_hw_filtering_rule(pfr, &hw_rule->rule, remove_hw_rule);
+
+	list_del(ptr);
+	kfree(hw_rule);
+      }
     }
   }
 
@@ -3300,12 +3296,12 @@ static int packet_ring_bind(struct sock *sk, char *dev_name)
   struct list_head *ptr, *tmp_ptr;
   ring_device_element *dev = NULL;
 
-  if(dev_name == NULL)     
+  if(dev_name == NULL)
     return(-EINVAL);
 
   list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
     ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
-    
+
     if(strcmp(dev_ptr->dev->name, dev_name) == 0) {
       dev = dev_ptr;
       break;
@@ -3314,7 +3310,7 @@ static int packet_ring_bind(struct sock *sk, char *dev_name)
 
   if((dev == NULL) || (dev->dev->type != ARPHRD_ETHER))
     return(-EINVAL);
-   
+
 
 #if defined(RING_DEBUG)
   printk("[PF_RING] packet_ring_bind(%s, bucket_len=%d) called\n",
@@ -3402,7 +3398,7 @@ static int ring_bind(struct socket *sock, struct sockaddr *sa, int addr_len)
       printk("[PF_RING] search failed\n");
 #endif
       return(-EINVAL);
-    }    
+    }
   }
 #endif
 
@@ -4032,10 +4028,10 @@ static void purge_idle_hash_rules(struct pf_ring_socket *pfr,
 	   rule_inactivity);
 
   /* Free filtering hash rules inactive for more than rule_inactivity seconds */
-  if(pfr->filtering_hash != NULL) {
+  if(pfr->sw_filtering_hash != NULL) {
     for(i = 0; i < DEFAULT_RING_HASH_SIZE; i++) {
-      if(pfr->filtering_hash[i] != NULL) {
-	filtering_hash_bucket *scan = pfr->filtering_hash[i], *next, *prev = NULL;
+      if(pfr->sw_filtering_hash[i] != NULL) {
+	sw_filtering_hash_bucket *scan = pfr->sw_filtering_hash[i], *next, *prev = NULL;
 
 	while(scan != NULL) {
 	  next = scan->next;
@@ -4062,18 +4058,18 @@ static void purge_idle_hash_rules(struct pf_ring_socket *pfr,
 		      ((scan->rule.host4_peer_b >> 0) & 0xff),
 		      scan->rule.port_peer_b,
 		      num_purged_rules,
-		      pfr->num_filtering_rules);
+		      pfr->num_sw_filtering_rules);
 
-	    free_filtering_hash_bucket
+	    free_sw_filtering_hash_bucket
 	      (scan);
 	    kfree(scan);
 
 	    if(prev == NULL)
-	      pfr->filtering_hash[i] = next;
+	      pfr->sw_filtering_hash[i] = next;
 	    else
 	      prev->next = next;
 
-	    pfr->num_filtering_rules--,
+	    pfr->num_sw_filtering_rules--,
 	      num_purged_rules++;
 	  } else
 	    prev = scan;
@@ -4086,22 +4082,22 @@ static void purge_idle_hash_rules(struct pf_ring_socket *pfr,
 
   if(debug)
     printk("[PF_RING] Purged %d hash rules [tot_rules=%d]\n",
-	   num_purged_rules, pfr->num_filtering_rules);
+	   num_purged_rules, pfr->num_sw_filtering_rules);
 }
 
 /* ************************************* */
 
-static int remove_filtering_rule_element(struct pf_ring_socket *pfr, u_int16_t rule_id)
+static int remove_sw_filtering_rule_element(struct pf_ring_socket *pfr, u_int16_t rule_id)
 {
   int rule_found = 0, debug = 0;
   struct list_head *ptr, *tmp_ptr;
 
   write_lock(&pfr->ring_rules_lock);
 
-  list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-    filtering_rule_element *entry;
+  list_for_each_safe(ptr, tmp_ptr, &pfr->sw_filtering_rules) {
+    sw_filtering_rule_element *entry;
 
-    entry = list_entry(ptr, filtering_rule_element, list);
+    entry = list_entry(ptr, sw_filtering_rule_element, list);
 
     if(entry->rule.rule_id == rule_id) {
 #ifdef CONFIG_TEXTSEARCH
@@ -4111,7 +4107,7 @@ static int remove_filtering_rule_element(struct pf_ring_socket *pfr, u_int16_t r
 	textsearch_destroy(entry->pattern[i]);
 #endif
       list_del(ptr);
-      pfr->num_filtering_rules--;
+      pfr->num_sw_filtering_rules--;
 
       if(entry->plugin_data_ptr)
 	kfree(entry->plugin_data_ptr);
@@ -4131,11 +4127,11 @@ static int remove_filtering_rule_element(struct pf_ring_socket *pfr, u_int16_t r
 
 /* ************************************* */
 
-static int add_filtering_rule_element(struct pf_ring_socket *pfr, filtering_rule_element *rule)
+static int add_sw_filtering_rule_element(struct pf_ring_socket *pfr, sw_filtering_rule_element *rule)
 {
   struct list_head *ptr, *tmp_ptr;
   int idx = 0, debug = 0;
-  filtering_rule_element *entry;
+  sw_filtering_rule_element *entry;
   struct list_head *prev = NULL;
 
   /* Rule checks */
@@ -4237,8 +4233,8 @@ static int add_filtering_rule_element(struct pf_ring_socket *pfr, filtering_rule
 	   rule->rule.rule_id);
 
   /* Implement an ordered add */
-  list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-    entry = list_entry(ptr, filtering_rule_element, list);
+  list_for_each_safe(ptr, tmp_ptr, &pfr->sw_filtering_rules) {
+    entry = list_entry(ptr, sw_filtering_rule_element, list);
 
     if(debug)
       printk("[PF_RING] SO_ADD_FILTERING_RULE: [current rule %d][rule to add %d]\n",
@@ -4247,14 +4243,14 @@ static int add_filtering_rule_element(struct pf_ring_socket *pfr, filtering_rule
 
     if(entry->rule.rule_id > rule->rule.rule_id) {
       if(prev == NULL) {
-	list_add(&rule->list, &pfr->rules);	/* Add as first entry */
-	pfr->num_filtering_rules++;
+	list_add(&rule->list, &pfr->sw_filtering_rules);	/* Add as first entry */
+	pfr->num_sw_filtering_rules++;
 	if(debug)
 	  printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as head rule\n",
 		 rule->rule.rule_id);
       } else {
 	list_add(&rule->list, prev);
-	pfr->num_filtering_rules++;
+	pfr->num_sw_filtering_rules++;
 	if(debug)
 	  printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d\n",
 		 rule->rule.rule_id);
@@ -4268,14 +4264,14 @@ static int add_filtering_rule_element(struct pf_ring_socket *pfr, filtering_rule
 
   if(rule != NULL) {
     if(prev == NULL) {
-      list_add(&rule->list, &pfr->rules);	/* Add as first entry */
-      pfr->num_filtering_rules++;
+      list_add(&rule->list, &pfr->sw_filtering_rules);	/* Add as first entry */
+      pfr->num_sw_filtering_rules++;
       if(debug)
 	printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as first rule\n",
 	       rule->rule.rule_id);
     } else {
-      list_add_tail(&rule->list, &pfr->rules);	/* Add as first entry */
-      pfr->num_filtering_rules++;
+      list_add_tail(&rule->list, &pfr->sw_filtering_rules);	/* Add as first entry */
+      pfr->num_sw_filtering_rules++;
       if(debug)
 	printk("[PF_RING] SO_ADD_FILTERING_RULE: added rule %d as last rule\n",
 	       rule->rule.rule_id);
@@ -4297,7 +4293,7 @@ static int add_filtering_rule_element(struct pf_ring_socket *pfr, filtering_rule
 
 /* ************************************* */
 
-static int add_filtering_hash_bucket(struct pf_ring_socket *pfr, filtering_hash_bucket *rule) {
+static int add_sw_filtering_hash_bucket(struct pf_ring_socket *pfr, sw_filtering_hash_bucket *rule) {
   int rc = 0, debug = 0;
 
   if(rule->rule.reflector_device_name[0] != '\0') {
@@ -4325,13 +4321,13 @@ static int add_filtering_hash_bucket(struct pf_ring_socket *pfr, filtering_hash_
     rule->rule.internals.reflector_dev = NULL;
 
   write_lock(&pfr->ring_rules_lock);
-  rc = handle_filtering_hash_bucket(pfr, rule, 1 /* add */);
+  rc = handle_sw_filtering_hash_bucket(pfr, rule, 1 /* add */);
 
   if((rc != 0) && (rc != -EEXIST)) {
     kfree(rule);
   } else {
     if(rc != -EEXIST)
-      pfr->num_filtering_rules++;
+      pfr->num_sw_filtering_rules++;
   }
 
   write_unlock(&pfr->ring_rules_lock);
@@ -4358,7 +4354,8 @@ static int ring_setsockopt(struct socket *sock,
   char applName[32 + 1] = { 0 };
   u_int16_t rule_id, rule_inactivity;
   packet_direction direction;
-  hw_filtering_rule_request hw_rule;
+  hw_filtering_rule hw_rule;
+  struct list_head *ptr, *tmp_ptr;
 #if(LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32))
   struct vpfring_eventfd_info eventfd_i;
   struct file *eventfp;
@@ -4539,12 +4536,12 @@ static int ring_setsockopt(struct socket *sock,
 	return -EFAULT;
 
       write_lock(&pfr->ring_rules_lock);
-      pfr->rules_default_accept_policy = new_policy;
+      pfr->sw_filtering_rules_default_accept_policy = new_policy;
       write_unlock(&pfr->ring_rules_lock);
       /*
 	if(debug)
 	printk("[PF_RING] SO_TOGGLE_FILTER_POLICY: default policy is %s\n",
-	pfr->rules_default_accept_policy ? "accept" : "drop");
+	pfr->sw_filtering_rules_default_accept_policy ? "accept" : "drop");
       */
     }
     break;
@@ -4559,14 +4556,14 @@ static int ring_setsockopt(struct socket *sock,
 
     if(optlen == sizeof(filtering_rule)) {
       int ret;
-      filtering_rule_element *rule;
+      sw_filtering_rule_element *rule;
       struct list_head *ptr, *tmp_ptr;
 
       if(debug)
 	printk("[PF_RING] Allocating memory [filtering_rule]\n");
 
-      rule =(filtering_rule_element *)
-	kcalloc(1, sizeof(filtering_rule_element), GFP_KERNEL);
+      rule =(sw_filtering_rule_element *)
+	kcalloc(1, sizeof(sw_filtering_rule_element), GFP_KERNEL);
 
       if(rule == NULL)
 	return -EFAULT;
@@ -4577,10 +4574,10 @@ static int ring_setsockopt(struct socket *sock,
       INIT_LIST_HEAD(&rule->list);
 
       write_lock(&pfr->ring_rules_lock);
-      list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-	filtering_rule_element *entry;
+      list_for_each_safe(ptr, tmp_ptr, &pfr->sw_filtering_rules) {
+	sw_filtering_rule_element *entry;
 
-	entry = list_entry(ptr, filtering_rule_element, list);
+	entry = list_entry(ptr, sw_filtering_rule_element, list);
 
 	if(entry->rule.rule_id == rule_id) {
 	  /* A rule with the same if exists */
@@ -4589,15 +4586,15 @@ static int ring_setsockopt(struct socket *sock,
 	}
       }
 
-      ret = add_filtering_rule_element(pfr, rule);
+      ret = add_sw_filtering_rule_element(pfr, rule);
       write_unlock(&pfr->ring_rules_lock);
 
       if(ret != 0) return(ret);
     } else if(optlen == sizeof(hash_filtering_rule)) {
       /* This is a hash rule */
-      filtering_hash_bucket *rule =
-	(filtering_hash_bucket *) kcalloc(1,
-					  sizeof(filtering_hash_bucket),
+      sw_filtering_hash_bucket *rule =
+	(sw_filtering_hash_bucket *) kcalloc(1,
+					  sizeof(sw_filtering_hash_bucket),
 					  GFP_KERNEL);
       int ret;
 
@@ -4607,7 +4604,7 @@ static int ring_setsockopt(struct socket *sock,
       if(copy_from_user(&rule->rule, optval, optlen))
 	return -EFAULT;
 
-      ret = add_filtering_hash_bucket(pfr, rule);
+      ret = add_sw_filtering_hash_bucket(pfr, rule);
 
       if(ret != 0) return(ret);
     } else {
@@ -4624,27 +4621,27 @@ static int ring_setsockopt(struct socket *sock,
       if(copy_from_user(&rule_id, optval, optlen))
 	return -EFAULT;
 
-      if(remove_filtering_rule_element(pfr, rule_id) == 0) {
+      if(remove_sw_filtering_rule_element(pfr, rule_id) == 0) {
 	if(debug)
 	  printk("[PF_RING] SO_REMOVE_FILTERING_RULE: rule %d does not exist\n", rule_id);
 	return -EFAULT;	/* Rule not found */
       }
     } else if(optlen == sizeof(hash_filtering_rule)) {
       /* This is a hash rule */
-      filtering_hash_bucket rule;
+      sw_filtering_hash_bucket rule;
       int rc;
 
       if(copy_from_user(&rule.rule, optval, optlen))
 	return -EFAULT;
 
       write_lock(&pfr->ring_rules_lock);
-      rc = handle_filtering_hash_bucket(pfr, &rule, 0 /* delete */ );
+      rc = handle_sw_filtering_hash_bucket(pfr, &rule, 0 /* delete */ );
 
       if(rc != 0) {
 	write_unlock(&pfr->ring_rules_lock);
 	return(rc);
       } else {
-	pfr->num_filtering_rules--;
+	pfr->num_sw_filtering_rules--;
 	write_unlock(&pfr->ring_rules_lock);
       }
     } else
@@ -4735,15 +4732,73 @@ static int ring_setsockopt(struct socket *sock,
     break;
 
   case SO_ADD_HW_FILTERING_RULE:
-  case SO_DEL_HW_FILTERING_RULE:
     if(optlen != sizeof(hw_filtering_rule))
       return -EINVAL;
 
-    if(copy_from_user(&hw_rule.rule, optval, sizeof(hw_rule)))
+    if(copy_from_user(&hw_rule, optval, sizeof(hw_rule)))
+      return -EFAULT;
+   
+    /* Check if a rule with the same id exists */
+    list_for_each_safe(ptr, tmp_ptr, &pfr->hw_filtering_rules) {
+      hw_filtering_rule_element *rule = list_entry(ptr, hw_filtering_rule_element, list);
+      
+      if(rule->rule.rule_id == hw_rule.rule_id) {
+	/* There's already a rule with the same id: failure */
+	return -EINVAL;
+      }
+    }
+
+    ret = handle_hw_filtering_rule(pfr, &hw_rule, add_hw_rule);
+
+    if(ret != -1) {
+      hw_filtering_rule_element *rule;
+
+      /* Add the hw rule to the socket hw rule list */
+      rule = kmalloc(sizeof(hw_filtering_rule_element), GFP_ATOMIC);
+      if(rule != NULL) {
+	INIT_LIST_HEAD(&rule->list);
+	memcpy(&rule->rule, &hw_rule, sizeof(hw_rule));
+	list_add(&rule->list, &pfr->hw_filtering_rules); /* Add as first entry */
+      } else
+	printk("[PF_RING] Out of memory\n");
+
+      /* Increase the number of device hw rules */
+      list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
+        ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
+
+        if(dev_ptr->dev == pfr->ring_netdev->dev) {
+	  dev_ptr->hw_filters.num_filters++;          
+          break;
+        }
+      }
+    }
+    break;
+
+  case SO_DEL_HW_FILTERING_RULE:
+    if(optlen != sizeof(u_int16_t))
+      return -EINVAL;
+
+    if(copy_from_user(&rule_id, optval, sizeof(u_int16_t)))
       return -EFAULT;
 
-    hw_rule.command = (optname == SO_ADD_HW_FILTERING_RULE) ? add_hw_rule : remove_hw_rule;
-    ret = handle_hw_filtering_rule(pfr, &hw_rule);
+    /* Check if the rule we want to remove exists */
+    found = 0;
+    list_for_each_safe(ptr, tmp_ptr, &pfr->hw_filtering_rules) {
+      hw_filtering_rule_element *rule = list_entry(ptr, hw_filtering_rule_element, list);
+      
+      if(rule->rule.rule_id == rule_id) {
+	/* There's already a rule with the same id: good */
+	memcpy(&hw_rule, &rule->rule, sizeof(hw_filtering_rule));
+	list_del(ptr);
+        kfree(rule);
+	found = 1;
+	break;
+      }
+    }
+
+    if(!found) return -EINVAL;
+
+    ret = handle_hw_filtering_rule(pfr, &hw_rule, remove_hw_rule);
 
     if(ret != -1) {
       struct list_head *ptr, *tmp_ptr;
@@ -4752,12 +4807,8 @@ static int ring_setsockopt(struct socket *sock,
         ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
 
         if(dev_ptr->dev == pfr->ring_netdev->dev) {
-          if(hw_rule.command == add_hw_rule)
-            dev_ptr->hw_filters.num_filters++;
-          else {
-	    if(dev_ptr->hw_filters.num_filters > 0)
-	      dev_ptr->hw_filters.num_filters--;
-          }
+	  if(dev_ptr->hw_filters.num_filters > 0)
+	    dev_ptr->hw_filters.num_filters--;
           break;
         }
       }
@@ -4895,7 +4946,7 @@ static int ring_getsockopt(struct socket *sock,
 	hash_filtering_rule rule;
 	u_int hash_idx;
 
-	if(pfr->filtering_hash == NULL) {
+	if(pfr->sw_filtering_hash == NULL) {
 	  printk("[PF_RING] so_get_hash_filtering_rule_stats(): no hash failure\n");
 	  return -EFAULT;
 	}
@@ -4917,11 +4968,11 @@ static int ring_getsockopt(struct socket *sock,
 			    rule.host_peer_a, rule.host_peer_b,
 			    rule.port_peer_a, rule.port_peer_b) % DEFAULT_RING_HASH_SIZE;
 
-	if(pfr->filtering_hash[hash_idx] != NULL) {
-	  filtering_hash_bucket *bucket;
+	if(pfr->sw_filtering_hash[hash_idx] != NULL) {
+	  sw_filtering_hash_bucket *bucket;
 
 	  read_lock(&pfr->ring_rules_lock);
-	  bucket = pfr->filtering_hash[hash_idx];
+	  bucket = pfr->sw_filtering_hash[hash_idx];
 
 	  if(debug)
 	    printk("[PF_RING] so_get_hash_filtering_rule_stats(): bucket=%p\n",
@@ -4987,10 +5038,10 @@ static int ring_getsockopt(struct socket *sock,
 	       rule_id);
 
       read_lock(&pfr->ring_rules_lock);
-      list_for_each_safe(ptr, tmp_ptr, &pfr->rules) {
-	filtering_rule_element *rule;
+      list_for_each_safe(ptr, tmp_ptr, &pfr->sw_filtering_rules) {
+	sw_filtering_rule_element *rule;
 
-	rule = list_entry(ptr, filtering_rule_element, list);
+	rule = list_entry(ptr, sw_filtering_rule_element, list);
 
 	if(rule->rule.rule_id == rule_id) {
 	  buffer = kmalloc(len, GFP_ATOMIC);
@@ -5000,14 +5051,12 @@ static int ring_getsockopt(struct socket *sock,
 	  else {
 	    if((plugin_registration[rule->rule.plugin_action.plugin_id] == NULL)
 	       ||
-	       (plugin_registration[rule->rule.plugin_action.plugin_id]->
-		pfring_plugin_get_stats == NULL)) {
+	       (plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_get_stats == NULL)) {
 	      printk("[PF_RING] Found rule %d but pluginId %d is not registered\n",
 		     rule_id, rule->rule.plugin_action.plugin_id);
 	      rc = -EFAULT;
 	    } else
-	      rc = plugin_registration
-		[rule->rule.plugin_action.plugin_id]->
+	      rc = plugin_registration[rule->rule.plugin_action.plugin_id]->
 		pfring_plugin_get_stats(pfr, rule, NULL, buffer, len);
 
 	    if(rc > 0) {
@@ -5284,12 +5333,12 @@ void remove_device_from_ring_list(struct net_device *dev) {
 	remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
 	remove_proc_entry(dev_ptr->dev->name, ring_proc_dev_dir);
       }
-      
+
       /* We now have to "un-bind" existing sockets */
       list_for_each_safe(ring_ptr, ring_tmp_ptr, &ring_table) {
 	struct ring_element   *entry = list_entry(ring_ptr, struct ring_element, list);
 	struct pf_ring_socket *pfr = ring_sk(entry->sk);
-	
+
 	pfr->ring_netdev = &none_device_element; /* Unbinding socket */
       }
 
@@ -5323,14 +5372,11 @@ int add_device_to_ring_list(struct net_device *dev) {
   /* Dirty trick to fix at some point used to discover Intel 82599 interfaces: FIXME */
   if((dev_ptr->dev->ethtool_ops != NULL) && (dev_ptr->dev->ethtool_ops->set_eeprom != NULL)) {
     struct ethtool_eeprom eeprom; /* Used to to the magic [MAGIC_HW_FILTERING_RULE_REQUEST] */
-    hw_filtering_rule_request element;
     int rc;
 
-    memset(&element, 0, sizeof(element));
-    eeprom.len = 0, eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST;
-    element.command = CHECK_COMMAND;
+    eeprom.len = 0 /* check */, eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST;
 
-    rc = dev_ptr->dev->ethtool_ops->set_eeprom(dev_ptr->dev, &eeprom, (u8*)&element);
+    rc = dev_ptr->dev->ethtool_ops->set_eeprom(dev_ptr->dev, &eeprom, (u8*)NULL);
     /* printk("[PF_RING] set_eeprom returned %d\n", rc); */
 
     if(rc == 0) {
@@ -5338,8 +5384,8 @@ int add_device_to_ring_list(struct net_device *dev) {
       dev_ptr->device_type = intel_82599_family;
 
       /* Setup handlers */
-      dev_ptr->hw_filters.filter_handlers.five_tuple_handler = i82599_five_tuple_handler;
-      dev_ptr->hw_filters.filter_handlers.perfect_filter_handler = i82599_perfect_filter_handler;
+      dev_ptr->hw_filters.filter_handlers.five_tuple_handler = i82599_generic_handler;
+      dev_ptr->hw_filters.filter_handlers.perfect_filter_handler = i82599_generic_handler;
 
 #ifdef ENABLE_PROC_WRITE_RULE
       entry = create_proc_read_entry(PROC_RULES, 0666 /* rw */,

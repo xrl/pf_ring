@@ -74,8 +74,8 @@ static struct pfring_plugin_registration reg;
 /* ************************************ */
 
 static int dummy_plugin_handle_skb(struct pf_ring_socket *pfr,
-				   filtering_rule_element *rule,
-				   filtering_hash_bucket *hash_rule,
+				   sw_filtering_rule_element *rule,
+				   sw_filtering_hash_bucket *hash_rule,
 				   struct pfring_pkthdr *hdr,
 				   struct sk_buff *skb, int displ,
 				   u_int16_t filter_plugin_id,
@@ -108,8 +108,8 @@ static int dummy_plugin_handle_skb(struct pf_ring_socket *pfr,
 /* ************************************ */
 
 static int dummy_plugin_get_stats(struct pf_ring_socket *pfr,
-				  filtering_rule_element *rule,
-				  filtering_hash_bucket  *hash_bucket,
+				  sw_filtering_rule_element *rule,
+				  sw_filtering_hash_bucket  *hash_bucket,
 				  u_char* stats_buffer,
 				  u_int stats_buffer_len)
 {
@@ -131,7 +131,7 @@ static int dummy_plugin_get_stats(struct pf_ring_socket *pfr,
 /* ************************************ */
 
 static int dummy_plugin_filter(struct pf_ring_socket *the_ring,
-			       filtering_rule_element *rule,
+			       sw_filtering_rule_element *rule,
 			       struct pfring_pkthdr *hdr,
 			       struct sk_buff *skb, int displ,
 			       struct parse_buffer **parse_memory)
