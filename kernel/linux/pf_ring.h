@@ -106,7 +106,7 @@ struct pkt_offset {
 
 
 struct pkt_flow_info {
-  u_int32_t in_iface, out_iface, samplingPopulation;
+  u_int32_t in_iface, out_iface, samplingPopulation, flow_id;
 };
 
 #ifndef ETH_ALEN
