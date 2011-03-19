@@ -106,7 +106,7 @@ struct pkt_offset {
 
 
 struct pkt_flow_info {
-  u_int32_t in_iface, out_iface, samplingPopulation, flow_id;
+  u_int32_t in_iface, out_iface, samplingPopulation, flow_sequence;
 };
 
 #ifndef ETH_ALEN
@@ -236,6 +236,7 @@ typedef enum {
   forward_packet_and_stop_rule_evaluation = 0,
   dont_forward_packet_and_stop_rule_evaluation,
   execute_action_and_continue_rule_evaluation,
+  execute_action_and_stop_rule_evaluation,
   forward_packet_add_rule_and_stop_rule_evaluation,
   reflect_packet_and_stop_rule_evaluation,
   reflect_packet_and_continue_rule_evaluation,
