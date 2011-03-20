@@ -2054,7 +2054,6 @@ int check_wildcard_rules(struct sk_buff *skb,
     if(match_filtering_rule(pfr, entry, hdr, skb, displ,
 			    parse_memory_buffer, free_parse_mem,
 			    last_matched_plugin, &behaviour)) {
-
       if(debug)
 	printk("[PF_RING] behaviour=%d\n", behaviour);
 
@@ -2260,7 +2259,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 				  parse_memory_buffer, displ, &last_matched_plugin);
 
     if(rc != 0)
-      return(rc);
+      fwd_pkt = 0;
   }
 
   if(fwd_pkt) {
@@ -2286,8 +2285,10 @@ static int add_skb_to_ring(struct sk_buff *skb,
 		 skb->cloned);
 
 	write_unlock_bh(&pfr->ring_index_lock);
+
 	if(free_parse_mem)
 	  free_parse_memory(parse_memory_buffer);
+
 	atomic_set(&pfr->num_ring_users, 0);
 	return(-1);
       }
@@ -2327,6 +2328,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
   if(free_parse_mem)
     free_parse_memory(parse_memory_buffer);
+
   atomic_set(&pfr->num_ring_users, 0);
 
   return(0);
@@ -2671,13 +2673,14 @@ static int skb_ring_handler(struct sk_buff *skb,
     pfr = ring_sk(skElement);    
 
     if((pfr != NULL)
+       && ((pfr->ring_netdev->dev == skb->dev)
+	   || (pfr->ring_netdev == &any_device_element) /* Socket bound to 'any' */
+	   || ((skb->dev->flags & IFF_SLAVE) && (pfr->ring_netdev->dev == skb->dev->master)))
        && (pfr->ring_netdev != &none_device_element) /* Not a dummy socket bound to "none" */
        && (pfr->cluster_id == 0 /* No cluster */ )
        && (pfr->ring_slots != NULL)
        && is_valid_skb_direction(pfr->direction, recv_packet)
-       && ((pfr->ring_netdev->dev == skb->dev)
-	   || (pfr->ring_netdev == &any_device_element) /* Socket bound to 'any' */
-	   || ((skb->dev->flags & IFF_SLAVE) && (pfr->ring_netdev->dev == skb->dev->master)))) {
+       ) {
       /* We've found the ring where the packet can be stored */
       int old_caplen = hdr.caplen;  /* Keep old lenght */
       hdr.caplen = min(hdr.caplen, pfr->bucket_len);
@@ -2743,9 +2746,6 @@ static int skb_ring_handler(struct sk_buff *skb,
 
 #ifdef PROFILING
   rdt1 = _rdtsc() - rdt1;
-#endif
-
-#ifdef PROFILING
   rdt2 = _rdtsc();
 #endif
 
