@@ -991,7 +991,9 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 	    ts.epoch = ntohl(ts.epoch), ts.ns = ntohl(ts.ns);      
 	    skb_hwts->hwtstamp = ktime_set((const long)ts.epoch, (const unsigned long)ts.ns);
 	    skb_hwts->syststamp.tv64 = 0;
-	    //printk(KERN_INFO "[CPACKET] %u.%u\n", ts.epoch, ts.ns);
+	    skb->tstamp.tv64 = skb_hwts->hwtstamp.tv64; /* Set precise TS in packet */
+
+	    /* printk(KERN_INFO "[CPACKET] %u.%u\n", ts.epoch, ts.ns); */
 	  }
 	}
 #endif

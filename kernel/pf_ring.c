@@ -3165,10 +3165,9 @@ static int ring_release(struct socket *sock)
 	/* Custom free function */
 	plugin_registration[rule->rule.plugin_action.plugin_id]->pfring_plugin_free_ring_mem(rule);
       } else {
-#ifdef DEBUG
-	printk("[PF_RING] --> default_free [rule->rule.plugin_action.plugin_id=%d]\n",
-	       rule->rule.plugin_action.plugin_id);
-#endif
+	if(enable_debug)
+	  printk("[PF_RING] --> default_free [rule->rule.plugin_action.plugin_id=%d]\n",
+		 rule->rule.plugin_action.plugin_id);
 	if(rule->plugin_data_ptr != NULL) {
 	  kfree(rule->plugin_data_ptr);
 	  rule->plugin_data_ptr = NULL;
@@ -3813,8 +3812,6 @@ static int remove_from_cluster(struct sock *sock, struct pf_ring_socket *pfr)
 
 /* ************************************* */
 
-// #define RING_DEBUG 1
-
 static int set_master_ring(struct sock *sock,
 			   struct pf_ring_socket *pfr,
 			   u_int32_t master_socket_id)
@@ -3868,8 +3865,6 @@ static int set_master_ring(struct sock *sock,
   return(rc);
 }
 
-// #undef RING_DEBUG
-
 /* ************************************* */
 
 static int add_sock_to_cluster(struct sock *sock,
@@ -3879,9 +3874,8 @@ static int add_sock_to_cluster(struct sock *sock,
   struct list_head *ptr, *tmp_ptr;
   ring_cluster_element *cluster_ptr;
 
-#ifdef RING_DEBUG
-  printk("[PF_RING] --> add_sock_to_cluster(%d)\n", cluster->clusterId);
-#endif
+  if(enable_debug)
+    printk("[PF_RING] --> add_sock_to_cluster(%d)\n", cluster->clusterId);
 
   if(cluster->clusterId == 0 /* 0 = No Cluster */ )
     return(-EINVAL);
@@ -4317,9 +4311,8 @@ static int ring_setsockopt(struct socket *sock,
   case SO_ATTACH_FILTER:
     ret = -EINVAL;
 
-#if !defined(RING_DEBUG)
-    printk("[PF_RING] BPF filter (%d)\n", 0);
-#endif
+    if(enable_debug)
+      printk("[PF_RING] BPF filter (%d)\n", 0);
 
     if(optlen == sizeof(struct sock_fprog)) {
       unsigned int fsize;
@@ -4328,9 +4321,9 @@ static int ring_setsockopt(struct socket *sock,
 
       ret = -EFAULT;
 
-#if !defined(RING_DEBUG)
-      printk("[PF_RING] BPF filter (%d)\n", 1);
-#endif
+      if(enable_debug)
+	printk("[PF_RING] BPF filter (%d)\n", 1);
+
       /*
 	NOTE
 
@@ -4369,10 +4362,9 @@ static int ring_setsockopt(struct socket *sock,
       write_unlock(&pfr->ring_rules_lock);
       ret = 0;
 
-#if !defined(RING_DEBUG)
-      printk("[PF_RING] BPF filter attached successfully [len=%d]\n",
-	     filter->len);
-#endif
+      if(enable_debug)
+	printk("[PF_RING] BPF filter attached successfully [len=%d]\n",
+	       filter->len);
     }
     break;
 
@@ -4628,9 +4620,8 @@ static int ring_setsockopt(struct socket *sock,
       if(pfr->poll_num_pkts_watermark == 0)
 	pfr->poll_num_pkts_watermark = 1;
 
-#ifdef RING_DEBUG
-      printk("[PF_RING] --> SO_SET_POLL_WATERMARK=%d\n", pfr->poll_num_pkts_watermark);
-#endif
+      if(enable_debug)
+	printk("[PF_RING] --> SO_SET_POLL_WATERMARK=%d\n", pfr->poll_num_pkts_watermark);
     }
     break;
 
@@ -4641,9 +4632,8 @@ static int ring_setsockopt(struct socket *sock,
       if(copy_from_user(&pfr->bucket_len, optval, optlen))
 	return -EFAULT;
 
-#ifdef RING_DEBUG
-      printk("[PF_RING] --> SO_RING_BUCKET_LEN=%d\n", pfr->bucket_len);
-#endif
+      if(enable_debug)
+	printk("[PF_RING] --> SO_RING_BUCKET_LEN=%d\n", pfr->bucket_len);
     }
     break;
 
@@ -4787,9 +4777,8 @@ static int ring_setsockopt(struct socket *sock,
       /* Notify the consumer that we're ready to start */
       if(pfr->kernel_consumer_plugin_id
 	 && (plugin_registration[pfr->kernel_consumer_plugin_id] == NULL)) {
-#ifdef RING_DEBUG
-	printk("[PF_RING] Plugin %d is unknown\n", pfr->kernel_consumer_plugin_id);
-#endif
+	if(enable_debug)
+	  printk("[PF_RING] Plugin %d is unknown\n", pfr->kernel_consumer_plugin_id);
 
 	pfr->kernel_consumer_plugin_id = 0;
 	if(pfr->kernel_consumer_options != NULL) {
@@ -4851,9 +4840,8 @@ static int ring_getsockopt(struct socket *sock,
   if(len < 0)
     return -EINVAL;
 
-#ifdef RING_DEBUG
-  printk("[PF_RING] --> getsockopt(%d)\n", optname);
-#endif
+  if(enable_debug)
+    printk("[PF_RING] --> getsockopt(%d)\n", optname);
 
   switch (optname) {
   case SO_GET_RING_VERSION:
@@ -5054,9 +5042,8 @@ static int ring_getsockopt(struct socket *sock,
     if(len < sizeof(pfr->ring_id))
       return -EINVAL;
 
-#ifdef RING_DEBUG
-    printk("[PF_RING] --> SO_GET_RING_ID=%d\n", pfr->ring_id);
-#endif
+    if(enable_debug)
+      printk("[PF_RING] --> SO_GET_RING_ID=%d\n", pfr->ring_id);
 
     if(copy_to_user(optval, &pfr->ring_id, sizeof(pfr->ring_id)))
       return -EFAULT;
@@ -5066,10 +5053,9 @@ static int ring_getsockopt(struct socket *sock,
     if(len < sizeof(pfr->kernel_consumer_plugin_id))
       return -EINVAL;
 
-#ifdef RING_DEBUG
-    printk("[PF_RING] --> SO_GET_PACKET_CONSUMER_MODE=%d\n",
-	   pfr->kernel_consumer_plugin_id);
-#endif
+    if(enable_debug)
+      printk("[PF_RING] --> SO_GET_PACKET_CONSUMER_MODE=%d\n",
+	     pfr->kernel_consumer_plugin_id);
 
     if(copy_to_user(optval, &pfr->kernel_consumer_plugin_id,
 		    sizeof(pfr->kernel_consumer_plugin_id)))
