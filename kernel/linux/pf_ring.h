@@ -498,6 +498,7 @@ struct ring_sock {
 /* *********************************** */
 
 typedef int (*dna_wait_packet)(void *adapter, int mode);
+typedef void (*dna_device_notify)(u_int8_t device_in_use);
 
 typedef enum {
   add_device_mapping = 0, remove_device_mapping
@@ -529,6 +530,7 @@ typedef struct {
   u_int8_t *interrupt_received, in_use;
   void *adapter_ptr;
   dna_wait_packet wait_packet_function_ptr;
+  dna_device_notify usage_notification;
 } dna_device;
 
 typedef struct {
@@ -832,7 +834,8 @@ typedef void  (*handle_ring_dna_device)(dna_device_operation operation,
 					wait_queue_head_t *packet_waitqueue,
 					u_int8_t *interrupt_received,
 					void *adapter_ptr,
-					dna_wait_packet wait_packet_function_ptr);
+					dna_wait_packet wait_packet_function_ptr,
+					dna_device_notify dev_notify_function_ptr);
 
 extern register_pfring_plugin get_register_pfring_plugin(void);
 extern unregister_pfring_plugin get_unregister_pfring_plugin(void);

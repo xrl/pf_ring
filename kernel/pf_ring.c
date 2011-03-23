@@ -274,6 +274,8 @@ static int skb_ring_handler(struct sk_buff *skb, u_char recv_packet,
 			    u_int8_t num_rx_channels);
 static int buffer_ring_handler(struct net_device *dev, char *data, int len);
 static int remove_from_cluster(struct sock *sock, struct pf_ring_socket *pfr);
+static int ring_map_dna_device(struct pf_ring_socket *pfr,
+			       dna_device_mapping * mapping);
 
 /* Extern */
 extern
@@ -3219,6 +3221,15 @@ static int ring_release(struct socket *sock)
     }
   }
 
+  if(pfr->dna_device != NULL) {
+    dna_device_mapping mapping;
+    
+    mapping.operation = remove_device_mapping;
+    snprintf(mapping.device_name, sizeof(mapping.device_name)-1,
+	     "%s", pfr->ring_netdev->dev->name);
+    ring_map_dna_device(pfr, &mapping);
+  }
+
   /* Free the ring buffer later, vfree needs interrupts enabled */
   ring_memory_ptr = pfr->ring_memory;
   ring_sk(sk) = NULL;
@@ -3918,6 +3929,11 @@ static int ring_map_dna_device(struct pf_ring_socket *pfr,
   int debug = 1;
 
   if(mapping->operation == remove_device_mapping) {
+
+    /* Unlock driver */
+    if(pfr->dna_device != NULL)
+      pfr->dna_device->usage_notification(0 /* unlock */);
+	
     pfr->dna_device = NULL;
     if(debug)
       printk("[PF_RING] ring_map_dna_device(%s): removed mapping\n",
@@ -3940,6 +3956,8 @@ static int ring_map_dna_device(struct pf_ring_socket *pfr,
 	  printk("[PF_RING] ring_map_dna_device(%s, %u): added mapping\n",
 		 mapping->device_name, mapping->channel_id);
 
+	/* Lock driver */
+	pfr->dna_device->usage_notification(1 /* lock */);
 	ring_proc_add(pfr);
 	return(0);
       }
@@ -5012,10 +5030,9 @@ static int ring_getsockopt(struct socket *sock,
 
   case SO_GET_MAPPED_DNA_DEVICE:
     {
-      if((pfr->dna_device == NULL)
-	 || (len < sizeof(dna_device)))
-	return -EFAULT;
-
+      if((pfr->dna_device == NULL) || (len < sizeof(dna_device)))
+	return -EFAULT;      
+      
       if(copy_to_user(optval, pfr->dna_device, sizeof(dna_device)))
 	return -EFAULT;
 
@@ -5091,7 +5108,8 @@ void dna_device_handler(dna_device_operation operation,
 			wait_queue_head_t * packet_waitqueue,
 			u_int8_t * interrupt_received,
 			void *adapter_ptr,
-			dna_wait_packet wait_packet_function_ptr)
+			dna_wait_packet wait_packet_function_ptr,
+			dna_device_notify dev_notify_function_ptr)
 {
   int debug = 0;
 
@@ -5120,6 +5138,7 @@ void dna_device_handler(dna_device_operation operation,
       next->dev.interrupt_received = interrupt_received;
       next->dev.adapter_ptr = adapter_ptr;
       next->dev.wait_packet_function_ptr = wait_packet_function_ptr;
+      next->dev.usage_notification = dev_notify_function_ptr;
       list_add(&next->list, &ring_dna_devices_list);
       dna_devices_list_size++;
       /* Increment usage count to avoid unloading it while DNA modules are in use */
