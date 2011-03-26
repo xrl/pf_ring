@@ -637,6 +637,9 @@ static int i82599_generic_handler(struct pf_ring_socket *pfr,
 static int handle_hw_filtering_rule(struct pf_ring_socket *pfr, 
 				    hw_filtering_rule *rule,
 				    hw_filtering_rule_command command) {
+  
+  printk("[PF_RING] --> handle_hw_filtering_rule(command=%d)\n", command);
+
   switch(rule->rule_family_type) {
   case intel_82599_five_tuple_rule:
     if(pfr->ring_netdev->hw_filters.filter_handlers.five_tuple_handler == NULL)
@@ -822,10 +825,12 @@ static int ring_proc_dev_rule_write(struct file *file,
     /* Rule programmed successfully */
 
     if(add == '+')
-      dev_ptr->hw_filters.num_filters++;
+      dev_ptr->hw_filters.num_filters++, pfr->num_hw_filtering_rules++;
     else {
       if(dev_ptr->hw_filters.num_filters > 0)
 	dev_ptr->hw_filters.num_filters--;
+
+      pfr->num_hw_filtering_rules--;
     }
   }
 
@@ -3207,6 +3212,8 @@ static int ring_release(struct socket *sock)
       kfree(pfr->sw_filtering_hash);
     }
 
+    printk("[PF_RING] --> num_hw_filtering_rules=%d\n", pfr->num_hw_filtering_rules);
+
     /* Free Hw Filtering Rules */
     if(pfr->num_hw_filtering_rules > 0) {
       list_for_each_safe(ptr, tmp_ptr, &pfr->hw_filtering_rules) {
@@ -3926,7 +3933,7 @@ static int add_sock_to_cluster(struct sock *sock,
 static int ring_map_dna_device(struct pf_ring_socket *pfr,
 			       dna_device_mapping * mapping)
 {
-  int debug = 1;
+  int debug = 0;
 
   if(mapping->operation == remove_device_mapping) {
 
@@ -4711,6 +4718,7 @@ static int ring_setsockopt(struct socket *sock,
 	INIT_LIST_HEAD(&rule->list);
 	memcpy(&rule->rule, &hw_rule, sizeof(hw_rule));
 	list_add(&rule->list, &pfr->hw_filtering_rules); /* Add as first entry */
+	pfr->num_hw_filtering_rules++;
       } else
 	printk("[PF_RING] Out of memory\n");
 
@@ -4754,6 +4762,8 @@ static int ring_setsockopt(struct socket *sock,
 
     if(ret != -1) {
       struct list_head *ptr, *tmp_ptr;
+
+      pfr->num_hw_filtering_rules--;
 
       list_for_each_safe(ptr, tmp_ptr, &ring_aware_device_list) {
         ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
@@ -5276,8 +5286,10 @@ void remove_device_from_ring_list(struct net_device *dev) {
       struct list_head *ring_ptr, *ring_tmp_ptr;
 
       if(dev_ptr->proc_entry) {
+#ifdef ENABLE_PROC_WRITE_RULE
 	if(dev_ptr->device_type != standard_nic_family)
 	  remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
+#endif
 
 	remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
 	remove_proc_entry(dev_ptr->dev->name, ring_proc_dev_dir);
@@ -5326,7 +5338,9 @@ int add_device_to_ring_list(struct net_device *dev) {
     eeprom.len = 0 /* check */, eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST;
 
     rc = dev_ptr->dev->ethtool_ops->set_eeprom(dev_ptr->dev, &eeprom, (u8*)NULL);
-    /* printk("[PF_RING] set_eeprom returned %d\n", rc); */
+
+    if(enable_debug)
+      printk("[PF_RING] set_eeprom returned %d\n", rc);
 
     if(rc == 0) {
       /* This device supports hardware filtering */
@@ -5434,8 +5448,10 @@ static int ring_notifier(struct notifier_block *this, unsigned long msg, void *d
 		     dev_ptr->proc_entry->name, dev->name);
 
 	    /* Remove old entry */
+#ifdef ENABLE_PROC_WRITE_RULE
 	    if(dev_ptr->device_type != standard_nic_family)
 	      remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
+#endif
 
 	    remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
 	    remove_proc_entry(dev_ptr->proc_entry->name, ring_proc_dev_dir);
@@ -5509,9 +5525,11 @@ static void __exit ring_exit(void)
     dev_ptr = list_entry(ptr, ring_device_element, device_list);
     hook = (struct pfring_hooks*)dev_ptr->dev->pfring_ptr;
 
+#ifdef ENABLE_PROC_WRITE_RULE
     /* Remove /proc entry for the selected device */
     if(dev_ptr->device_type != standard_nic_family)
       remove_proc_entry(PROC_RULES, dev_ptr->proc_entry);
+#endif
 
     remove_proc_entry(PROC_INFO, dev_ptr->proc_entry);
     remove_proc_entry(dev_ptr->dev->name, ring_proc_dev_dir);

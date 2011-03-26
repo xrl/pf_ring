@@ -57,7 +57,8 @@ LIBS       = ${LIBPFRING} -lpthread
 # Main targets
 #
 PFPROGS   = ringc rings ringm pcaps pfcount pfcount_multichannel pftwin ptwin preflect pfbounce pfmap \
-	    forwarder alldevs dummy_plugin_pfcount pcap2nspcap pfcount_dummy_plugin pffilter_test
+	    forwarder alldevs dummy_plugin_pfcount pcap2nspcap pfcount_dummy_plugin pffilter_test \
+	    pfcount_82599
 PCAPPROGS = pcount pwrite
 TARGETS   = ${PFPROGS} ${PCAPPROGS}
 
@@ -94,6 +95,9 @@ pcap2nspcap: pcap2nspcap.o ${LIBPFRING}
 
 pfcount_multichannel: pfcount_multichannel.o ${LIBPFRING}
 	${CC} pfcount_multichannel.o ${LIBS} -o $@
+
+pfcount_82599: pfcount_82599.o ${LIBPFRING}
+	${CC} pfcount_82599.o ${LIBS} -o $@
 
 pfcount_dummy_plugin: pfcount_dummy_plugin.o ${LIBPFRING}
 	${CC} pfcount_dummy_plugin.o ${LIBS} -o $@

@@ -269,6 +269,7 @@ void dummyProcesssPacket(u_char *_deviceId,
     }
     if(eth_type == 0x0800) {
       memcpy(&ip, p+sizeof(ehdr), sizeof(struct ip));
+      printf("[%s]", proto2str(ip.ip_p));
       printf("[%s ", intoa(ntohl(ip.ip_src.s_addr)));
       printf("-> %s] ", intoa(ntohl(ip.ip_dst.s_addr)));
     } else if(eth_type == 0x86DD) {

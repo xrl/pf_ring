@@ -1,6 +1,6 @@
 /*
  *
- * (C) 2005-11 - Luca Deri <deri@ntop.org>
+ * (C) 2005-10 - Luca Deri <deri@ntop.org>
  *
  *
  * This program is free software; you can redistribute it and/or modify
@@ -43,8 +43,6 @@
 #include <arpa/inet.h>
 
 #include "pfring.h"
-
-#define ENABLE_DNA_SUPPORT
 
 #define ALARM_SLEEP             1
 #define DEFAULT_SNAPLEN       128
@@ -101,7 +99,7 @@ void print_stats() {
 
   gettimeofday(&endTime, NULL);
   deltaMillisec = delta_time(&endTime, &startTime);
-  
+
   if(pfring_stats(pd, &pfringStat) >= 0) {
     double thpt;
     int i;
@@ -119,7 +117,7 @@ void print_stats() {
 	    "Total Pkts=%u/Dropped=%.1f %%\n",
 	    (unsigned int)pfringStat.recv, (unsigned int)pfringStat.drop,
 	    (unsigned int)(pfringStat.recv+pfringStat.drop),
-	    pfringStat.recv == 0 ? 0 : 
+	    pfringStat.recv == 0 ? 0 :
 	    (double)(pfringStat.drop*100)/(double)(pfringStat.recv+pfringStat.drop));
     fprintf(stderr, "%llu pkts - %llu bytes", nPkts, nBytes);
 
@@ -169,7 +167,7 @@ void add_rule(u_int add_rule) {
     printf("pfring_add_hash_filtering_rule(2) failed\n");
 #else
   filtering_rule rule;
-  
+
   memset(&rule, 0, sizeof(rule));
 
   rule.rule_id = 5;
@@ -289,12 +287,12 @@ char* intoa(unsigned int addr) {
 inline char* in6toa(struct in6_addr addr6) {
   static char buf[sizeof "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"];
 
-  snprintf(buf, sizeof(buf), 
+  snprintf(buf, sizeof(buf),
 	   "%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x",
-	   addr6.s6_addr[0], addr6.s6_addr[1], addr6.s6_addr[2], 
-	   addr6.s6_addr[3], addr6.s6_addr[4], addr6.s6_addr[5], addr6.s6_addr[6], 
-	   addr6.s6_addr[7], addr6.s6_addr[8], addr6.s6_addr[9], addr6.s6_addr[10], 
-	   addr6.s6_addr[11], addr6.s6_addr[12], addr6.s6_addr[13], addr6.s6_addr[14], 
+	   addr6.s6_addr[0], addr6.s6_addr[1], addr6.s6_addr[2],
+	   addr6.s6_addr[3], addr6.s6_addr[4], addr6.s6_addr[5], addr6.s6_addr[6],
+	   addr6.s6_addr[7], addr6.s6_addr[8], addr6.s6_addr[9], addr6.s6_addr[10],
+	   addr6.s6_addr[11], addr6.s6_addr[12], addr6.s6_addr[13], addr6.s6_addr[14],
 	   addr6.s6_addr[15]);
 
   return(buf);
@@ -342,14 +340,14 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
     if(h->extended_hdr.parsed_header_len > 0) {
       printf("[eth_type=0x%04X]", h->extended_hdr.parsed_pkt.eth_type);
       printf("[l3_proto=%u]", (unsigned int)h->extended_hdr.parsed_pkt.l3_proto);
-      
-      printf("[%s:%d -> ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
-	     in6toa(h->extended_hdr.parsed_pkt.ipv6_src) : intoa(h->extended_hdr.parsed_pkt.ipv4_src), 
+
+      printf("[%s:%d -> ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ?
+	     in6toa(h->extended_hdr.parsed_pkt.ipv6_src) : intoa(h->extended_hdr.parsed_pkt.ipv4_src),
 	     h->extended_hdr.parsed_pkt.l4_src_port);
-      printf("%s:%d] ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ? 
-	     in6toa(h->extended_hdr.parsed_pkt.ipv6_dst) : intoa(h->extended_hdr.parsed_pkt.ipv4_dst), 
+      printf("%s:%d] ", (h->extended_hdr.parsed_pkt.eth_type == 0x86DD) ?
+	     in6toa(h->extended_hdr.parsed_pkt.ipv6_dst) : intoa(h->extended_hdr.parsed_pkt.ipv4_dst),
 	     h->extended_hdr.parsed_pkt.l4_dst_port);
-      
+
       printf("[%s -> %s] ",
 	     etheraddr_string(h->extended_hdr.parsed_pkt.smac, buf1),
 	     etheraddr_string(h->extended_hdr.parsed_pkt.dmac, buf2));
@@ -384,7 +382,7 @@ void dummyProcesssPacket(const struct pfring_pkthdr *h, const u_char *p, long th
 	     h->extended_hdr.parsed_pkt.offset.l3_offset,
 	     h->extended_hdr.parsed_pkt.offset.l4_offset,
 	     h->extended_hdr.parsed_pkt.offset.payload_offset);
-      
+
     } else {
       if(eth_type == 0x0806)
 	printf("[ARP]");
@@ -435,16 +433,13 @@ int32_t gmt2local(time_t t) {
 /* *************************************** */
 
 void printHelp(void) {
-  printf("pfcount\n(C) 2005-11 Deri Luca <deri@ntop.org>\n\n");
+  printf("pfcount_82599\n(C) 2011 Deri Luca <deri@ntop.org>\n\n");
   printf("-h              Print this help\n");
   printf("-i <device>     Device name. Use device@channel for channels\n");
   printf("-n <threads>    Number of polling threads (default %d)\n", num_threads);
 
   /* printf("-f <filter>     [pfring filter]\n"); */
 
-#ifdef ENABLE_DNA_SUPPORT
-  printf("-d              Open the device in DNA mode\n");
-#endif
   printf("-c <cluster id> cluster id\n");
   printf("-e <direction>  0=RX+TX, 1=RX only, 2=TX only\n");
   printf("-s <string>     String to search on packets\n");
@@ -457,7 +452,7 @@ void printHelp(void) {
 
 void* packet_consumer_thread(void* _id) {
   int s;
-  long thread_id = (long)_id; 
+  long thread_id = (long)_id;
   u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
   u_long core_id = thread_id % numCPU;
 
@@ -468,7 +463,7 @@ void* packet_consumer_thread(void* _id) {
     CPU_ZERO(&cpuset);
     CPU_SET(core_id, &cpuset);
     if((s = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) != 0)
-      printf("Error while binding thread %ld to core %ld: errno=%i\n", 
+      printf("Error while binding thread %ld to core %ld: errno=%i\n",
 	     thread_id, core_id, s);
     else {
       printf("Set thread %lu on core %lu/%u\n", thread_id, core_id, numCPU);
@@ -491,7 +486,7 @@ void* packet_consumer_thread(void* _id) {
     if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0) {
       if(do_shutdown) break;
       dummyProcesssPacket(&hdr, buffer, thread_id);
-      
+
 #ifdef TEST_SEND
       buffer[0] = 0x99;
       buffer[1] = 0x98;
@@ -563,7 +558,7 @@ int main(int argc, char* argv[]) {
   startTime.tv_sec = 0;
   thiszone = gmt2local(0);
 
-  while((c = getopt(argc,argv,"hi:c:dl:vs:ae:n:w:" /* "f:" */)) != '?') {
+  while((c = getopt(argc,argv,"hi:c:l:vs:ae:n:w:" /* "f:" */)) != '?') {
     if((c == 255) || (c == -1)) break;
 
     switch(c) {
@@ -585,11 +580,6 @@ int main(int argc, char* argv[]) {
       break;
     case 'c':
       clusterId = atoi(optarg);
-      break;
-    case 'd':
-#ifdef ENABLE_DNA_SUPPORT
-      dna_mode = 1;
-#endif
       break;
     case 'l':
       snaplen = atoi(optarg);
@@ -628,12 +618,7 @@ int main(int argc, char* argv[]) {
   if(num_threads > 0)
     pthread_rwlock_init(&statsLock, NULL);
 
-  if(!dna_mode)
-    pd = pfring_open(device, promisc,  snaplen, (num_threads > 0) ? 1 : 0);
-#ifdef ENABLE_DNA_SUPPORT
-  else
-    pd = pfring_open_dna(device, promisc, 0 /* we don't use threads */);
-#endif
+  pd = pfring_open(device, promisc,  snaplen, (num_threads > 0) ? 1 : 0);
 
   if(pd == NULL) {
     printf("pfring_open error\n");
@@ -641,7 +626,7 @@ int main(int argc, char* argv[]) {
   } else {
     u_int32_t version;
 
-    pfring_set_application_name(pd, "pfcount");
+    pfring_set_application_name(pd, "pfcount_82599");
     pfring_version(pd, &version);
 
     printf("Using PF_RING v.%d.%d.%d\n",
@@ -666,55 +651,97 @@ int main(int argc, char* argv[]) {
       printf("pfring_set_poll_watermark returned [rc=%d][watermark=%d]\n", rc, watermark);
   }
 
-#if 0
+
   if(0) {
+    int rc, rule_id = 0;
+    hw_filtering_rule rule;
+    intel_82599_five_tuple_filter_hw_rule *ft_rule;
+
+    printf("### FTFQ Rule Example ###\n");
+
+    ft_rule = &rule.rule_family.five_tuple_rule;
+
+    if(0) {
+      memset(&rule, 0, sizeof(rule)), rule.rule_family_type = intel_82599_five_tuple_rule;
+      rule.rule_id = rule_id++, ft_rule->queue_id = -1, ft_rule->proto = 17; /* udp */
+      rc = pfring_add_hw_rule(pd, &rule);
+      if(rc != 0)
+	printf("pfring_add_hw_rule(%d) failed [rc=%d]\n", rule.rule_id, rc);
+      else
+	printf("pfring_add_hw_rule(%d) succeeded: dropping UDP traffic\n", rule.rule_id);
+    }
+
+    if(0) {
+      memset(&rule, 0, sizeof(rule)), rule.rule_family_type = intel_82599_five_tuple_rule;
+      rule.rule_id = rule_id++, ft_rule->queue_id = -1, ft_rule->proto = 6; /* tcp */
+      rc = pfring_add_hw_rule(pd, &rule);
+      if(rc != 0)
+	printf("pfring_add_hw_rule(%d) failed [rc=%d]\n", rule.rule_id, rc);
+      else
+	printf("pfring_add_hw_rule(%d) succeeded: dropping TCP traffic\n", rule.rule_id);
+    }
+
+    memset(&rule, 0, sizeof(rule)), rule.rule_family_type = intel_82599_five_tuple_rule;
+    rule.rule_id = rule_id++, ft_rule->queue_id = -1, ft_rule->proto = 6, ft_rule->s_addr = ntohl(inet_addr("192.168.30.207"));
+    rc = pfring_add_hw_rule(pd, &rule);
+    if(rc != 0)
+      printf("pfring_add_hw_rule(%d) failed [rc=%d]\n", rule.rule_id, rc);
+    else
+      printf("pfring_add_hw_rule(%d) succeeded: dropping TCP traffic 192.168.30.207 -> *\n", rule.rule_id);
+
+    memset(&rule, 0, sizeof(rule)), rule.rule_family_type = intel_82599_five_tuple_rule;
+    rule.rule_id = rule_id++, ft_rule->queue_id = -1, ft_rule->proto = 6, ft_rule->d_addr = ntohl(inet_addr("192.168.30.207"));
+    rc = pfring_add_hw_rule(pd, &rule);
+    if(rc != 0)
+      printf("pfring_add_hw_rule(%d) failed [rc=%d]\n", rule.rule_id, rc);
+    else
+      printf("pfring_add_hw_rule(%d) succeeded: dropping TCP traffic * -> 192.168.30.207\n", rule.rule_id);
+
+    memset(&rule, 0, sizeof(rule)), rule.rule_family_type = intel_82599_five_tuple_rule;
+    rule.rule_id = rule_id++, ft_rule->queue_id = -1, ft_rule->proto = 0, ft_rule->d_addr = ntohl(inet_addr("192.168.30.207"));
+    rc = pfring_add_hw_rule(pd, &rule);
+    if(rc != 0)
+      printf("pfring_add_hw_rule(%d) failed [rc=%d]\n", rule.rule_id, rc);
+    else
+      printf("pfring_add_hw_rule(%d) succeeded: dropping non-TCP/UDP traffic * -> 192.168.30.207\n", rule.rule_id);
+  }
+
+  if(1) {
+    int rc, rule_id = 0;
+    hw_filtering_rule rule;
+    intel_82599_perfect_filter_hw_rule *perfect_rule;
+
+    printf("### Perfect Rule Example ###\n");
+    /*
+      NOTE:
+      - valid protocols: UDP or TCP
+     */
+    perfect_rule = &rule.rule_family.perfect_rule;
+
     if(1) {
-      pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
+      memset(&rule, 0, sizeof(rule)), rule.rule_family_type = intel_82599_perfect_filter_rule;
+      rule.rule_id = rule_id++, perfect_rule->queue_id = -1, perfect_rule->proto = 6,
+	perfect_rule->s_addr = ntohl(inet_addr("192.168.30.207"));
+      rc = pfring_add_hw_rule(pd, &rule);
+      if(rc != 0)
+	printf("pfring_add_hw_rule(%d) failed [rc=%d]: did you enable the FlowDirector (insmod ixgbe.ko FdirMode=2)\n", rule.rule_id, rc);
+      else
+	printf("pfring_add_hw_rule(%d) succeeded: dropping TCP traffic 192.168.30.207:* -> *\n", rule.rule_id);
+    }
 
-      add_rule(1);
-    } else {
-      struct dummy_filter {
-	u_int32_t src_host;
-      };
 
-      struct dummy_filter filter;
-      filtering_rule rule;
-
-      memset(&rule, 0, sizeof(rule));
-
-      if(1) {
-	filter.src_host = ntohl(inet_addr("10.100.0.238"));
-
-#if 0
-	rule.rule_id = 5;
-	rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	rule.core_fields.proto = 1;
-	rule.core_fields.host_low = 0, rule.core_fields.host_high = 0;
-	rule.plugin_action.plugin_id = 1; /* Dummy plugin */
-
-	rule.extended_fields.filter_plugin_id = 1; /* Dummy plugin */
-	memcpy(rule.extended_fields.filter_plugin_data, &filter, sizeof(filter));
-	/* strcpy(rule.extended_fields.payload_pattern, "hello"); */
-#else
-	rule.rule_id = 5;
-	rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
-	//rule.core_fields.host4_low = rule.core_fields.host4_high = ntohl(inet_addr("192.168.0.160"));
-	// snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
-#endif
-	if(pfring_add_filtering_rule(pd, &rule) < 0)
-	  printf("pfring_add_filtering_rule() failed\n");
-      } else {
-	rule.rule_id = 10; pfring_add_filtering_rule(pd, &rule);
-	rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
-	rule.rule_id = 15; pfring_add_filtering_rule(pd, &rule);
-	rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
-	if(pfring_remove_filtering_rule(pd, 15) < 0)
-	  printf("pfring_remove_filtering_rule() failed\n");
-      }
+    if(1) {
+      memset(&rule, 0, sizeof(rule)), rule.rule_family_type = intel_82599_perfect_filter_rule;
+      rule.rule_id = rule_id++, perfect_rule->queue_id = -1, perfect_rule->proto = 17,
+	perfect_rule->s_addr = ntohl(inet_addr("192.168.30.207"));
+      rc = pfring_add_hw_rule(pd, &rule);
+      if(rc != 0)
+	printf("pfring_add_hw_rule(%d) failed [rc=%d]: did you enable the FlowDirector (insmod ixgbe.ko FdirMode=2)\n", rule.rule_id, rc);
+      else
+	printf("pfring_add_hw_rule(%d) succeeded: dropping UDP traffic 192.168.30.207:* -> *\n", rule.rule_id);
     }
   }
-#endif
+
 
   signal(SIGINT, sigproc);
   signal(SIGTERM, sigproc);
@@ -736,13 +763,13 @@ int main(int argc, char* argv[]) {
 
   if(0) {
     filtering_rule rule;
-    
+
     memset(&rule, 0, sizeof(rule));
-    
+
     rule.rule_id = 5;
     rule.rule_action = forward_packet_and_stop_rule_evaluation;
     rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
-    
+
     if(pfring_add_filtering_rule(pd, &rule) < 0)
       printf("pfring_add_hash_filtering_rule(2) failed\n");
     else
@@ -753,15 +780,15 @@ int main(int argc, char* argv[]) {
     filtering_rule rule;
 
 #define DUMMY_PLUGIN_ID   1
-    
+
     memset(&rule, 0, sizeof(rule));
-    
+
     rule.rule_id = 5;
     rule.rule_action = forward_packet_and_stop_rule_evaluation;
     rule.core_fields.proto = 6 /* tcp */;
     // rule.plugin_action.plugin_id = DUMMY_PLUGIN_ID; /* Dummy plugin */
     // rule.extended_fields.filter_plugin_id = DUMMY_PLUGIN_ID; /* Enable packet parsing/filtering */
-    
+
     if(pfring_add_filtering_rule(pd, &rule) < 0)
       printf("pfring_add_hash_filtering_rule(2) failed\n");
     else
