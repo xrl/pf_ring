@@ -907,9 +907,6 @@ static u_int16_t pfring_plugin_id = 0;
 int add_plugin_to_device_list(struct net_device *dev) {
   ring_device_element *dev_ptr;
 
-  printk("[PF_RING] add_plugin_to_device_list(%s, plugin_id=%d)\n",
-	 dev->name, pfring_plugin_id);
-
   if ((dev_ptr = kmalloc(sizeof(ring_device_element),
 			 GFP_KERNEL)) == NULL)
     return (-ENOMEM);

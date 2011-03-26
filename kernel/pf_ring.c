@@ -3068,7 +3068,7 @@ static int ring_create(
   pfr->num_rx_channels = UNKNOWN_NUM_RX_CHANNELS;
   pfr->channel_id = RING_ANY_CHANNEL;
   pfr->bucket_len = DEFAULT_BUCKET_LEN;
-  pfr->poll_num_pkts_watermark = 1; // DEFAULT_MIN_PKT_QUEUED;
+  pfr->poll_num_pkts_watermark = DEFAULT_MIN_PKT_QUEUED;
   pfr->handle_hash_rule = handle_sw_filtering_hash_bucket;
   pfr->add_packet_to_ring = add_packet_to_ring;
   init_waitqueue_head(&pfr->ring_slots_waitqueue);
