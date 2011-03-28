@@ -2073,7 +2073,8 @@ int check_wildcard_rules(struct sk_buff *skb,
 	sw_filtering_hash_bucket *hash_bucket;
 
 	*fwd_pkt = 1;
-	hash_bucket = (sw_filtering_hash_bucket *)kcalloc(1, sizeof(sw_filtering_hash_bucket), GFP_KERNEL);
+	hash_bucket = (sw_filtering_hash_bucket *)kcalloc(1, sizeof(sw_filtering_hash_bucket), 
+							  GFP_ATOMIC);
 
 	if(hash_bucket) {
 	  int rc = 0;
