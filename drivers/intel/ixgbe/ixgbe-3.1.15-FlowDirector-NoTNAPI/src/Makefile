@@ -152,8 +152,7 @@ EXTRA_CFLAGS += -DDRIVER_NAME_CAPS=$(shell echo $(DRIVER_NAME) | tr '[a-z]' '[A-
 # standard flags for module builds
 EXTRA_CFLAGS += -DLINUX -D__KERNEL__ -DMODULE -O2 -pipe -Wall
 EXTRA_CFLAGS += -I$(KSRC)/include -I.
-# NETIF_F_HW_VLAN_TX - is used to prevent VLAN stripping
-EXTRA_CFLAGS += -DHAVE_PF_RING -DDISABLE_NETIF_F_HW_VLAN_TX
+EXTRA_CFLAGS += -DHAVE_PF_RING
 EXTRA_CFLAGS += $(shell [ -f $(KSRC)/include/linux/modversions.h ] && \
             echo "-DMODVERSIONS -DEXPORT_SYMTAB \
                   -include $(KSRC)/include/linux/modversions.h")

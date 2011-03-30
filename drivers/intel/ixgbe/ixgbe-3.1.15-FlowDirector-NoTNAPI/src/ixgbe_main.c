@@ -3664,6 +3664,8 @@ static void ixgbe_vlan_stripping_disable(struct ixgbe_adapter *adapter)
 }
 
 #endif
+
+#ifndef HAVE_PF_RING
 /**
  * ixgbe_vlan_stripping_enable - helper to enable vlan tag stripping
  * @adapter: driver data
@@ -3693,6 +3695,7 @@ static void ixgbe_vlan_stripping_enable(struct ixgbe_adapter *adapter)
 		break;
 	}
 }
+#endif /* HAVE_PF_RING */
 
 static void ixgbe_vlan_rx_register(struct net_device *netdev,
 				   struct vlan_group *grp)
@@ -3704,10 +3707,12 @@ static void ixgbe_vlan_rx_register(struct net_device *netdev,
 	adapter->vlgrp = grp;
 
 #ifdef HAVE_8021P_SUPPORT
+#ifndef HAVE_PF_RING
 	if (grp || (adapter->flags & IXGBE_FLAG_DCB_ENABLED))
 		/* enable VLAN tag insert/strip */
 		ixgbe_vlan_stripping_enable(adapter);
 	else
+#endif
 		/* disable VLAN tag insert/strip */
 		ixgbe_vlan_stripping_disable(adapter);
 
@@ -3720,6 +3725,7 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 {
 	ixgbe_vlan_rx_register(adapter->netdev, adapter->vlgrp);
 
+#ifndef HAVE_PF_RING
 #ifndef HAVE_8021P_SUPPORT
 	/*
 	 * add vlan ID 0 and enable vlan tag stripping so we
@@ -3727,7 +3733,7 @@ static void ixgbe_restore_vlan(struct ixgbe_adapter *adapter)
 	 */
 	ixgbe_vlan_rx_add_vid(adapter->netdev, 0);
 	ixgbe_vlan_stripping_enable(adapter);
-
+#endif
 #endif
 	if (adapter->vlgrp) {
 		u16 vid;
