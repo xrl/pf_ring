@@ -208,6 +208,8 @@ inline void ring_read_unlock(void)       { read_unlock_bh(&ring_mgmt_lock);   }
 
 static atomic_t num_ring_readers, ring_stop;
 
+/* Do NOT call schedule() as this might cause crash when exiting */
+
 inline void init_ring_readers(void) {
   atomic_set(&num_ring_readers, 0);
   atomic_set(&ring_stop, 0);
@@ -216,7 +218,7 @@ inline void init_ring_readers(void) {
 inline void ring_write_lock(void) {
   atomic_set(&ring_stop, 1);
 
-  while(atomic_read(&num_ring_readers) > 0) { schedule(); }
+  while(atomic_read(&num_ring_readers) > 0) { /* schedule() */; }
 }
 
 inline void ring_write_unlock(void) {
@@ -224,7 +226,7 @@ inline void ring_write_unlock(void) {
 }
 
 inline void ring_read_lock(void) {
-  while(atomic_read(&ring_stop) == 1) { schedule(); }
+  while(atomic_read(&ring_stop) == 1) { /* schedule() */; }
   atomic_inc(&num_ring_readers);
 }
 
@@ -3213,7 +3215,7 @@ static int ring_release(struct socket *sock)
       kfree(pfr->sw_filtering_hash);
     }
 
-    printk("[PF_RING] --> num_hw_filtering_rules=%d\n", pfr->num_hw_filtering_rules);
+    /* printk("[PF_RING] --> num_hw_filtering_rules=%d\n", pfr->num_hw_filtering_rules); */
 
     /* Free Hw Filtering Rules */
     if(pfr->num_hw_filtering_rules > 0) {
