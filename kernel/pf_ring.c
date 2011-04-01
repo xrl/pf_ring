@@ -2205,24 +2205,24 @@ static int add_skb_to_ring(struct sk_buff *skb,
     int skb_len = skb->len;
 
     len = skb->len - skb->data_len;
-    
-    /*
-      Move off the offset (we modify the packet for the sake of filtering) 
-      thus we need to restore it later on
 
-      NOTE: displ = 0 | skb_network_offset(skb)
-     */
-    skb_push(skb, displ);
+    if(displ > 0) {
+      /*
+	Move off the offset (we modify the packet for the sake of filtering) 
+	thus we need to restore it later on
+	
+	NOTE: displ = 0 | skb_network_offset(skb)
+      */
+      skb_push(skb, displ);
+    }
 
     rcu_read_lock_bh();
     res = sk_run_filter(skb, pfr->bpfFilter->insns, skb->len);
     rcu_read_unlock_bh();
 
     /* Restore */
-    if (skb_head != skb->data && skb_shared(skb)) {
-      skb->data = skb_head;
-      skb->len = skb_len;
-    }
+    if(displ > 0)
+      skb->data = skb_head, skb->len = skb_len;
     
     if(res == 0) {
       /* Filter failed */
