@@ -2201,14 +2201,31 @@ static int add_skb_to_ring(struct sk_buff *skb,
   /* [1] BPF Filtering (from af_packet.c) */
   if(pfr->bpfFilter != NULL) {
     unsigned res = 1, len;
+    struct sk_filter *filter;
+    u8 *skb_head = skb->data;
+    int skb_len = skb->len;
 
     len = skb->len - skb->data_len;
+    
+    /*
+      Move off the offset (we modify the packet for the sake of filtering) 
+      thus we need to restore it later on
 
-    skb->data -= displ;
-    res = sk_run_filter(skb, pfr->bpfFilter->insns,
-			pfr->bpfFilter->len);
-    skb->data += displ;
+      NOTE: displ = 0 | skb_network_offset(skb)
+     */
+    skb_push(skb, displ);
 
+    rcu_read_lock_bh();
+    filter = rcu_dereference_bh(pfr->bpfFilter);
+    res = sk_run_filter(skb, filter->insns, skb->len);
+    rcu_read_unlock_bh();
+
+    /* Restore */
+    if (skb_head != skb->data && skb_shared(skb)) {
+      skb->data = skb_head;
+      skb->len = skb_len;
+    }
+    
     if(res == 0) {
       /* Filter failed */
       if(enable_debug)
