@@ -960,25 +960,25 @@ static int parse_pkt(char *pkt, struct pfring_pkthdr *hdr)
     hdr->extended_hdr.parsed_pkt.ipv4_tos = ip->tos;
 
     if((ip->protocol == IPPROTO_TCP) || (ip->protocol == IPPROTO_UDP)) {
-	u_int16_t ip_len = ip->ihl*4;
+      u_int16_t ip_len = ip->ihl*4;
 
-	hdr->extended_hdr.parsed_pkt.offset.l4_offset = hdr->extended_hdr.parsed_pkt.offset.l3_offset+ip_len;
+      hdr->extended_hdr.parsed_pkt.offset.l4_offset = hdr->extended_hdr.parsed_pkt.offset.l3_offset+ip_len;
 
-	if(ip->protocol == IPPROTO_TCP) {
-	    struct tcphdr *tcp = (struct tcphdr*)(pkt+hdr->extended_hdr.parsed_pkt.offset.l4_offset);
-	    hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(tcp->dest);
-	    hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset+(tcp->doff * 4);
-	    hdr->extended_hdr.parsed_pkt.tcp.seq_num = ntohl(tcp->seq);
-	    hdr->extended_hdr.parsed_pkt.tcp.ack_num = ntohl(tcp->ack_seq);
-	    hdr->extended_hdr.parsed_pkt.tcp.flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
-	      (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
-	  } else if(ip->protocol == IPPROTO_UDP) {
-	    struct udphdr *udp = (struct udphdr*)(pkt+hdr->extended_hdr.parsed_pkt.offset.l4_offset);
-	    hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(udp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(udp->dest);
-	    hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset+sizeof(struct udphdr);
-	  } else
-	  hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset;
+      if(ip->protocol == IPPROTO_TCP) {
+	struct tcphdr *tcp = (struct tcphdr*)(pkt+hdr->extended_hdr.parsed_pkt.offset.l4_offset);
+	hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(tcp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(tcp->dest);
+	hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset+(tcp->doff * 4);
+	hdr->extended_hdr.parsed_pkt.tcp.seq_num = ntohl(tcp->seq);
+	hdr->extended_hdr.parsed_pkt.tcp.ack_num = ntohl(tcp->ack_seq);
+	hdr->extended_hdr.parsed_pkt.tcp.flags = (tcp->fin * TH_FIN_MULTIPLIER) + (tcp->syn * TH_SYN_MULTIPLIER) + (tcp->rst * TH_RST_MULTIPLIER) +
+	  (tcp->psh * TH_PUSH_MULTIPLIER) + (tcp->ack * TH_ACK_MULTIPLIER) + (tcp->urg * TH_URG_MULTIPLIER);
+      } else if(ip->protocol == IPPROTO_UDP) {
+	struct udphdr *udp = (struct udphdr*)(pkt+hdr->extended_hdr.parsed_pkt.offset.l4_offset);
+	hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(udp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(udp->dest);
+	hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset+sizeof(struct udphdr);
       } else
+	hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset;
+    } else
       hdr->extended_hdr.parsed_pkt.l4_src_port = hdr->extended_hdr.parsed_pkt.l4_dst_port = 0;
 
     return(1); /* IP */
@@ -1100,21 +1100,8 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
 
     if(wait_for_incoming_packet) {
-      /*
-	Spin in userland for a while and if no packet arrives then
-	it's time to poll the kernel. I have to do this as a call to
-	poll() is too costly hence I do call poll() if and only if
-	I have no chance to avoid it.
-      */
-      if(num_loops < MAX_NUM_LOOPS) {
-	num_loops++;
-	if(num_loops % YIELD_MULTIPLIER) {
-	  sched_yield();
-	}
-      } else {
-	rc = pfring_poll(ring, 500);
-      }
-
+      rc = pfring_poll(ring, 1000);
+      
       if(rc == -1)
 	return(-1);
       else
@@ -1355,8 +1342,7 @@ pfring* pfring_open_dna(char *device_name,  u_int8_t promisc, u_int8_t _reentran
 #endif
       return(ring);
     } else {
-      printf("pfring_map_dna_device() failed [rc=%d]: device already in use or non-DNA driver?\n",
-	     rc);
+      printf("pfring_map_dna_device() failed [rc=%d]: device already in use or non-DNA driver?\n", rc);
       printf("Make sure that you load the DNA-driver *after* you loaded the PF_RING kernel module\n");
       free(ring);
       return(NULL);
