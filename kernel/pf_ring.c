@@ -2201,7 +2201,6 @@ static int add_skb_to_ring(struct sk_buff *skb,
   /* [1] BPF Filtering (from af_packet.c) */
   if(pfr->bpfFilter != NULL) {
     unsigned res = 1, len;
-    struct sk_filter *filter;
     u8 *skb_head = skb->data;
     int skb_len = skb->len;
 
@@ -2216,8 +2215,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
     skb_push(skb, displ);
 
     rcu_read_lock_bh();
-    filter = rcu_dereference_bh(pfr->bpfFilter);
-    res = sk_run_filter(skb, filter->insns, skb->len);
+    res = sk_run_filter(skb, pfr->bpfFilter->insns, skb->len);
     rcu_read_unlock_bh();
 
     /* Restore */
