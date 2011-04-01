@@ -460,6 +460,9 @@ void* packet_consumer_thread(void* _id) {
   long thread_id = (long)_id; 
   u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
   u_long core_id = thread_id % numCPU;
+  u_char buffer[2048];
+
+  /* printf("packet_consumer_thread(%lu)\n", thread_id); */
 
   if((num_threads > 1) && (numCPU > 1)) {
     /* Bind this thread to a specific core */
@@ -479,8 +482,6 @@ void* packet_consumer_thread(void* _id) {
     struct simple_stats {
       u_int64_t num_pkts, num_bytes;
     };
-
-    u_char buffer[2048];
     struct simple_stats stats;
     struct pfring_pkthdr hdr;
     int rc;
@@ -658,61 +659,69 @@ int main(int argc, char* argv[]) {
     printf("pfring_set_cluster returned %d\n", rc);
   }
 
-  if((rc = pfring_set_direction(pd, direction)) != 0)
-    printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
-
-  if(watermark > 0) {
-    if((rc = pfring_set_poll_watermark(pd, watermark)) != 0)
-      printf("pfring_set_poll_watermark returned [rc=%d][watermark=%d]\n", rc, watermark);
-  }
-
-#if 0
-  if(0) {
-    if(1) {
-      pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
-
-      add_rule(1);
-    } else {
-      struct dummy_filter {
-	u_int32_t src_host;
-      };
-
-      struct dummy_filter filter;
-      filtering_rule rule;
-
-      memset(&rule, 0, sizeof(rule));
-
-      if(1) {
-	filter.src_host = ntohl(inet_addr("10.100.0.238"));
-
-#if 0
-	rule.rule_id = 5;
-	rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	rule.core_fields.proto = 1;
-	rule.core_fields.host_low = 0, rule.core_fields.host_high = 0;
-	rule.plugin_action.plugin_id = 1; /* Dummy plugin */
-
-	rule.extended_fields.filter_plugin_id = 1; /* Dummy plugin */
-	memcpy(rule.extended_fields.filter_plugin_data, &filter, sizeof(filter));
-	/* strcpy(rule.extended_fields.payload_pattern, "hello"); */
-#else
-	rule.rule_id = 5;
-	rule.rule_action = forward_packet_and_stop_rule_evaluation;
-	rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
-	//rule.core_fields.host4_low = rule.core_fields.host4_high = ntohl(inet_addr("192.168.0.160"));
-	// snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
+#ifdef ENABLE_DNA_SUPPORT
+  if(dna_mode == 0) {
 #endif
-	if(pfring_add_filtering_rule(pd, &rule) < 0)
-	  printf("pfring_add_filtering_rule() failed\n");
+
+    if((rc = pfring_set_direction(pd, direction)) != 0)
+      printf("pfring_set_direction returned [rc=%d][direction=%d]\n", rc, direction);
+
+    if(watermark > 0) {
+      if((rc = pfring_set_poll_watermark(pd, watermark)) != 0)
+	printf("pfring_set_poll_watermark returned [rc=%d][watermark=%d]\n", rc, watermark);
+    }
+
+#if 0
+    if(0) {
+      if(1) {
+	pfring_toggle_filtering_policy(pd, 0); /* Default to drop */
+
+	add_rule(1);
       } else {
-	rule.rule_id = 10; pfring_add_filtering_rule(pd, &rule);
-	rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
-	rule.rule_id = 15; pfring_add_filtering_rule(pd, &rule);
-	rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
-	if(pfring_remove_filtering_rule(pd, 15) < 0)
-	  printf("pfring_remove_filtering_rule() failed\n");
+	struct dummy_filter {
+	  u_int32_t src_host;
+	};
+
+	struct dummy_filter filter;
+	filtering_rule rule;
+
+	memset(&rule, 0, sizeof(rule));
+
+	if(1) {
+	  filter.src_host = ntohl(inet_addr("10.100.0.238"));
+
+#if 0
+	  rule.rule_id = 5;
+	  rule.rule_action = forward_packet_and_stop_rule_evaluation;
+	  rule.core_fields.proto = 1;
+	  rule.core_fields.host_low = 0, rule.core_fields.host_high = 0;
+	  rule.plugin_action.plugin_id = 1; /* Dummy plugin */
+
+	  rule.extended_fields.filter_plugin_id = 1; /* Dummy plugin */
+	  memcpy(rule.extended_fields.filter_plugin_data, &filter, sizeof(filter));
+	  /* strcpy(rule.extended_fields.payload_pattern, "hello"); */
+#else
+	  rule.rule_id = 5;
+	  rule.rule_action = forward_packet_and_stop_rule_evaluation;
+	  rule.core_fields.port_low = 80, rule.core_fields.port_high = 80;
+	  //rule.core_fields.host4_low = rule.core_fields.host4_high = ntohl(inet_addr("192.168.0.160"));
+	  // snprintf(rule.extended_fields.payload_pattern, sizeof(rule.extended_fields.payload_pattern), "GET");
+#endif
+	  if(pfring_add_filtering_rule(pd, &rule) < 0)
+	    printf("pfring_add_filtering_rule() failed\n");
+	} else {
+	  rule.rule_id = 10; pfring_add_filtering_rule(pd, &rule);
+	  rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
+	  rule.rule_id = 15; pfring_add_filtering_rule(pd, &rule);
+	  rule.rule_id = 5;  pfring_add_filtering_rule(pd, &rule);
+	  if(pfring_remove_filtering_rule(pd, 15) < 0)
+	    printf("pfring_remove_filtering_rule() failed\n");
+	}
       }
     }
+#endif
+
+#ifdef ENABLE_DNA_SUPPORT
   }
 #endif
 
@@ -720,15 +729,14 @@ int main(int argc, char* argv[]) {
   signal(SIGTERM, sigproc);
   signal(SIGINT, sigproc);
 
-
   if(!verbose) {
     signal(SIGALRM, my_sigalarm);
     alarm(ALARM_SLEEP);
   }
 
-  if(dna_mode)
+  if(dna_mode) {
     num_threads = 1;
-  else {
+  } else {
     if(num_threads > 0) wait_for_packet = 1;
   }
 
@@ -749,7 +757,7 @@ int main(int argc, char* argv[]) {
       printf("Rule added successfully...\n");
   }
 
-  if(1) {
+  if(0) {
     filtering_rule rule;
 
 #define DUMMY_PLUGIN_ID   1

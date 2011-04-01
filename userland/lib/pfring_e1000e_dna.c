@@ -56,7 +56,7 @@ char* get_next_e1000_packet(pfring* ring,
     if(++ring->rx_reg == ring->dna_dev.descr_packet_memory_num_slots)
       ring->rx_reg = 0;
 
-    if((ring->rx_reg % 32) == 0) {
+    if((ring->rx_reg % 512) == 0) {
       wmb(); /* Flush out memory first */  
       set_e1000_rx_register(ring, ring->rx_reg);  
     }
@@ -79,7 +79,7 @@ char* get_next_e1000_packet(pfring* ring,
 
 u_int8_t e1000_there_is_a_packet_to_read(pfring* ring, u_int8_t wait_for_incoming_packet) {
   struct e1000_rx_desc *head = (struct e1000_rx_desc*)ring->dna_dev.descr_packet_memory;
-  u_int8_t ret;
+  u_int8_t ret, once = 0;
 
  do_e1000_there_is_a_packet_to_read:
   ret = head[ring->rx_reg].status & E1000_RXD_STAT_DD;
@@ -87,7 +87,6 @@ u_int8_t e1000_there_is_a_packet_to_read(pfring* ring, u_int8_t wait_for_incomin
   if(ret || (wait_for_incoming_packet == 0))
     return(ret);
   else {
-    struct pollfd pfd;
     int rc;
 
     if(0) printf("* poll [wait_for_incoming_packet=%d]*\n", wait_for_incoming_packet);
@@ -98,24 +97,14 @@ u_int8_t e1000_there_is_a_packet_to_read(pfring* ring, u_int8_t wait_for_incomin
     gettimeofday (& now, NULL);
 #endif
 
-    /* Make sure we're in sync */
-    set_e1000_rx_register(ring, ring->rx_reg);
+    if(!once) {
+      /* Make sure we're in sync */
+      set_e1000_rx_register(ring, ring->rx_reg);
+      once = 1;
+    }
 
     /* Sleep when nothing is happening */
-    pfd.fd      = ring->fd;
-    pfd.events  = POLLIN|POLLERR;
-    pfd.revents = 0;
-
-    errno = 0;
-    rc = poll(&pfd, 1, 1);
-    ring->num_poll_calls++;
-
-#ifdef PROFILE    
-    gettimeofday (& then, NULL);
-
-    printf("poll took %u usec [calls %u]\n", 
-	   us(&then)-us(&now), ring->num_poll_calls);
-#endif
+    rc = pfring_poll(ring, 1);
 
     if(rc == -1) {
 #if 0

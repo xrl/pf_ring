@@ -40,7 +40,7 @@ INCLUDE    = -I${PFRING_KERNEL}  -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${P
 # CROSS_COMPILE=arm-mv5sft-linux-gnueabi-
 #
 CC         = ${CROSS_COMPILE}gcc
-CFLAGS     = -g -Wall ${INCLUDE} ${DNA_DEFINE}
+CFLAGS     = -g -Wall ${INCLUDE} ${DNA_DEFINE} #-O
 # LDFLAGS  =
 
 #

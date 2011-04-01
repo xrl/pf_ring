@@ -592,6 +592,25 @@ int pfring_set_poll_watermark(pfring *ring, u_int16_t watermark) {
 #endif
 }
 
+
+/* **************************************************** */
+
+int pfring_poll(pfring *ring, u_int wait_duration) {
+  struct pollfd pfd;
+  int rc;
+  
+  /* Sleep when nothing is happening */
+  pfd.fd      = ring->fd;
+  pfd.events  = POLLIN | POLLERR;
+  pfd.revents = 0;  
+  errno = 0;
+  
+  rc = poll(&pfd, 1, wait_duration);
+  ring->num_poll_calls++;  
+  
+  return(rc);
+}
+
 /* **************************************************** */
 
 int pfring_version(pfring *ring, u_int32_t *version) {
@@ -1081,8 +1100,6 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
     if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
 
     if(wait_for_incoming_packet) {
-      struct pollfd pfd;
-
       /*
 	Spin in userland for a while and if no packet arrives then
 	it's time to poll the kernel. I have to do this as a call to
@@ -1095,24 +1112,7 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 	  sched_yield();
 	}
       } else {
-	/* Sleep when nothing is happening */
-	pfd.fd      = ring->fd;
-	pfd.events  = POLLIN /* |POLLERR */;
-	pfd.revents = 0;
-
-#ifdef RING_DEBUG
-	printf("==>> poll [remove_off=%u][insert_off=%u][loss=%llu][tot_insert=%llu][tot_read=%llu]\n",
-	       ring->slots_info->remove_off,
-	       ring->slots_info->insert_off,
-	       ring->slots_info->tot_lost,
-	       ring->slots_info->tot_insert,
-	       ring->slots_info->tot_read);
-#endif
-
-	errno = 0;
-
-	rc = poll(&pfd, 1, 500);
-	ring->num_poll_calls++;	  
+	rc = pfring_poll(ring, 500);
       }
 
       if(rc == -1)
