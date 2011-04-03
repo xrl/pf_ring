@@ -1241,6 +1241,15 @@ int pfring_set_packet_consumer_mode(pfring *ring, u_int8_t plugin_id,
 
 /* **************************************************** */
 
+int pfring_set_virtual_device(pfring *ring, virtual_filtering_device_info *info) {
+  if((ring == NULL) || ring->dna_mapped_device) return(-1);
+
+  return(setsockopt(ring->fd, 0, SO_SET_VIRTUAL_FILTERING_DEVICE,
+		    (char*)info, sizeof(virtual_filtering_device_info)));
+}
+
+/* **************************************************** */
+
 #ifdef DEBUG
 static void pfring_dump_dna_stats(pfring* ring) {
   switch(ring->dna_dev.device_model) {

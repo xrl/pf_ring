@@ -157,6 +157,7 @@ extern "C" {
   u_int8_t pfring_get_num_rx_channels(pfring *ring);
   u_int16_t pfring_get_ring_id(pfring *ring);
   u_int8_t pfring_get_packet_consumer_mode(pfring *ring);
+  int pfring_set_virtual_device(pfring *ring, virtual_filtering_device_info *info);
   int pfring_set_packet_consumer_mode(pfring *ring, u_int8_t plugin_id,
 				      char *plugin_data, u_int plugin_data_len);
   int pfring_get_hash_filtering_rule_stats(pfring *ring,

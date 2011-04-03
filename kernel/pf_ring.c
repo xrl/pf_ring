@@ -153,6 +153,10 @@ static struct packet_type prot_hook;
 */
 static struct list_head device_ring_list[MAX_NUM_DEVICES];
 
+/* List of virtual filtering devices */
+static struct list_head virtual_filtering_devices_list;
+static rwlock_t virtual_filtering_lock = RW_LOCK_UNLOCKED;
+
 /* List of all clusters */
 static struct list_head ring_cluster_list;
 
@@ -620,7 +624,7 @@ static int i82599_generic_handler(struct pf_ring_socket *pfr,
   if(debug) printk("[PF_RING] hw_filtering_rule[%s][request=%d][%p]\n",
 		   dev->name, request, dev->ethtool_ops->set_eeprom);
 
-  eeprom.len = 1 /* add/remove (no check) */, 
+  eeprom.len = 1 /* add/remove (no check) */,
     eeprom.magic = MAGIC_HW_FILTERING_RULE_REQUEST, eeprom.offset = request;
 
   return(dev->ethtool_ops->set_eeprom(dev, &eeprom, (u8*)rule));
@@ -631,10 +635,10 @@ static int i82599_generic_handler(struct pf_ring_socket *pfr,
 
 /* ************************************* */
 
-static int handle_hw_filtering_rule(struct pf_ring_socket *pfr, 
+static int handle_hw_filtering_rule(struct pf_ring_socket *pfr,
 				    hw_filtering_rule *rule,
 				    hw_filtering_rule_command command) {
-  
+
   printk("[PF_RING] --> handle_hw_filtering_rule(command=%d)\n", command);
 
   switch(rule->rule_family_type) {
@@ -1285,7 +1289,7 @@ static int parse_pkt(struct sk_buff *skb,
     } else if(hdr->extended_hdr.parsed_pkt.l3_proto == IPPROTO_UDP) {
       struct udphdr *udp = (struct udphdr *)(skb->data + hdr->extended_hdr.parsed_pkt.offset.l4_offset);
       hdr->extended_hdr.parsed_pkt.l4_src_port = ntohs(udp->source), hdr->extended_hdr.parsed_pkt.l4_dst_port = ntohs(udp->dest);
-      hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset + sizeof(struct udphdr);     
+      hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset + sizeof(struct udphdr);
     } else
       hdr->extended_hdr.parsed_pkt.offset.payload_offset = hdr->extended_hdr.parsed_pkt.offset.l4_offset;
   } else
@@ -1554,7 +1558,7 @@ static int match_filtering_rule(struct pf_ring_socket *pfr,
 	   || (hdr->extended_hdr.parsed_pkt.l4_dst_port > rule->rule.core_fields.port_high)))
       return(0);
   }
-  
+
   if(rule->rule.balance_pool > 0) {
     u_int32_t balance_hash =
       hash_pkt_header(hdr, 0, 0) % rule->rule.balance_pool;
@@ -2070,7 +2074,7 @@ int check_wildcard_rules(struct sk_buff *skb,
 	sw_filtering_hash_bucket *hash_bucket;
 
 	*fwd_pkt = 1;
-	hash_bucket = (sw_filtering_hash_bucket *)kcalloc(1, sizeof(sw_filtering_hash_bucket), 
+	hash_bucket = (sw_filtering_hash_bucket *)kcalloc(1, sizeof(sw_filtering_hash_bucket),
 							  GFP_ATOMIC);
 
 	if(hash_bucket) {
@@ -2208,9 +2212,9 @@ static int add_skb_to_ring(struct sk_buff *skb,
 
     if(displ > 0) {
       /*
-	Move off the offset (we modify the packet for the sake of filtering) 
+	Move off the offset (we modify the packet for the sake of filtering)
 	thus we need to restore it later on
-	
+
 	NOTE: displ = 0 | skb_network_offset(skb)
       */
       skb_push(skb, displ);
@@ -2223,7 +2227,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
     /* Restore */
     if(displ > 0)
       skb->data = skb_head, skb->len = skb_len;
-    
+
     if(res == 0) {
       /* Filter failed */
       if(enable_debug)
@@ -2330,7 +2334,7 @@ static int add_skb_to_ring(struct sk_buff *skb,
 	if(enable_debug)
 	  printk("[PF_RING] --> [last_matched_plugin = %d][extended_hdr.parsed_header_len=%d]\n",
 		 last_matched_plugin, hdr->extended_hdr.parsed_header_len);
-	
+
 	if(offset > pfr->bucket_len)
 	  offset = hdr->extended_hdr.parsed_header_len = pfr->bucket_len;
 
@@ -2690,7 +2694,7 @@ static int skb_ring_handler(struct sk_buff *skb,
     entry = list_entry(ptr, struct ring_element, list);
 
     skElement = entry->sk;
-    pfr = ring_sk(skElement);    
+    pfr = ring_sk(skElement);
 
     if((pfr != NULL)
        && ((pfr->ring_netdev->dev == skb->dev)
@@ -3115,6 +3119,63 @@ static int ring_create(
   return err;
 }
 
+/* ************************************* */
+
+static virtual_filtering_device_element* add_virtual_filtering_device(struct sock *sock,
+								      virtual_filtering_device_info *info)
+{
+  virtual_filtering_device_element *elem;
+
+  if(enable_debug)
+    printk("[PF_RING] --> add_virtual_filtering_device(%s)\n", info->device_name);
+
+  if(info == NULL)
+    return(NULL);
+
+  elem = kmalloc(sizeof(virtual_filtering_device_element), GFP_KERNEL);
+
+  if(elem == NULL)
+    return(NULL);
+  else {
+    memcpy(&elem->info, info, sizeof(virtual_filtering_device_info));
+    INIT_LIST_HEAD(&elem->list);
+  }
+
+  write_lock_bh(&virtual_filtering_lock);
+  list_add(&elem->list, &virtual_filtering_devices_list);  /* Add as first entry */
+  write_unlock_bh(&virtual_filtering_lock);
+
+  return(elem);
+}
+
+/* ************************************* */
+
+static int remove_virtual_filtering_device(struct sock *sock, char *device_name)
+{
+  struct list_head *ptr, *tmp_ptr;
+
+  if(enable_debug)
+    printk("[PF_RING] --> remove_virtual_filtering_device(%s)\n", device_name);
+
+  write_lock_bh(&virtual_filtering_lock);
+  list_for_each_safe(ptr, tmp_ptr, &virtual_filtering_devices_list) {
+    virtual_filtering_device_element *filtering_ptr;
+
+    filtering_ptr = list_entry(ptr, virtual_filtering_device_element, list);
+
+    if(strcmp(filtering_ptr->info.device_name, device_name) == 0) {
+      list_del(ptr);
+      write_unlock_bh(&virtual_filtering_lock);
+      kfree(filtering_ptr);
+      return(0);
+    }
+  }
+
+  write_unlock_bh(&virtual_filtering_lock);
+
+  return(-EINVAL);	/* Not found */
+}
+
 /* *********************************************** */
 
 static int ring_release(struct socket *sock)
@@ -3243,11 +3304,17 @@ static int ring_release(struct socket *sock)
 
   if(pfr->dna_device != NULL) {
     dna_device_mapping mapping;
-    
+
     mapping.operation = remove_device_mapping;
     snprintf(mapping.device_name, sizeof(mapping.device_name)-1,
 	     "%s", pfr->ring_netdev->dev->name);
     ring_map_dna_device(pfr, &mapping);
+  }
+
+  if(pfr->v_filtering_dev != NULL) {
+    remove_virtual_filtering_device(sk, pfr->v_filtering_dev->info.device_name);
+    pfr->v_filtering_dev = NULL;
+    /* pfr->v_filtering_dev has been freed by remove_virtual_filtering_device() */
   }
 
   /* Free the ring buffer later, vfree needs interrupts enabled */
@@ -3700,6 +3767,7 @@ static int ring_sendmsg(struct kiocb *iocb, struct socket *sock,
  out_unlock:
   if(pfr->ring_netdev)
     dev_put(pfr->ring_netdev->dev);
+
   return err;
 }
 
@@ -3960,7 +4028,7 @@ static int ring_map_dna_device(struct pf_ring_socket *pfr,
     /* Unlock driver */
     if(pfr->dna_device != NULL)
       pfr->dna_device->usage_notification(pfr->dna_device->adapter_ptr, 0 /* unlock */);
-	
+
     pfr->dna_device = NULL;
     if(debug)
       printk("[PF_RING] ring_map_dna_device(%s): removed mapping\n",
@@ -4716,11 +4784,11 @@ static int ring_setsockopt(struct socket *sock,
 
     if(copy_from_user(&hw_rule, optval, sizeof(hw_rule)))
       return -EFAULT;
-   
+
     /* Check if a rule with the same id exists */
     list_for_each_safe(ptr, tmp_ptr, &pfr->hw_filtering_rules) {
       hw_filtering_rule_element *rule = list_entry(ptr, hw_filtering_rule_element, list);
-      
+
       if(rule->rule.rule_id == hw_rule.rule_id) {
 	/* There's already a rule with the same id: failure */
 	return -EINVAL;
@@ -4747,7 +4815,7 @@ static int ring_setsockopt(struct socket *sock,
         ring_device_element *dev_ptr = list_entry(ptr, ring_device_element, device_list);
 
         if(dev_ptr->dev == pfr->ring_netdev->dev) {
-	  dev_ptr->hw_filters.num_filters++;          
+	  dev_ptr->hw_filters.num_filters++;
           break;
         }
       }
@@ -4765,7 +4833,7 @@ static int ring_setsockopt(struct socket *sock,
     found = 0;
     list_for_each_safe(ptr, tmp_ptr, &pfr->hw_filtering_rules) {
       hw_filtering_rule_element *rule = list_entry(ptr, hw_filtering_rule_element, list);
-      
+
       if(rule->rule.rule_id == rule_id) {
 	/* There's already a rule with the same id: good */
 	memcpy(&hw_rule, &rule->rule, sizeof(hw_filtering_rule));
@@ -4858,6 +4926,21 @@ static int ring_setsockopt(struct socket *sock,
     pfr->vpfring_ctx = eventfd_ctx_fileget(eventfp);
     break;
 #endif
+
+  case SO_SET_VIRTUAL_FILTERING_DEVICE:
+    {
+      virtual_filtering_device_info elem;
+
+      if(optlen != sizeof(elem))
+	return -EINVAL;
+
+      if(copy_from_user(&elem, optval, sizeof(elem)))
+	return -EFAULT;
+
+      if((pfr->v_filtering_dev = add_virtual_filtering_device(sock->sk, &elem)) == NULL)
+	return -EFAULT;
+    }
+    break;
 
   default:
     found = 0;
@@ -5061,8 +5144,8 @@ static int ring_getsockopt(struct socket *sock,
   case SO_GET_MAPPED_DNA_DEVICE:
     {
       if((pfr->dna_device == NULL) || (len < sizeof(dna_device)))
-	return -EFAULT;      
-      
+	return -EFAULT;
+
       if(copy_to_user(optval, pfr->dna_device, sizeof(dna_device)))
 	return -EFAULT;
 
@@ -5611,6 +5694,7 @@ static int __init ring_init(void)
 #endif
 
   INIT_LIST_HEAD(&ring_table);
+  INIT_LIST_HEAD(&virtual_filtering_devices_list);
   INIT_LIST_HEAD(&ring_cluster_list);
   INIT_LIST_HEAD(&ring_aware_device_list);
   INIT_LIST_HEAD(&ring_dna_devices_list);

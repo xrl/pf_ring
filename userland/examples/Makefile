@@ -59,7 +59,8 @@ LIBS       = ${LIBPFRING} -lpthread
 #
 PFPROGS   = ringc rings ringm pcaps pfcount pfcount_multichannel pftwin ptwin preflect pfbounce pfmap \
 	    forwarder alldevs dummy_plugin_pfcount pcap2nspcap pfcount_dummy_plugin pffilter_test \
-	    pfcount_82599
+	    pfcount_82599 vdevice_simulator
+
 PCAPPROGS = pcount pwrite
 TARGETS   = ${PFPROGS} ${PCAPPROGS}
 
@@ -129,6 +130,9 @@ alldevs: alldevs.o ${LIBPCAP} ${LIBPFRING}
 
 pwrite: pwrite.o ${LIBPCAP} ${LIBPFRING}
 	${CC} pwrite.o ${LIBPCAP} ${LIBS} -o $@
+
+vdevice_simulator: vdevice_simulator.o ${LIBPCAP} ${LIBPFRING}
+	${CC} vdevice_simulator.o ${LIBPCAP} ${LIBS} -o $@
 
 clean:
 	@rm -f ${TARGETS} *.o *~

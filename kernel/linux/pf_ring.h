@@ -61,18 +61,21 @@
 #define SO_DEACTIVATE_RING               116
 #define SO_SET_POLL_WATERMARK            117
 #define SO_SET_VPFRING_EVENTFD           118 /* vPFRing*/
+#define SO_SET_VIRTUAL_FILTERING_DEVICE  119
+
+
 
 /* Get */
-#define SO_GET_RING_VERSION              120
-#define SO_GET_FILTERING_RULE_STATS      121
-#define SO_GET_HASH_FILTERING_RULE_STATS 122
-#define SO_GET_MAPPED_DNA_DEVICE         123
-#define SO_GET_NUM_RX_CHANNELS           124
-#define SO_GET_RING_ID                   125
-#define SO_GET_PACKET_CONSUMER_MODE      126
+#define SO_GET_RING_VERSION              170
+#define SO_GET_FILTERING_RULE_STATS      171
+#define SO_GET_HASH_FILTERING_RULE_STATS 172
+#define SO_GET_MAPPED_DNA_DEVICE         173
+#define SO_GET_NUM_RX_CHANNELS           174
+#define SO_GET_RING_ID                   175
+#define SO_GET_PACKET_CONSUMER_MODE      176
 
 /* Map */
-#define SO_MAP_DNA_DEVICE                130
+#define SO_MAP_DNA_DEVICE                180
 
 
 #define REFLECTOR_NAME_LEN                 8
@@ -558,6 +561,17 @@ struct add_to_cluster {
   cluster_type the_type;
 };
 
+typedef enum {
+  standard_nic_family = 0, /* No Hw Filtering */
+  intel_82599_family,
+  silicom_redirector_family,
+} pfring_device_type;
+
+typedef struct {
+  char device_name[16];
+  pfring_device_type device_type;  
+} virtual_filtering_device_info;
+
 #ifdef __KERNEL__
 
 #define CLUSTER_LEN       8
@@ -578,7 +592,7 @@ struct ring_cluster {
 };
 
 /*
- * Linked-list of ring clusters.
+ * Linked-list of ring clusters
  */
 typedef struct {
   struct ring_cluster cluster;
@@ -592,11 +606,14 @@ typedef struct {
 
 #define MAX_NUM_IFIDX  1024
 
-typedef enum {
-  standard_nic_family = 0, /* No Hw Filtering */
-  intel_82599_family,
-  silicom_redirector_family,
-} pfring_device_type;
+/*
+ * Linked-list of virtual filtering devices
+ */
+typedef struct {
+  virtual_filtering_device_info info;
+  struct list_head list;
+} virtual_filtering_device_element;
+
 
 typedef struct {
   pfring_device_type device_type; /* Device Type */
@@ -679,6 +696,9 @@ struct pf_ring_socket {
 
   /* Packet Sampling */
   u_int32_t pktToSample, sample_rate;
+  
+  /* Virtual Filtering Device */
+  virtual_filtering_device_element *v_filtering_dev;
 
   /* BPF Filter */
   struct sk_filter *bpfFilter;
