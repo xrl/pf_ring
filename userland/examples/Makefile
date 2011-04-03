@@ -23,6 +23,7 @@ DNA_DEFINE = #-DENABLE_DNA_SUPPORT
 #
 # PF_RING aware libpcap
 #
+O_FLAG     = #-O2
 EXTRA_LIBS = #-ldag
 PCAPDIR    = ../libpcap-1.1.1-ring
 LIBPCAP    = ${PCAPDIR}/libpcap.a  ${EXTRA_LIBS}
@@ -31,7 +32,7 @@ LIBPCAP    = ${PCAPDIR}/libpcap.a  ${EXTRA_LIBS}
 # Search directories
 #
 PFRING_KERNEL=../../kernel
-INCLUDE    = -I${PFRING_KERNEL}  -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${PCAPDIR}
+INCLUDE    = -I${PFRING_KERNEL} -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${PCAPDIR}
 
 #
 # C compiler and flags
@@ -40,7 +41,7 @@ INCLUDE    = -I${PFRING_KERNEL}  -I${PFRING_KERNEL}/plugins -I${PFRINGDIR} -I${P
 # CROSS_COMPILE=arm-mv5sft-linux-gnueabi-
 #
 CC         = ${CROSS_COMPILE}gcc
-CFLAGS     = -g -Wall ${INCLUDE} ${DNA_DEFINE} #-O
+CFLAGS     = -g ${O_FLAG} -Wall ${INCLUDE} ${DNA_DEFINE} #-O
 # LDFLAGS  =
 
 #

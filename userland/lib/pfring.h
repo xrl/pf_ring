@@ -97,14 +97,15 @@ extern "C" {
     u_int32_t tot_dna_read_pkts, rx_reg;
     dna_device dna_dev;    
     u_int32_t *rx_reg_ptr[MAX_NUM_RX_CHANNELS];
-
+    dna_device_operation last_dna_operation;
+    
     /* All devices */
     char *buffer, *slots, *device_name;
     u_int8_t kernel_packet_consumer;
     int fd;
     FlowSlotInfo *slots_info;
     u_int poll_sleep;
-    u_int8_t clear_promisc, reentrant;
+    u_int8_t clear_promisc, reentrant, break_recv_loop;
     u_long num_poll_calls;
     pthread_spinlock_t spinlock;
 
@@ -148,6 +149,7 @@ extern "C" {
   int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 		  struct pfring_pkthdr *hdr,
 		  u_int8_t wait_for_incoming_packet);
+  void pfring_breakloop(pfring *);
   int pfring_recv(pfring *ring, char* buffer, u_int buffer_len, 
 		  struct pfring_pkthdr *hdr, u_int8_t wait_for_incoming_packet);
   int pfring_get_filtering_rule_stats(pfring *ring, u_int16_t rule_id,

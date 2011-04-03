@@ -456,11 +456,11 @@ void printHelp(void) {
 /* *************************************** */
 
 void* packet_consumer_thread(void* _id) {
-  int s;
   long thread_id = (long)_id; 
   u_int numCPU = sysconf( _SC_NPROCESSORS_ONLN );
-  u_long core_id = thread_id % numCPU;
   u_char buffer[2048];
+  int s;
+  u_long core_id = thread_id % numCPU;
 
   /* printf("packet_consumer_thread(%lu)\n", thread_id); */
 
@@ -488,7 +488,7 @@ void* packet_consumer_thread(void* _id) {
     u_int len;
 
     if(do_shutdown) break;
-
+    
     if(pfring_recv(pd, (char*)buffer, sizeof(buffer), &hdr, wait_for_packet) > 0) {
       if(do_shutdown) break;
       dummyProcesssPacket(&hdr, buffer, thread_id);

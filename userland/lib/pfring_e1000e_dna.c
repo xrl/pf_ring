@@ -56,7 +56,7 @@ char* get_next_e1000_packet(pfring* ring,
     if(++ring->rx_reg == ring->dna_dev.descr_packet_memory_num_slots)
       ring->rx_reg = 0;
 
-    if((ring->rx_reg % 512) == 0) {
+    if((ring->rx_reg % 1024) == 0) {
       wmb(); /* Flush out memory first */  
       set_e1000_rx_register(ring, ring->rx_reg);  
     }
@@ -80,6 +80,7 @@ char* get_next_e1000_packet(pfring* ring,
 u_int8_t e1000_there_is_a_packet_to_read(pfring* ring, u_int8_t wait_for_incoming_packet) {
   struct e1000_rx_desc *head = (struct e1000_rx_desc*)ring->dna_dev.descr_packet_memory;
   u_int8_t ret, once = 0;
+  u_int32_t duration = 1;
 
  do_e1000_there_is_a_packet_to_read:
   ret = head[ring->rx_reg].status & E1000_RXD_STAT_DD;
@@ -104,7 +105,7 @@ u_int8_t e1000_there_is_a_packet_to_read(pfring* ring, u_int8_t wait_for_incomin
     }
 
     /* Sleep when nothing is happening */
-    rc = pfring_poll(ring, 1);
+    rc = pfring_poll(ring, duration);
 
     if(rc == -1) {
 #if 0
@@ -112,8 +113,10 @@ u_int8_t e1000_there_is_a_packet_to_read(pfring* ring, u_int8_t wait_for_incomin
 	     rc, errno, strerror(errno));
 #endif
       return(-1);
-    } else
+    } else {
+      if(duration < 1000) duration += 10;
       goto do_e1000_there_is_a_packet_to_read;
+    }
   }
 }
 

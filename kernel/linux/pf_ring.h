@@ -498,7 +498,7 @@ struct ring_sock {
 /* *********************************** */
 
 typedef int (*dna_wait_packet)(void *adapter, int mode);
-typedef void (*dna_device_notify)(u_int8_t device_in_use);
+typedef void (*dna_device_notify)(void *adapter, u_int8_t device_in_use);
 
 typedef enum {
   add_device_mapping = 0, remove_device_mapping

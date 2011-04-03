@@ -3524,7 +3524,7 @@ static int ring_mmap(struct file *file,
     int count = pfr->mmap_count;
     /* DNA Device */
 
-    printk("[PF_RING] mmap count(%d)\n", count);
+    /* printk("[PF_RING] mmap count(%d)\n", count); */
 
     pfr->mmap_count++;
 
@@ -3733,6 +3733,7 @@ unsigned int ring_poll(struct file *file,
     return(mask);
   } else {
     /* DNA mode */
+    /* enable_debug = 1;  */
 
     if(enable_debug)
       printk("[PF_RING] poll called on DNA device [%d]\n",
@@ -3751,8 +3752,14 @@ unsigned int ring_poll(struct file *file,
       printk("[PF_RING] wait_packet_function_ptr(1) returned %d\n", rc);
 
     if(rc == 0) {
+      if(enable_debug)
+	printk("[PF_RING] calling poll_wait()\n");
+
       /* No packet arrived yet */
       poll_wait(file, pfr->dna_device->packet_waitqueue, wait);
+
+      if(enable_debug)
+	printk("[PF_RING] poll_wait() just returned\n");
     } else
       rc = pfr->dna_device->wait_packet_function_ptr(pfr->dna_device->adapter_ptr, 0);
 
@@ -3952,7 +3959,7 @@ static int ring_map_dna_device(struct pf_ring_socket *pfr,
 
     /* Unlock driver */
     if(pfr->dna_device != NULL)
-      pfr->dna_device->usage_notification(0 /* unlock */);
+      pfr->dna_device->usage_notification(pfr->dna_device->adapter_ptr, 0 /* unlock */);
 	
     pfr->dna_device = NULL;
     if(debug)
@@ -3977,7 +3984,7 @@ static int ring_map_dna_device(struct pf_ring_socket *pfr,
 		 mapping->device_name, mapping->channel_id);
 
 	/* Lock driver */
-	pfr->dna_device->usage_notification(1 /* lock */);
+	pfr->dna_device->usage_notification(pfr->dna_device->adapter_ptr, 1 /* lock */);
 	ring_proc_add(pfr);
 	return(0);
       }

@@ -446,6 +446,10 @@ pcap_loop(pcap_t *p, int cnt, pcap_handler callback, u_char *user)
 void
 pcap_breakloop(pcap_t *p)
 {
+#ifdef HAVE_PF_RING
+	if(p->ring)
+	  pfring_breakloop(p->ring);
+#endif
 	p->break_loop = 1;
 }
 

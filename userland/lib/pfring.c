@@ -516,6 +516,35 @@ u_int8_t pfring_open_multichannel(char *device_name, u_int8_t promisc,
   return(num);
 }
 
+/* ******************************* */
+
+static int pfring_map_dna_device(pfring *ring,
+				 dna_device_operation operation,
+				 char *device_name,
+				 int32_t channel_id) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+  dna_device_mapping mapping;
+
+  if(ring->last_dna_operation == operation) {
+    fprintf(stderr, "%s(): operation (%s) already performed\n",
+	    __FUNCTION__, operation == remove_device_mapping ?
+	    "remove_device_mapping":"add_device_mapping");
+    return (-1);
+  } else
+    ring->last_dna_operation = operation;
+  
+  mapping.operation = operation;
+  snprintf(mapping.device_name, sizeof(mapping.device_name),
+	   "%s", device_name);
+  mapping.channel_id = channel_id;
+
+  return(ring ? setsockopt(ring->fd, 0, SO_MAP_DNA_DEVICE,
+			   &mapping, sizeof(mapping)): -1);
+#endif
+}
+
 /* **************************************************** */
 
 void pfring_close(pfring *ring) {
@@ -538,6 +567,9 @@ void pfring_close(pfring *ring) {
     if(ring->dna_dev.phys_card_memory != NULL)
       munmap(ring->dna_dev.phys_card_memory,
 	     ring->dna_dev.phys_card_memory_len);
+
+    pfring_map_dna_device(ring, remove_device_mapping,
+                          "", ring->dna_dev.channel_id);
   } else {
     if(ring->buffer != NULL) {
       munmap(ring->buffer, ring->slots_info->tot_mem);
@@ -603,7 +635,7 @@ int pfring_poll(pfring *ring, u_int wait_duration) {
   pfd.fd      = ring->fd;
   pfd.events  = POLLIN | POLLERR;
   pfd.revents = 0;  
-  errno = 0;
+  errno       = 0;
   
   rc = poll(&pfd, 1, wait_duration);
   ring->num_poll_calls++;  
@@ -1043,17 +1075,22 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
       if(0)
 	hdr->extended_hdr.parsed_header_len = 0;
       else
-	parse_pkt(buffer, hdr);
+	parse_pkt(buffer, hdr);      
+
       return(1);
     } else
       return(0);
   } else {
-    u_int32_t num_loops = 0;
     int rc = 0;
 
     if((ring == NULL) || (ring->buffer == NULL)) return(-1);
 
+    ring->break_recv_loop = 0;
+
   do_pfring_recv:
+    if(ring->break_recv_loop)
+      return(0);
+
     if(ring->reentrant)
       pthread_spin_lock(&ring->spinlock);
 
@@ -1114,10 +1151,19 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
 /* **************************************************** */
 
+void pfring_breakloop(pfring *ring) {
+#ifdef USE_PCAP
+  pcap_breakloop((pcap_t*)ring);
+#else
+  ring->break_recv_loop = 1;
+#endif
+}
+
+/* **************************************************** */
+
 int pfring_recv(pfring *ring, char* buffer, u_int buffer_len,
 		struct pfring_pkthdr *hdr,
 		u_int8_t wait_for_incoming_packet) {
-
   return(pfring_read(ring, buffer, buffer_len,
 		     hdr, wait_for_incoming_packet));
 }
@@ -1132,27 +1178,6 @@ int pfring_get_selectable_fd(pfring *ring) {
     return(-1);
   else
     return(ring->fd);
-#endif
-}
-
-/* ******************************* */
-
-static int pfring_map_dna_device(pfring *ring,
-				 dna_device_operation operation,
-				 char *device_name,
-				 int32_t channel_id) {
-#ifdef USE_PCAP
-  return(-1);
-#else
-  dna_device_mapping mapping;
-
-  mapping.operation = operation;
-  snprintf(mapping.device_name, sizeof(mapping.device_name),
-	   "%s", device_name);
-  mapping.channel_id = channel_id;
-
-  return(ring ? setsockopt(ring->fd, 0, SO_MAP_DNA_DEVICE,
-			   &mapping, sizeof(mapping)): -1);
 #endif
 }
 
@@ -1249,6 +1274,7 @@ pfring* pfring_open_dna(char *device_name,  u_int8_t promisc, u_int8_t _reentran
   else
     memset(ring, 0, sizeof(pfring));
 
+  ring->last_dna_operation = remove_device_mapping;
   ring->reentrant = _reentrant;
   ring->fd = socket(PF_RING, SOCK_RAW, htons(ETH_P_ALL));
 
@@ -1279,6 +1305,8 @@ pfring* pfring_open_dna(char *device_name,  u_int8_t promisc, u_int8_t _reentran
       if((rc = pfring_get_mapped_dna_device(ring, &ring->dna_dev)) < 0) {
 	printf("pfring_get_mapped_dna_device() failed [rc=%d]\n", rc);
 	free(ring);
+	pfring_map_dna_device(ring, remove_device_mapping,
+			      device_name, channel_id);
 	return(NULL);
       } else {
 #ifdef DEBUG
