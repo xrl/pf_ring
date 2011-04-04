@@ -5218,7 +5218,8 @@ void dna_device_handler(dna_device_operation operation,
 			u_int phys_card_memory_len,
 			struct net_device *netdev,
 			dna_device_model device_model,
-			wait_queue_head_t * packet_waitqueue,
+			u_char *device_address,
+			wait_queue_head_t * packet_waitqueue,			
 			u_int8_t * interrupt_received,
 			void *adapter_ptr,
 			dna_wait_packet wait_packet_function_ptr,
@@ -5247,6 +5248,7 @@ void dna_device_handler(dna_device_operation operation,
       next->dev.channel_id = channel_id;
       next->dev.netdev = netdev;
       next->dev.device_model = device_model;
+      next->dev.device_address = device_address;
       next->dev.packet_waitqueue = packet_waitqueue;
       next->dev.interrupt_received = interrupt_received;
       next->dev.adapter_ptr = adapter_ptr;

@@ -525,6 +525,7 @@ typedef struct {
   u_int phys_card_memory_len;
   struct net_device *netdev; /* Invalid in userland */
   dna_device_model device_model;
+  u_char *device_address;
 #ifdef __KERNEL__
   wait_queue_head_t *packet_waitqueue;
 #else
@@ -851,6 +852,7 @@ typedef void  (*handle_ring_dna_device)(dna_device_operation operation,
 					u_int phys_card_memory_len,
 					struct net_device *netdev,
 					dna_device_model device_model,
+					u_char *device_address,
 					wait_queue_head_t *packet_waitqueue,
 					u_int8_t *interrupt_received,
 					void *adapter_ptr,
@@ -886,6 +888,7 @@ extern void do_ring_dna_device_handler(dna_device_operation operation,
 				       u_int phys_card_memory_len,
 				       struct net_device *netdev,
 				       dna_device_model device_model,
+				       char *device_address,
 				       wait_queue_head_t *packet_waitqueue,
 				       u_int8_t *interrupt_received,
 				       void *adapter_ptr,
