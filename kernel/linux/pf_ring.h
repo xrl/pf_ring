@@ -672,6 +672,9 @@ struct pf_ring_socket {
   char *appl_name; /* String that identifies the application bound to the socket */
   packet_direction direction; /* Specify the capture direction for packets */
 
+  /* /proc */
+  char sock_proc_name[64];
+
   /* Poll Watermark */
   u_int16_t poll_num_pkts_watermark;
 
@@ -805,12 +808,12 @@ typedef void (*plugin_register)(u_int8_t register_plugin);
 /* Called when a ring is disposed */
 typedef void (*plugin_free_ring_mem)(sw_filtering_rule_element *rule);
 
-typedef void (*copy_raw_data_2ring)(struct pf_ring_socket *pfr,
-				    struct pfring_pkthdr *dummy_hdr,
-				    void *raw_data, uint raw_data_len);
+typedef int (*copy_raw_data_2ring)(struct pf_ring_socket *pfr,
+				   struct pfring_pkthdr *dummy_hdr,
+				   void *raw_data, uint raw_data_len);
 
 /* Kernel packet poller */
-typedef void (*kernel_packet_start)(struct pf_ring_socket *pfr, copy_raw_data_2ring raw_copier);
+typedef int (*kernel_packet_start)(struct pf_ring_socket *pfr, copy_raw_data_2ring raw_copier);
 typedef void (*kernel_packet_term)(struct pf_ring_socket *pfr);
 typedef void (*kernel_packet_reader)(struct pf_ring_socket *pfr, struct sk_buff *skb, 
 				     u_int8_t channel_id, struct pfring_pkthdr *hdr, int displ);
