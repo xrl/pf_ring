@@ -1,0 +1,6 @@
+DNA Support
+-----------
+
+In order to enable DNA support you need to copy on this directory
+the user-space DNA library (e.g. libpfring_dna_x86_64.a) prior
+to run configure and then make

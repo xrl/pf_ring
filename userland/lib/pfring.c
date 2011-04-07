@@ -1409,7 +1409,10 @@ int pfring_get_bound_device_address(pfring *ring, u_char mac_address[6]) {
 #ifndef HAVE_DNA
 /* Dummy stubs */
 
-int dna_init(pfring* ring, u_short len) { return(0); }
+int dna_init(pfring* ring, u_short len) { 
+  printf("Your PF_RING library has not been compiled with DNA support\n");
+  return(-1); 
+}
 
 void dna_term(pfring* ring) { ; }
 
