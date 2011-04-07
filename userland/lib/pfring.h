@@ -115,8 +115,6 @@ extern "C" {
     struct sockaddr_ll sock_tx;
   } pfring;
 
-#include "pfring_e1000e_dna.h"
-
   typedef struct {
     u_int64_t recv, drop;
   } pfring_stat;
