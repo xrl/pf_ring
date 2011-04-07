@@ -966,8 +966,14 @@ static inline bool ixgbe_rx_is_fcoe(struct ixgbe_adapter *adapter,
  * @skb: packet to send up
  * @vlan_tag: vlan tag for packet
  **/
-static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
-			      struct sk_buff *skb, u16 vlan_tag)
+static
+#ifdef HAVE_PF_RING
+int
+#else
+void 
+#endif
+ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
+		  struct sk_buff *skb, u16 vlan_tag)
 {
 	struct ixgbe_adapter *adapter = q_vector->adapter;
 	int ret = NET_RX_SUCCESS;
@@ -1016,7 +1022,7 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 	      if(rc > 0 /* Packet handled by PF_RING */) {
 		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
 		  /* PF_RING has already freed the memory */
-		  return;
+		  return(rc);
 		}
 	      }
 	    } else {
@@ -1065,6 +1071,10 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 #ifdef CONFIG_IXGBE_NAPI
 		}
 #endif /* CONFIG_IXGBE_NAPI */
+
+#ifdef HAVE_PF_RING
+ return(0);
+#endif
 }
 
 /**
@@ -1719,7 +1729,17 @@ static int ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 			rx_buffer_info->skb = ixgbe_lro_queue(q_vector, skb, vlan_tag);
 		else
 #endif
+#ifdef HAVE_PF_RING
+		  {
+		    if(ixgbe_receive_skb(q_vector, skb, vlan_tag) == 2) {
+		      /* Force adapter to stop polling as we have no room for packets */
+		      /* printk("[PF_RING] Too many packets!\n"); */
+		      budget = 1;
+		     }
+		  }
+#else
 			ixgbe_receive_skb(q_vector, skb, vlan_tag);
+#endif
 
 		rx_ring->netdev->last_rx = jiffies;
 		budget--;

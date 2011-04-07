@@ -728,10 +728,16 @@ static int e1000_desc_unused(struct e1000_ring *ring)
  * @vlan: descriptor vlan field as written by hardware (no le/be conversion)
  * @skb: pointer to sk_buff to be indicated to stack
  **/
-static void e1000_receive_skb(struct e1000_adapter *adapter,
-			      struct net_device *netdev,
-			      struct sk_buff *skb,
-			      u8 status, __le16 vlan)
+static
+#ifdef HAVE_PF_RING
+int
+#else
+void
+#endif
+e1000_receive_skb(struct e1000_adapter *adapter,
+		  struct net_device *netdev,
+		  struct sk_buff *skb,
+		  u8 status, __le16 vlan)
 {
 #ifndef CONFIG_E1000E_NAPI
 	int ret;
@@ -758,7 +764,7 @@ static void e1000_receive_skb(struct e1000_adapter *adapter,
 	      if(rc > 0 /* Packet handled by PF_RING */) {
 		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
 		  /* PF_RING has already freed the memory */
-		  return;
+		  return(rc);
 		}
 	      }
 	    } else {
@@ -794,6 +800,10 @@ static void e1000_receive_skb(struct e1000_adapter *adapter,
 #ifndef NETIF_F_GRO
 
 	netdev->last_rx = jiffies;
+#endif
+
+#ifdef HAVE_PF_RING
+	return(1);
 #endif
 }
 
@@ -1223,7 +1233,16 @@ static bool e1000_clean_rx_irq(struct e1000_adapter *adapter)
 				  ((u32)(rx_desc->errors) << 24),
 				  le16_to_cpu(rx_desc->csum), skb);
 
+#ifdef HAVE_PF_RING
+		if(e1000_receive_skb(adapter, netdev, skb, status, rx_desc->special) == 2) {
+		  /* Force adapter to stop polling as we have no room for packets */
+		  /* printk("[PF_RING] No room for packets\n");  */
+		  *work_done = work_to_do;
+		  /* schedule(); */
+		}
+#else
 		e1000_receive_skb(adapter, netdev, skb, status, rx_desc->special);
+#endif
 
 next_desc:
 		rx_desc->status = 0;

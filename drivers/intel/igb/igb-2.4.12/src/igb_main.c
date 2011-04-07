@@ -5559,9 +5559,15 @@ static bool igb_clean_tx_irq(struct igb_q_vector *q_vector, int budget)
  * @skb: packet to send up
  * @vlan_tag: vlan tag for packet
  **/
-static void igb_receive_skb(struct igb_q_vector *q_vector,
-                            struct sk_buff *skb,
-                            u16 vlan_tag)
+static 
+#ifdef HAVE_PF_RING
+int
+#else
+void 
+#endif
+igb_receive_skb(struct igb_q_vector *q_vector,
+		struct sk_buff *skb,
+		u16 vlan_tag)
 {
 	struct igb_adapter *adapter = q_vector->adapter;
 
@@ -5586,7 +5592,7 @@ static void igb_receive_skb(struct igb_q_vector *q_vector,
 	      if(rc > 0 /* Packet handled by PF_RING */) {
 		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
 		  /* PF_RING has already freed the memory */
-		  return;
+		  return(rc);
 		}
 	      }
 	    } else {
@@ -5602,6 +5608,10 @@ static void igb_receive_skb(struct igb_q_vector *q_vector,
 		                 vlan_tag, skb);
 	else
 		napi_gro_receive(&q_vector->napi, skb);
+
+#ifdef HAVE_PF_RING
+	return(0);
+#endif
 }
 
 static inline void igb_rx_checksum(struct igb_ring *ring,
@@ -6129,7 +6139,16 @@ static void igb_clean_rx_irq(struct igb_q_vector *q_vector,
 			buffer_info->skb = igb_lro_queue(q_vector, skb, vlan_tag);
 		else
 #endif
+#ifdef HAVE_PF_RING
+		  if(igb_receive_skb(q_vector, skb, vlan_tag) == 2) {
+		    /* Force adapter to stop polling as we have no room for packets */
+		    /* printk("[PF_RING] No room for packets\n"); */
+		    *work_done = budget;
+		    /* schedule(); */
+		  }
+#else
 			igb_receive_skb(q_vector, skb, vlan_tag);
+#endif
 
 #ifndef NETIF_F_GRO
 		rx_ring->netdev->last_rx = jiffies;
