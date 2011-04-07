@@ -755,7 +755,7 @@ static void e1000_receive_skb(struct e1000_adapter *adapter,
 	    if(*hook->transparent_mode != standard_linux_path) {
 	      rc = hook->ring_handler(skb, 1, 1, -1, 1);
 	      
-	      if(rc == 1 /* Packet handled by PF_RING */) {
+	      if(rc > 0 /* Packet handled by PF_RING */) {
 		if(*hook->transparent_mode == driver2pf_ring_non_transparent) {
 		  /* PF_RING has already freed the memory */
 		  return;
