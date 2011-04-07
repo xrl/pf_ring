@@ -449,6 +449,7 @@ void printHelp(void) {
   printf("-e <direction>  0=RX+TX, 1=RX only, 2=TX only\n");
   printf("-s <string>     String to search on packets\n");
   printf("-l <len>        Capture length\n");
+  printf("-w <watermark>  Watermark\n");
   printf("-a              Active packet wait\n");
   printf("-v              Verbose\n");
 }
