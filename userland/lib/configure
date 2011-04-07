@@ -593,6 +593,10 @@ ac_includes_default="\
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 INSTALL_PREFIX
+DNA_DEP
+DNA_OBJS
+DNA_LIB
+HAVE_DNA
 EGREP
 GREP
 CPP
@@ -3145,6 +3149,23 @@ done
 
 CFLAGS=""
 
+MACHINE=`uname -m`
+DNA_LIB="libpfring_dna_$MACHINE.a"
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking DNA support" >&5
+$as_echo_n "checking DNA support... " >&6; }
+if test -f $DNA_LIB; then
+  HAVE_DNA="-D HAVE_DNA"
+  DNA_OBJS=`ar t $DNA_LIB | tr '\n' ' '`
+  DNA_DEP="extract_dna_lib"
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+else
+  DNA_LIB=""
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
 if test "x$ac_cv_header_linux_net_tstamp_h" = x""yes; then :
 CFLAGS="-DENABLE_HW_TIMESTAMP $CFLAGS"
 fi
@@ -3154,6 +3175,10 @@ if test ".${prefix}" = ".NONE"; then
 else
    INSTALL_PREFIX=${prefix};
 fi
+
+
+
+
 
 
 

@@ -24,14 +24,24 @@
 
 #include "pfring.h"
 
-#include "pfring_e1000e_dna.h"
-
 #define MAX_NUM_LOOPS          100
 #define YIELD_MULTIPLIER        10
 
 #define gcc_mb() __asm__ __volatile__("": : :"memory");
 
 //#define RING_DEBUG
+
+/* ********************************* */
+
+/* DNA */
+int dna_init(pfring* ring, u_short len);
+void dna_term(pfring* ring);
+u_int8_t dna_there_is_a_packet_to_read(pfring* ring, 
+				       u_int8_t wait_for_incoming_packet);
+char* dna_get_next_packet(pfring* ring, 
+			  char* buffer, u_int buffer_len, 
+			  struct pfring_pkthdr *hdr);
+void dna_dump_stats(pfring* ring);
 
 /* ******************************* */
 
@@ -555,7 +565,8 @@ void pfring_close(pfring *ring) {
   if(!ring) return;
 
   if(ring->dna_mapped_device) {
-    term_e1000(ring);
+    dna_term(ring);
+
     if(ring->dna_dev.packet_memory != 0)
       munmap((void*)ring->dna_dev.packet_memory,
 	     ring->dna_dev.packet_memory_tot_len);
@@ -1046,29 +1057,11 @@ int pfring_read(pfring *ring, char* buffer, u_int buffer_len,
 
     if(wait_for_incoming_packet) {
       if(ring->reentrant) pthread_spin_lock(&ring->spinlock);
-
-      switch(ring->dna_dev.device_model) {
-      case intel_e1000:
-	e1000_there_is_a_packet_to_read(ring, wait_for_incoming_packet);
-	break;
-      default:
-	return(0);
-      }
-
+      dna_there_is_a_packet_to_read(ring, wait_for_incoming_packet);
       if(ring->reentrant) pthread_spin_unlock(&ring->spinlock);
     }
 
-    switch(ring->dna_dev.device_model) {
-    case intel_e1000:
-      pkt = get_next_e1000_packet(ring, buffer, buffer_len, hdr);
-      break;
-    case intel_igb:
-      pkt = NULL, hdr->len = 0;
-      break;
-    case intel_ixgbe:
-      pkt = NULL, hdr->len = 0;
-      break;
-    }
+    pkt = dna_get_next_packet(ring, buffer, buffer_len, hdr);
 
     if(pkt && (hdr->len > 0)) {
       /* Set the (1) below to (0) for enabling packet parsing for DNA devices */
@@ -1252,20 +1245,7 @@ int pfring_set_virtual_device(pfring *ring, virtual_filtering_device_info *info)
 
 #ifdef DEBUG
 static void pfring_dump_dna_stats(pfring* ring) {
-  switch(ring->dna_dev.device_model) {
-  case intel_e1000:
-    printf("[Intel 1 Gbit e1000 family]\n");
-    pfring_dump_dna_e1000_stats(ring);
-    break;
-  case intel_igb:
-    printf("[Intel 1 Gbit igb family]\n");
-    break;
-  case intel_ixgbe:
-    printf("[Intel 10 Gbit ixgbe family]\n");
-    break;
-  default:
-    printf("[Unknown card model]\n");
-  }
+  dna_dump_stats(ring);
 }
 #endif
 
@@ -1366,7 +1346,12 @@ pfring* pfring_open_dna(char *device_name,  u_int8_t promisc, u_int8_t _reentran
 	return(NULL);
       }
 
-      init_e1000(ring);
+      if(dna_init(ring, sizeof(pfring)) == -1) {
+	printf("dna_init() failed\n");
+	free(ring);
+	return(NULL);
+      }
+
       ring->device_name = strdup(device_name ? device_name : "");
 
       if(promisc) {
@@ -1403,3 +1388,42 @@ pfring* pfring_open_dna(char *device_name,  u_int8_t promisc, u_int8_t _reentran
   return(NULL);
 #endif
 }
+
+/* *********************************** */
+
+int pfring_get_bound_device_address(pfring *ring, u_char mac_address[6]) {
+#ifdef USE_PCAP
+  return(-1);
+#else
+  if(ring == NULL)
+    return(-1);
+  else {
+    socklen_t len = 6;
+    return(getsockopt(ring->fd, 0, SO_GET_BOUND_DEVICE_ADDRESS, mac_address, &len));
+  }
+#endif
+}
+
+/* *********************************** */
+
+#ifndef HAVE_DNA
+/* Dummy stubs */
+
+int dna_init(pfring* ring, u_short len) { return(0); }
+
+void dna_term(pfring* ring) { ; }
+
+u_int8_t dna_there_is_a_packet_to_read(pfring* ring, 
+				       u_int8_t wait_for_incoming_packet) {
+  return(0);
+}
+
+char* dna_get_next_packet(pfring* ring, 
+			  char* buffer, u_int buffer_len, 
+			  struct pfring_pkthdr *hdr) {
+  return(NULL);
+}
+
+void dna_dump_stats(pfring* ring) { ; }
+
+#endif

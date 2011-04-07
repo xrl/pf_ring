@@ -520,7 +520,8 @@ void* packet_consumer_thread(void* _id) {
 /* *************************************** */
 
 int main(int argc, char* argv[]) {
-  char *device = NULL, c, *string = NULL;
+  char *device = NULL, c, *string = NULL, buf[32];
+  u_char mac_address[6];
   int promisc, snaplen = DEFAULT_SNAPLEN, rc;
   u_int clusterId = 0;
   packet_direction direction = rx_and_tx_direction;
@@ -621,8 +622,6 @@ int main(int argc, char* argv[]) {
   if(device == NULL) device = DEFAULT_DEVICE;
   if(num_threads > MAX_NUM_THREADS) num_threads = MAX_NUM_THREADS;
 
-  printf("Capturing from %s\n", device);
-
   /* hardcode: promisc=1, to_ms=500 */
   promisc = 1;
 
@@ -650,6 +649,11 @@ int main(int argc, char* argv[]) {
 	   (version & 0x0000FF00) >> 8,
 	   version & 0x000000FF);
   }
+
+  if(pfring_get_bound_device_address(pd, mac_address) != 0)
+    printf("pfring_get_bound_device_address() failed\n");
+
+  printf("Capturing from %s [%s]\n", device, etheraddr_string(mac_address, buf));
 
   printf("# Device RX channels: %d\n", pfring_get_num_rx_channels(pd));
   printf("# Polling threads:    %d\n", num_threads);

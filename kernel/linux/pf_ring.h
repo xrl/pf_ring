@@ -73,6 +73,7 @@
 #define SO_GET_NUM_RX_CHANNELS           174
 #define SO_GET_RING_ID                   175
 #define SO_GET_PACKET_CONSUMER_MODE      176
+#define SO_GET_BOUND_DEVICE_ADDRESS      177
 
 /* Map */
 #define SO_MAP_DNA_DEVICE                180
@@ -508,7 +509,9 @@ typedef enum {
 } dna_device_operation;
 
 typedef enum {
-  intel_e1000 = 0, intel_igb, intel_ixgbe
+  intel_e1000e = 0, 
+  intel_igb, 
+  intel_ixgbe
 } dna_device_model;
 
 typedef struct {
@@ -525,7 +528,7 @@ typedef struct {
   u_int phys_card_memory_len;
   struct net_device *netdev; /* Invalid in userland */
   dna_device_model device_model;
-  u_char *device_address;
+  u_char device_address[6];
 #ifdef __KERNEL__
   wait_queue_head_t *packet_waitqueue;
 #else

@@ -79,6 +79,9 @@ extern int pthread_spin_unlock (pthread_spinlock_t *__lock) __THROW;
 #define max(a, b) (a > b ? a : b)
 #endif
 
+
+/* ********************************* */
+
 #ifdef  __cplusplus
 extern "C" {
 #endif
@@ -119,7 +122,7 @@ extern "C" {
   } pfring_stat;
 
   /* NOTE: keep 'struct pfring_pkthdr' in sync with 'struct pcap_pkthdr' (ring.h) */
-
+  
   /* ********************************* */
 
   int pfring_set_direction(pfring *ring, packet_direction direction);
@@ -176,6 +179,7 @@ extern "C" {
   int pfring_version(pfring *ring, u_int32_t *version);
   int pfring_set_sampling_rate(pfring *ring, u_int32_t rate /* 1 = no sampling */);
   int pfring_get_selectable_fd(pfring *ring);
+  int pfring_get_bound_device_address(pfring *ring, u_char mac_address[6]);
 
 #ifdef  __cplusplus
 }

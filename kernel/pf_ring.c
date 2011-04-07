@@ -5201,6 +5201,20 @@ static int ring_getsockopt(struct socket *sock,
       return -EFAULT;
     break;
 
+  case SO_GET_BOUND_DEVICE_ADDRESS:
+    if(len < 6) return -EINVAL;
+
+    if(pfr->dna_device != NULL) {
+      if(copy_to_user(optval, pfr->dna_device->device_address, 6))
+	return -EFAULT;
+    } else if((pfr->ring_netdev != NULL) 
+	      && (pfr->ring_netdev->dev != NULL)) {
+      if(copy_to_user(optval, pfr->ring_netdev->dev->dev_addr, 6))
+	return -EFAULT;
+    } else
+      return -EFAULT;
+    break;
+
   default:
     return -ENOPROTOOPT;
   }
@@ -5255,7 +5269,7 @@ void dna_device_handler(dna_device_operation operation,
       next->dev.channel_id = channel_id;
       next->dev.netdev = netdev;
       next->dev.device_model = device_model;
-      next->dev.device_address = device_address;
+      memcpy(next->dev.device_address, device_address, 6);
       next->dev.packet_waitqueue = packet_waitqueue;
       next->dev.interrupt_received = interrupt_received;
       next->dev.adapter_ptr = adapter_ptr;
