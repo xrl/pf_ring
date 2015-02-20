@@ -57,18 +57,20 @@
 #define HAVE_PF_RING
 #endif
 
-//#define CPACKET_TIMESTAMPS
+#define CPACKET_TIMESTAMPS
 
 #ifdef CPACKET_TIMESTAMPS
 #include <linux/timecompare.h>
+
+static int cpacket_ts_enable = 0;
+module_param(cpacket_ts_enable, uint, 0644);
+MODULE_PARM_DESC(cpacket_ts_enable, "Enable cpacket.com timestamp detection: 0=Disabled (default), 1=Enabled");
 
 struct cpacket_ts {
   u_int32_t original_crc, epoch, ns, ignore;
 };
 
-#endif
-/* CPACKET CPACKET CPACKET CPACKET CPACKET CPACKET */
-
+#endif /* CPACKET_TIMESTAMPS */
 
 #ifdef HAVE_PF_RING
 #include "../../../../../kernel/linux/pf_ring.h"
@@ -969,27 +971,27 @@ static void ixgbe_receive_skb(struct ixgbe_q_vector *q_vector,
 	int ret = NET_RX_SUCCESS;
 
 #ifdef CPACKET_TIMESTAMPS
-  {
-    struct cpacket_ts ts;
-    /* 
-       4 bytes CRC
-       4 bytes Epoch
-       4 bytes ns
-       4 bytes [ignore]
-    */
-
-    skb->len -= sizeof(struct cpacket_ts); /* Shorten packet */
-    memcpy(&ts, &skb->data[skb->len], sizeof(struct cpacket_ts));
-
-    if(ts.epoch > 0) {
-      struct skb_shared_hwtstamps *skb_hwts = skb_hwtstamps(skb);
-
-      ts.epoch = ntohl(ts.epoch), ts.ns = ntohl(ts.ns);      
-      skb_hwts->hwtstamp = ktime_set((const long)ts.epoch, (const unsigned long)ts.ns);
-      skb_hwts->syststamp.tv64 = 0;
-      //printk(KERN_INFO "[CPACKET] %u.%u\n", ts.epoch, ts.ns);
-    }
-  }
+	if(cpacket_ts_enable) {
+	  struct cpacket_ts ts;
+	  /* 
+	     4 bytes CRC
+	     4 bytes Epoch
+	     4 bytes ns
+	     4 bytes [ignore]
+	  */
+	  
+	  skb->len -= sizeof(struct cpacket_ts); /* Shorten packet */
+	  memcpy(&ts, &skb->data[skb->len], sizeof(struct cpacket_ts));
+	  
+	  if(ts.epoch > 0) {
+	    struct skb_shared_hwtstamps *skb_hwts = skb_hwtstamps(skb);
+	    
+	    ts.epoch = ntohl(ts.epoch), ts.ns = ntohl(ts.ns);      
+	    skb_hwts->hwtstamp = ktime_set((const long)ts.epoch, (const unsigned long)ts.ns);
+	    skb_hwts->syststamp.tv64 = 0;
+	    //printk(KERN_INFO "[CPACKET] %u.%u\n", ts.epoch, ts.ns);
+	  }
+	}
 #endif
 
 #ifdef HAVE_PF_RING
@@ -8746,6 +8748,14 @@ static int __init ixgbe_init_module(void)
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	dca_register_notify(&dca_notifier);
 
+#endif
+
+#ifdef CPACKET_TIMESTAMPS
+	if(cpacket_ts_enable) {
+	  pr_info("Enabling cpacket.com nsec packet timestamp decoding\n");
+	} else {
+	  pr_info("cpacket.com nsec packet timestamp decoding disabled\n");
+	}
 #endif
 	ret = pci_register_driver(&ixgbe_driver);
 	return ret;
