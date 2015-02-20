@@ -57,7 +57,9 @@
 #define HAVE_PF_RING
 #endif
 
+#if(LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30))
 #define CPACKET_TIMESTAMPS
+#endif
 
 #ifdef CPACKET_TIMESTAMPS
 #include <linux/timecompare.h>
